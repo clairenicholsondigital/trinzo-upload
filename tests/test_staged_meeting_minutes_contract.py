@@ -8,6 +8,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 class StagedMeetingMinutesContractTest(unittest.TestCase):
     def test_later_staged_steps_use_canonical_pipeline_and_confirmed_state(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_queue = (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8")
         staged_evaluation = (REPO_DIR / "utils" / "stagedMinutesEvaluation.js").read_text(encoding="utf-8")
         staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
         staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
@@ -111,19 +112,19 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("decisionOrAgreement", staged_evaluation)
         self.assertIn("nextStep", api)
         self.assertIn("additionalContext: firstString", api)
-        self.assertIn("additionalContext: input.additionalContext", api)
+        self.assertIn("additionalContext: input.additionalContext", staged_queue)
         self.assertIn("router.post('/staged-meeting-minutes/jobs'", api)
         self.assertIn("queueStagedMeetingMinutesStage", api)
-        self.assertIn("updateGenerationJobProgress", api)
-        self.assertIn("markGenerationJobCompleted", api)
-        self.assertIn("markGenerationJobFailure", api)
-        self.assertIn("runQueuedStagedMeetingMinutesStage", api)
-        self.assertIn("Denoising and organising discussion evidence.", api)
-        self.assertIn("payload = await generateMiniLmTrooperStage(stage, transcript.text", api)
+        self.assertIn("updateGenerationJobProgress", staged_queue)
+        self.assertIn("markGenerationJobCompleted", staged_queue)
+        self.assertIn("markGenerationJobFailure", staged_queue)
+        self.assertIn("runQueuedStagedMeetingMinutesStage", staged_queue)
+        self.assertIn("Denoising and organising discussion evidence.", staged_queue)
+        self.assertIn("payload = await generateMiniLmTrooperStage(stage, transcript.text", staged_queue)
         # The queued stage and the scorecard route the meeting type through one shared helper,
         # so the two cannot drift apart again.
         self.assertIn("function stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)", meeting_type)
-        self.assertIn("meetingType: stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)", api)
+        self.assertIn("meetingType: stagedGenerationMeetingType(selectedMeetingType, meetingIdentity)", staged_queue)
         self.assertIn("findStagedSourceJobFromRequest", api)
         self.assertIn("function isTransientPgError", db)
         self.assertIn("code === '40P01' || code === '40001'", db)
@@ -381,6 +382,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_transcript_prep_is_deterministic_and_keeps_raw_source(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_queue = (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8")
         staged_evaluation = (REPO_DIR / "utils" / "stagedMinutesEvaluation.js").read_text(encoding="utf-8")
         staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
         staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
@@ -395,8 +397,8 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("sourceJob.preparedTranscript", api)
         self.assertIn("canonicalStagedResponse(stage, transcript, input)", staged_evaluation)
         self.assertIn("runCanonicalLiveStage(semanticTranscript.text", staged_response)
-        self.assertIn("rawTranscriptLength: transcript.text.length", api)
-        self.assertIn("preparedTranscriptLength", api)
+        self.assertIn("rawTranscriptLength: transcript.text.length", staged_queue)
+        self.assertIn("preparedTranscriptLength", staged_queue)
         self.assertIn("autosavePayload.preparedTranscript", db)
         self.assertIn("preparedTranscript: payload.preparedTranscript || null", db)
         self.assertIn("preparedTranscriptTelemetry: payload.preparedTranscriptTelemetry || null", db)
@@ -408,7 +410,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn(".review-status.is-loading", page)
         self.assertIn("animation:spin", page)
         self.assertIn("Generating:", page)
-        self.assertIn("Denoising and organising discussion evidence.", (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8"))
+        self.assertIn("Denoising and organising discussion evidence.", (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8"))
         self.assertIn("Elapsed:", page)
         self.assertIn("You can close this tab and resume from Library.", page)
         self.assertIn("isTransientStagePollError", page)
@@ -555,13 +557,14 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_transcript_identity_isolated_between_drafts(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_queue = (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
         identity = (REPO_DIR / "utils" / "stagedIdentity.js").read_text(encoding="utf-8")
 
         self.assertIn("assertStagedSourceIdentity", api)
         self.assertIn("assertStagedTranscriptHash", api)
-        self.assertIn("input.transcriptSha256", api)
-        self.assertIn("transcriptIdentity.transcriptSha256", api)
+        self.assertIn("input.transcriptSha256", staged_queue)
+        self.assertIn("transcriptIdentity.transcriptSha256", staged_queue)
         self.assertIn("sourceJob.inputPayload?.draftId", api)
         self.assertIn("sourceJob.inputPayload?.transcriptSha256", api)
         self.assertIn("STAGED_TRANSCRIPT_IDENTITY_MISMATCH", identity)
@@ -573,6 +576,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_post_extraction_editorial_pass_is_wired_in(self):
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_queue = (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8")
         staged_evaluation = (REPO_DIR / "utils" / "stagedMinutesEvaluation.js").read_text(encoding="utf-8")
         staged_context = (REPO_DIR / "utils" / "stagedMinutesContext.js").read_text(encoding="utf-8")
         staged_response = (REPO_DIR / "utils" / "stagedMinutesCanonicalResponse.js").read_text(encoding="utf-8")
@@ -594,9 +598,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("validationFlags,", api)
         self.assertIn("function stagedReviewContextFromRequest", api)
         self.assertIn("const reviewContext = stagedReviewContextFromRequest(req)", api)
-        self.assertIn("reviewObjectives: input.reviewObjectives || ''", api)
-        self.assertIn("reviewDiscussion: input.reviewDiscussion || ''", api)
-        self.assertIn("reviewActions: input.reviewActions || ''", api)
+        self.assertIn("reviewObjectives: input.reviewObjectives || ''", staged_queue)
+        self.assertIn("reviewDiscussion: input.reviewDiscussion || ''", staged_queue)
+        self.assertIn("reviewActions: input.reviewActions || ''", staged_queue)
         self.assertIn("function serialiseActionReviewCandidate", staged_response)
         self.assertIn("action-candidate-${stableActionCandidateHash(candidate)}", staged_response)
         self.assertIn("resolutionKey: `action-review-candidates:", staged_response)
@@ -682,7 +686,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
 
     def test_staged_reviewer_copy_and_controls_hide_internal_processing_terms(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")
-        api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        staged_queue = (REPO_DIR / "utils" / "stagedMinutesQueue.js").read_text(encoding="utf-8")
 
         self.assertIn("review-check-button", page)
         self.assertIn("review-check-text-button", page)
@@ -727,9 +731,9 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("function validReviewerOwner", page)
         self.assertIn(">Add owner</option>", page)
         self.assertNotIn("Mark reviewed", page)
-        self.assertNotIn("Running canonical ${stage} evidence classification.", api)
-        self.assertIn("Reviewing discussion evidence.", api)
-        self.assertIn("Reviewing action evidence.", api)
+        self.assertNotIn("Running canonical ${stage} evidence classification.", staged_queue)
+        self.assertIn("Reviewing discussion evidence.", staged_queue)
+        self.assertIn("Reviewing action evidence.", staged_queue)
 
     def test_staged_export_uses_one_server_generated_pdf_for_download_and_preview(self):
         page = (REPO_DIR / "views" / "staged-meeting-minutes.html").read_text(encoding="utf-8")

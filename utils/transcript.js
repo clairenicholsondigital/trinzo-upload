@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
 
 function extractTextFromUpload(file, mammoth) {
@@ -52,7 +54,15 @@ function validateTranscriptText(text) {
   }
 }
 
+function transcriptMetadata(text) {
+  return {
+    transcriptLength: text.length,
+    transcriptSha256: crypto.createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16)
+  };
+}
+
 module.exports = {
   extractTextFromUpload,
-  validateTranscriptText
+  validateTranscriptText,
+  transcriptMetadata
 };
