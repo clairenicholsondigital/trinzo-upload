@@ -7,6 +7,7 @@
     "tests/meeting-minutes-timing-closure-inference-cache.test.js",
     "tests/meeting-minutes-stage-persistence.test.js",
     "tests/meeting-minutes-original-execution.test.js",
+    "tests/meeting-minutes-action-diagnostics.test.js",
     "tests/meeting-minutes-draft-context.test.js",
     "tests/meeting-minutes-response-contracts.test.js",
     "tests/meeting-minutes-referee-failure-audit.test.js",

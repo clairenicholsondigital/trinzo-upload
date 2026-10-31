@@ -19,7 +19,7 @@ else {
   INSERT INTO ai001_report_test.projects VALUES(19,'Internal fixture');
   INSERT INTO ai001_report_test.project_reports(id,project_id,file_name,report_status) VALUES(42,19,'Report fixture','draft');`);
   await pool.query("INSERT INTO ai001_report_test.project_report_versions(report_id,version_number,change_type,report_payload) VALUES(42,1,'ai_generated',$1)",[JSON.stringify(fixture.versions[0].payload)]);
-  const app=express();app.use(express.json());app.use('/static',express.static(root+'/public'));app.get('/project-update-test/reports/42',(_,res)=>res.sendFile(root+'/views/project-update-reports.html'));
+  const app=express();app.use(express.json());app.use('/static',express.static(root+'/public'));app.get('/project-update-test/reports/42',(_,res)=>res.sendFile('views/project-update-reports.html',{root}));
   app.get('/api/project-update-test/reports/42',async(_,res)=>res.json({ok:true,report:await db.getProjectReportDetail(42)}));
   app.patch('/api/project-update-test/reports/:reportId',patch);
   server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));origin='http://127.0.0.1:'+server.address().port;browser=await chromium.launch({headless:true});

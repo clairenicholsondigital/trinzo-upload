@@ -1079,3 +1079,30 @@ test('a weekday phrase in the cited commitment is recovered when the model retur
   assert.deepEqual(result.actions[0].timing, { kind: 'deadline', wording: 'monday morning', exactDate: '2026-08-10' });
   assert.ok(!result.reviewFlags.some((flag) => flag.kind === 'timing'));
 });
+
+
+test('canonical discovery inventories preserve facade identity, candidate order and uncovered source work', () => {
+  const owned = require('../utils/meetingMinutesDiscoveryInventory');
+  const facade = require('../utils/meetingMinutesAgentV2');
+  assert.equal(facade.discussionCandidateInventory, owned.discussionCandidateInventory);
+  assert.equal(facade.uncoveredCandidateInventory, owned.uncoveredCandidateInventory);
+  const units = normaliseSourceUnits([
+    { id: 'T3201', speaker: 'Maya Patel', text: 'The calibration platform supports eight independent sensor channels.', classification: 'keep' },
+    { id: 'T3202', speaker: 'Jo Lee', text: 'We agreed the supplier quality review will precede purchasing approval.', classification: 'keep' },
+    { id: 'T3203', speaker: 'Maya Patel', text: 'Whether an alternate storage site meets security requirements remains unresolved.', classification: 'keep' },
+    { id: 'T3204', speaker: 'Jo Lee', text: 'Okay.', classification: 'keep' }
+  ]);
+  const before = structuredClone(units);
+  const candidates = owned.discussionCandidateInventory(units);
+  assert.deepEqual(candidates.map(candidate => candidate.focusEvidenceId), ['T3201', 'T3202', 'T3203']);
+  assert.deepEqual(owned.deterministicHybridLedger({ sourceUnits: units }, 'discussion')
+    .map(candidate => [candidate.candidateId, candidate.recordType]), [
+    [candidates[0].candidateId, 'discussion_point'],
+    [candidates[1].candidateId, 'decision'],
+    [candidates[2].candidateId, 'open_question']
+  ]);
+  assert.deepEqual(owned.uncoveredCandidateInventory(candidates, [{
+    text: 'The calibration platform supports eight independent sensor channels.', evidenceIds: ['T3201']
+  }]).map(candidate => candidate.focusEvidenceId), ['T3202', 'T3203']);
+  assert.deepEqual(units, before);
+});

@@ -74,6 +74,52 @@ test('owner borrowing retains donor identity without changing the proposed owner
   assert.deepEqual(value, expected); assert.equal(audit.events[0].donorCandidate, 'donor'); assert.equal(audit.events[0].donorPass, 'primary');
 });
 
+test('reconstruction, accepted recovery and tracing share the real diagnostics context', async (t) => {
+  const Recovery = require('../utils/meetingMinutesRefereeActionRecovery');
+  const Promotion = require('../utils/meetingMinutesActionPromotion');
+  const Tracing = require('../utils/meetingMinutesOriginalTracing');
+  const selected = { candidateId: 'selected', recordType: 'action', sourcePass: 'recovery',
+    text: 'Send the validation documents to Jo Lee.', evidenceIds: ['T0001'],
+    record: row('selected-action', 'Send the validation documents to Jo Lee.', { owners: [] }) };
+  const donor = { candidateId: 'donor', recordType: 'action', sourcePass: 'primary',
+    text: selected.text, evidenceIds: ['T0001'], record: row('donor-action', selected.text) };
+  const candidates = [selected, donor], before = structuredClone(candidates);
+  const priorTrace = process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS;
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS = '0';
+  t.after(() => { if (priorTrace === undefined) delete process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS;
+    else process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS = priorTrace; });
+  t.mock.method(console, 'info', () => {});
+  const run = (reconstruct, reconcile) => {
+    const recovered = reconstruct([{ candidateId: 'selected', disposition: 'publish' }], candidates, units);
+    const accepted = reconcile([], recovered.actions, [], candidates, units);
+    Tracing.traceOwners('accepted-recovery', accepted.actions, 'shared-owner-context');
+    return accepted;
+  };
+  const expected = run(Recovery.reconstructRefereeActions, Promotion.reconcileAcceptedRefereeActions);
+  const owned = await D.capture(() => run(Recovery.reconstructRefereeActions, Promotion.reconcileAcceptedRefereeActions));
+  const facade = await D.capture(() => run(A.reconstructRefereeActions, A.reconcileAcceptedRefereeActions));
+  assert.equal(A.borrowOwnersFromTwin, Recovery.borrowOwnersFromTwin);
+  assert.equal(A.reconstructRefereeActions, Recovery.reconstructRefereeActions);
+  assert.equal(A.reconcileAcceptedRefereeActions, Promotion.reconcileAcceptedRefereeActions);
+  assert.deepEqual(owned.value, expected);
+  assert.deepEqual(facade.value, expected);
+  assert.deepEqual(owned.audit, facade.audit);
+  assert.deepEqual(owned.value.actions[0].owners, ['Maya Patel']);
+  assert.deepEqual(owned.value.restored, owned.value.actions);
+  assert.equal(owned.value.eligibleCount, 1);
+  assert.deepEqual(owned.audit.events.filter(event =>
+    ['owner_borrow_proposed', 'owner_borrowed', 'restored', 'checkpoint'].includes(event.kind))
+    .map(event => event.kind), ['owner_borrow_proposed', 'owner_borrowed', 'restored', 'checkpoint']);
+  const restored = owned.audit.events.find(event => event.kind === 'restored');
+  const checkpoint = owned.audit.events.at(-1);
+  assert.equal(checkpoint.checkpoint, 'accepted-recovery');
+  assert.deepEqual(checkpoint.outputs, restored.outputs);
+  assert.deepEqual(owned.audit.nodes.find(node => node.ref === checkpoint.outputs[0]).record, owned.value.actions[0]);
+  assert.equal(owned.audit.errors, 0);
+  assert.deepEqual(candidates, before);
+  assert.doesNotMatch(JSON.stringify(owned.value), /diagnostic|lineage/i);
+});
+
 test('budget exhaustion is distinguished from never nominated', async () => {
   const actions = [row('a', 'Send the validation documents to Jo Lee.'), row('b', 'Send the validation documents to Jo Lee.')];
   const { value, audit } = await D.capture(() => R.prepareActionReconciliation({ actions, sourceUnits: units, maxCandidates: 0 }));
@@ -182,4 +228,80 @@ test('inspection follows an explicit candidate namespace handoff and rejects unm
   assert.ok(report.lineage.events.some(e => e.origin?.pass === 'recovery'));
   const edited = { ...result.changes, sourceUnits: units, actions: result.changes.actions.map(r => ({ ...r, action: r.action + ' Edited.' })) };
   assert.equal((await inspect(edited, [1, 2])).lineage.availability, 'snapshot_not_matched');
+});
+
+
+test('disabled Original tracing still records the real checkpoint without console or filesystem writes', async t => {
+  const tracing = require('../utils/meetingMinutesOriginalTracing');
+  const fs = require('fs');
+  const keys = ['MEETING_MINUTES_AGENT_TRACE_OWNERS', 'MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE',
+    'MEETING_MINUTES_AGENT_TRACE_OWNERS_FILE', 'MEETING_MINUTES_AGENT_TRACE_PROPOSALS'];
+  const saved = keys.map(key => [key, process.env[key]]);
+  t.after(() => saved.forEach(([key, value]) => { if (value === undefined) delete process.env[key]; else process.env[key] = value; }));
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS = '0';
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE = '';
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_FILE = '/trace-fixture-must-not-be-written.log';
+  process.env.MEETING_MINUTES_AGENT_TRACE_PROPOSALS = '';
+  const info = t.mock.method(console, 'info', () => {});
+  const append = t.mock.method(fs, 'appendFileSync', () => {});
+  const actions = [row('trace-disabled', 'Send the validation documents to Jo Lee.')];
+  const before = structuredClone(actions);
+  const { value, audit } = await D.capture(() => {
+    tracing.traceOwners('disabled', actions, 'trace-journey');
+    tracing.traceProposals('disabled', actions, 'trace-journey');
+    return actions;
+  });
+  assert.equal(value, actions);
+  assert.deepEqual(actions, before);
+  assert.deepEqual(audit.events.filter(event => event.kind === 'checkpoint').map(event => event.checkpoint), ['disabled']);
+  assert.equal(audit.errors, 0);
+  assert.equal(info.mock.callCount(), 0);
+  assert.equal(append.mock.callCount(), 0);
+});
+
+test('enabled Original tracing preserves filtered logs, file payloads and suppressed write failures', async t => {
+  const tracing = require('../utils/meetingMinutesOriginalTracing');
+  const fs = require('fs');
+  const keys = ['MEETING_MINUTES_AGENT_TRACE_OWNERS', 'MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE',
+    'MEETING_MINUTES_AGENT_TRACE_OWNERS_FILE', 'MEETING_MINUTES_AGENT_TRACE_PROPOSALS'];
+  const saved = keys.map(key => [key, process.env[key]]);
+  t.after(() => saved.forEach(([key, value]) => { if (value === undefined) delete process.env[key]; else process.env[key] = value; }));
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS = 'true';
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_PROBE = 'validation';
+  process.env.MEETING_MINUTES_AGENT_TRACE_OWNERS_FILE = '/trace-fixture-controlled.log';
+  process.env.MEETING_MINUTES_AGENT_TRACE_PROPOSALS = 'VALIDATION';
+  const logs = [];
+  t.mock.method(console, 'info', message => logs.push(JSON.parse(message)));
+  let failAppend = false;
+  const append = t.mock.method(fs, 'appendFileSync', () => { if (failAppend) throw Error('controlled trace write failure'); });
+  const actions = [row('trace-owned', 'Send the validation documents to Jo Lee.'),
+    row('trace-other', 'Buy the replacement valve.', { owners: [] })];
+  const before = structuredClone(actions);
+  const { value, audit } = await D.capture(() => {
+    tracing.traceOwners('enabled', actions, 'trace-journey');
+    tracing.traceProposals('filtered', [{ after: actions[0] }, actions[1]], 'trace-journey');
+    failAppend = true;
+    assert.doesNotThrow(() => tracing.traceOwners('write-failure', actions, 'trace-journey'));
+    return actions;
+  });
+  assert.equal(value, actions);
+  assert.deepEqual(actions, before);
+  assert.deepEqual(logs.map(log => log.event), ['owner_trace', 'meeting_agent_proposal_trace', 'owner_trace']);
+  assert.deepEqual(logs[0].probe, { owners: ['Maya Patel'], evidence: ['T0001'] });
+  assert.equal(logs[0].total, 2);
+  assert.equal(logs[0].owned, 1);
+  assert.equal(logs[1].step, 'filtered');
+  assert.equal(logs[1].count, 1);
+  assert.deepEqual(logs[1].rows, ['Send the validation documents to Jo Lee. | ["Maya Patel"] | ["T0001"]']);
+  assert.equal(append.mock.callCount(), 2);
+  assert.equal(append.mock.calls[0].arguments[0], '/trace-fixture-controlled.log');
+  assert.ok(append.mock.calls[0].arguments[1].endsWith('\n'));
+  const written = JSON.parse(append.mock.calls[0].arguments[1]);
+  assert.equal(written.journeyId, 'trace-journey');
+  assert.equal(written.step, 'enabled');
+  assert.deepEqual(written.actions[0], { id: 'trace-owned', action: 'Send the validation documents to Jo Lee.',
+    owners: ['Maya Patel'], evidenceIds: ['T0001'], reviewFlagIds: [] });
+  assert.equal(written.actions.length, 2);
+  assert.deepEqual(audit.events.filter(event => event.kind === 'checkpoint').map(event => event.checkpoint), ['enabled', 'enabled', 'write-failure', 'write-failure']);
+  assert.equal(audit.errors, 0);
 });

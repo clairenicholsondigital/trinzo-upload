@@ -76,7 +76,7 @@ else {
   const express=require('express'),{chromium}=require('playwright'),router=require('../routes/api');
   const patch=router.stack.find(l=>l.route?.path==='/project-update-test/reports/:reportId'&&l.route.methods.patch).route.stack.at(-1).handle;
   const app=express();app.use(express.json());app.use('/static',express.static(root+'/public'));
-  app.get('/project-update-test/reports/:reportId',(_,res)=>res.sendFile(root+'/views/project-update-reports.html'));
+  app.get('/project-update-test/reports/:reportId',(_,res)=>res.sendFile('views/project-update-reports.html',{root}));
   app.get('/api/project-update-test/reports/:reportId',async(req,res)=>res.json({ok:true,report:await db.getProjectReportDetail(req.params.reportId)}));
   app.patch('/api/project-update-test/reports/:reportId',(req,res,next)=>{req.authUser={email:'reviewer@example.invalid'};next();},patch);
   const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const origin='http://127.0.0.1:'+server.address().port;

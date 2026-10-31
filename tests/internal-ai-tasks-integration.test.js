@@ -29,7 +29,7 @@ if(!url){test('internal AI Tasks PostgreSQL/browser integration requires a dispo
   app.use('/api',(req,res,next)=>{const who=req.get('x-fixture-user');if(!who)return res.status(401).json({ok:false});req.authUser=who==='admin'?admin:{userId:2,fullName:'Client',role:'client'};next();});
   app.get('/api/project-update-test/projects',async(_,res)=>res.json({ok:true,projects:(await pool.query('SELECT id AS "projectId",project_name AS "projectName" FROM projects ORDER BY id')).rows}));
   app.use('/api/project-update-test/projects/:projectId/tasks',router(store));
-  app.get('/project-update-test',(_,res)=>res.sendFile(root+'/views/project-update-workspace.html'));
+  app.get('/project-update-test',(_,res)=>res.sendFile('views/project-update-workspace.html',{root}));
   app.get('/static/trinzo.js',(_,res)=>res.type('js').send(''));
   app.use('/static',express.static(root+'/public'));
   app.get('/api/project-update-test/context',(_,res)=>res.json({ok:true,context:{activeMilestones:[],activeRisks:[],healthHistory:[],recentReports:[]}}));

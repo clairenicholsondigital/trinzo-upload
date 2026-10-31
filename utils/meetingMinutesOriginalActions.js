@@ -1,4 +1,8 @@
 'use strict';
+const { uncoveredCandidateInventory } = require('./meetingMinutesDiscoveryInventory');
+const { acceptedVisitAssignmentActions, commitmentThreadBackstopProposals, corroboratedOmittedActionProposals, strongOmittedDiscoveryProposals, unresolvedOperationalGapProposals } = require('./meetingMinutesRefereeActionRecovery');
+const { annotateActionProposalChains, criticConfirmedActionPromotions, foldUnownedNearCopies, gateTranscriptShapedActionChanges, gateTranscriptShapedActions, highConfidenceRefereedAction, hybridActionSourceInfo, hybridCandidateCoveredByRecord, hybridCandidateDispositions, isReviewableActionProposal, meetingAgentCommitmentRecheckNeeded, publishedActionCoversProposal, reconcileAcceptedRefereeActions, removePublishedActionProposalDuplicates, safeAgentProposalPromotion, splitCompoundActionList, strongUnresolvedActionCandidateFlags } = require('./meetingMinutesActionPromotion');
+const { traceOwners, traceProposals } = require('./meetingMinutesOriginalTracing');
 
 const { meetingMinutesAgentCompactDiscussionEnabled, meetingMinutesMinuteInstructionRuleEnabled, meetingMinutesProposalRecheckEnabled } = require('./meetingMinutesOriginalFeatures');
 const { meetingAgentActionAuditCandidates, meetingMinutesAgentCriticPrompt, meetingMinutesAgentSalvagePrompt } = require('./meetingMinutesAgentPrompts');
@@ -32,21 +36,7 @@ const { actionNegatedByEvidence, isMeetingAdminAction } = require('./meetingMinu
 const { applyRequesterOwnerRule, meetingAgentPeopleNames } = require('./meetingMinutesPeopleEvidence');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
-const {
-  actionCompletenessCheckItems, actionCompletenessCheckPrompt, answeredCheckItems, answeredCheckPrompt,
-  applyActionCompletenessResults, applyAnsweredCheckResults, applyChainedTimingRule,
-  applyCommitmentCheckResults, applyCompletedInMeetingCheckResults, applyFinalActionLifecycleResults,
-  applyTimingCheckResults, applyTimingClauseChecks, attachNearbyDependencyConditions,
-  backfillActionCommitmentEvidence, commitmentCheckItems, commitmentCheckPrompt,
-  completedInMeetingCheckItems, completedInMeetingCheckPrompt, describesUsualPractice,
-  finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt,
-  isAobPersonalAside, isFarewellAction, isMinuteInstruction, isNotAnAction, isSocialAside,
-  answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
-  commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
-  timingCheckEnabled: meetingMinutesTimingCheckEnabled, mergeDuplicateCommitments,
-  softenBestEffortCompletion, splitExplicitMultiOwnerActions,
-  timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
-} = require('./meetingMinutesAgentV2');
+const { actionCompletenessCheckItems, actionCompletenessCheckPrompt, answeredCheckItems, answeredCheckPrompt, applyActionCompletenessResults, applyAnsweredCheckResults, applyChainedTimingRule, applyCommitmentCheckResults, applyCompletedInMeetingCheckResults, applyFinalActionLifecycleResults, applyTimingCheckResults, applyTimingClauseChecks, attachNearbyDependencyConditions, backfillActionCommitmentEvidence, commitmentCheckItems, commitmentCheckPrompt, completedInMeetingCheckItems, completedInMeetingCheckPrompt, describesUsualPractice, finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt, isAobPersonalAside, isFarewellAction, isMinuteInstruction, isNotAnAction, isSocialAside, answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled, commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled, timingCheckEnabled: meetingMinutesTimingCheckEnabled, mergeDuplicateCommitments, softenBestEffortCompletion, splitExplicitMultiOwnerActions, timingCheckItems, timingCheckPrompt } = require('./meetingMinutesAgentV2');
 const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
 const {
   timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled
@@ -71,31 +61,7 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 
 function createOriginalActionsStage(services) {
   const {
-    acceptedVisitAssignmentActions,
-    annotateActionProposalChains,
-    commitmentThreadBackstopProposals,
-    corroboratedOmittedActionProposals,
-    criticConfirmedActionPromotions,
     dedupeCommitmentsSemantically,
-    foldUnownedNearCopies,
-    gateTranscriptShapedActionChanges,
-    gateTranscriptShapedActions,
-    highConfidenceRefereedAction,
-    hybridActionSourceInfo,
-    hybridCandidateCoveredByRecord,
-    hybridCandidateDispositions,
-    isReviewableActionProposal,
-    meetingAgentCommitmentRecheckNeeded,
-    publishedActionCoversProposal,
-    reconcileAcceptedRefereeActions,
-    removePublishedActionProposalDuplicates,
-    safeAgentProposalPromotion,
-    splitCompoundActionList,
-    strongOmittedDiscoveryProposals,
-    strongUnresolvedActionCandidateFlags,
-    traceOwners,
-    traceProposals,
-    unresolvedOperationalGapProposals,
   } = services;
 
   return async function runOriginalActionsStage(context) {
