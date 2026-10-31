@@ -882,6 +882,35 @@ function publishedActionNamesSameThing(published = {}, proposal = {}) {
 }
 const WAY_TO_ACTION = /^\s*(?:figure|work|find|sort)\s+(?:out\s+)?(?:a|some|the)\s+(?:\w+\s+)?way\b/i;
 
+function sameActionPresentation(left = {}, right = {}) {
+  const actionMatches = meetingMinutesAgentText(left.action || '', 1600).toLowerCase()
+    === meetingMinutesAgentText(right.action || '', 1600).toLowerCase();
+  const ownerKey = (record) => [...new Set((record.owners || []).map((owner) => String(owner).trim().toLowerCase()).filter(Boolean))]
+    .sort().join('|');
+  const timingKey = (record) => {
+    const timing = record.timing || {};
+    return [timing.kind || 'not_stated', timing.wording || '', timing.exactDate || '']
+      .map((value) => String(value).trim().toLowerCase()).join('|');
+  };
+  return actionMatches && ownerKey(left) === ownerKey(right) && timingKey(left) === timingKey(right);
+}
+
+// Evidence is supporting metadata, not a user-facing rewrite. Later passes often
+// find extra source turns for an action that is already published. Merge those
+// citations (and their linked flags) into the existing row before calculating
+// the proposal diff so the reviewer is not asked to approve an invisible edit.
+function mergePublishedActionEvidence(published = [], complete = []) {
+  return (Array.isArray(published) ? published : []).map((record) => {
+    const matches = (Array.isArray(complete) ? complete : []).filter((candidate) => sameActionPresentation(record, candidate));
+    if (!matches.length) return record;
+    return {
+      ...record,
+      evidenceIds: [...new Set([...(record.evidenceIds || []), ...matches.flatMap((candidate) => candidate.evidenceIds || [])])].slice(0, 12),
+      reviewFlagIds: [...new Set([...(record.reviewFlagIds || []), ...matches.flatMap((candidate) => candidate.reviewFlagIds || [])])].slice(0, 24)
+    };
+  });
+}
+
 module.exports = {
   ACTION_DEPENDENCY_CLAUSE,
   NESTED_STOP,
@@ -901,4 +930,6 @@ module.exports = {
   sameDocumentDeliveryWorkflow,
   sharesDistinctivePhrase,
   strictActionDeliverableMatch,
+  mergePublishedActionEvidence,
+  sameActionPresentation
 };

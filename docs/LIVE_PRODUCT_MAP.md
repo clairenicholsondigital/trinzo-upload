@@ -696,6 +696,53 @@ publication/Library stage, reviewer save/history and preparation/generation
 lifecycle remain unfinished; these explicit boundaries are not implementation
 of the deferred work.
 
+### Discussion selection and publication evidence
+
+`utils/meetingMinutesDiscussionSelection.js` now owns the six-root batch's
+discussion compaction, topic merging, supporting-detail selection, context
+budgets and priority promotion. The existing action duplicate owner now also
+owns exact action-presentation identity and the merge of additional citations
+and linked flags into an already published action. These are the actual
+implementations used by Original Discussion and Actions; API keeps the same
+compatibility function identities.
+
+The complete closure moves 15 declarations unchanged: 12 functions and three
+private regular-expression constants, totalling 564 declaration lines. The new
+selection owner contains 13 declarations; the action duplicate owner receives
+two. Existing thresholds and environment reads, reviewer protections, numeric
+and temporal distinctions, rejected-parent handoff, lossless filing collector,
+semantic worker/fallback behaviour and diagnostic ordering remain. Five newly
+unused API imports are removed. The complete eager/lazy owner graph is acyclic
+and reaches neither API nor V2; no callback container, state copy or wrapper is
+introduced.
+
+Original's supplied policy map falls from 91 to 85 entries through six direct
+imports. API retains 223 evaluation exports and V2 retains 158 exports; the
+remaining API-to-V2 local bindings and V2-local exports stay at 66 and 83.
+API falls from 14,927 to 14,319 lines; V2 remains at 4,355. All 27 provider-prompt
+definitions, route bodies, Original inner runtime bodies and live generation
+state remain unchanged.
+
+Twenty-four existing pure callbacks move unchanged into the compact
+DiscussionSelection suite with the same assertions. No regression cases are
+added or removed. Mixed recovery/proposal cases and the existing real save,
+reload, history, browser, export, temporal-compaction and semantic-fallback
+coverage remain. The selection owner retains persistence-sensitive test
+selection.
+
+`verifyMeetingAgentSummaryTiming` keeps its existing single three-line instance
+and the complete Original Summary verifier factory. Its provider calls,
+candidate validation, retries and independent time budgets are a genuine
+generation process boundary for Stage 6, which remains unfinished. Removing
+that port is not a publication-content goal.
+
+The full Library/editor envelope still reads the same prewarm/speculation
+caches and reviewer/proposal/history state. Authenticated Library queries,
+project links, read/export transport, reviewer save/history and generation
+lifecycle have not moved in this batch. Those actual remaining boundaries keep
+the full publication/Library stage unfinished; neither Stage 3 nor Stage 4 is
+declared complete by the reduced service-map count.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456
