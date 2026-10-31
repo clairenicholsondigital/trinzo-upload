@@ -73,7 +73,7 @@ test('the source-context option and preparation marker belong only to Agent prep
   const source = fs.readFileSync(path.join(__dirname, '../routes/api.js'), 'utf8');
   const start = source.indexOf("router.post('/meeting-minutes-agent/prepare'");
   assert.ok(start >= 0);
-  const end = source.indexOf('\nrouter.', start + 1);
+  const end = source.indexOf('\nregisterMeetingMinutesLibraryList(router)', start + 1);
   const route = source.slice(start, end < 0 ? source.length : end);
   assert.match(route, /prepareMiniLmTranscript\(transcript\.text,\s*\{[\s\S]*?preserveShortContextFragments:\s*true/);
   assert.equal((source.match(/preserveShortContextFragments:\s*true/g) || []).length, 1);
