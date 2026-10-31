@@ -8,9 +8,8 @@ const { meetingAgentReviewPacketError } = require('../utils/meetingMinutesReview
 const { meetingAgentResultCounts } = require('../utils/meetingMinutesAgentGeneration');
 const { normaliseMeetingAgentPassCache } = require('../utils/meetingMinutesPassCache');
 
-// Publication, the trusted date anchor and reviewer authority are API-owned
-// ports. Supply explicit approved views here; grounding, objective merging,
-// temporal analysis, validation and telemetry use their real domain modules.
+// Standalone timing-verifier tests supply explicit approved views. The Summary
+// stage uses the real publication and reviewer-authority owners.
 function policyPorts(draft, publication = { discussion: draft.discussion || [], actions: draft.actions || [] }, reviewed = new Map()) {
   return {
     meetingAgentSummaryAuthority: () => publication,
@@ -28,11 +27,14 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
     draftId: 'original-summary', details: { meetingTitle: 'Equipment review', meetingDate: '2026-06-17' },
     preparedTranscript: 'Morgan: We will review the supplier report. The supplier report is due Friday.',
     sourceUnits: [{ id: 'T0001', speaker: 'Morgan', text: 'We will review the supplier report. The supplier report is due Friday.' }],
-    discussion: [{ topic: 'Supplier report', points: [{ id: 'p1', text: statement, evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }],
+    discussion: [{ topic: 'Supplier report', points: [{ id: 'p1', text: statement, evidenceIds: ['T0001'], supportingDetails: [], reviewFlagIds: [] }], decisions: [], openQuestions: [] }],
     actions: [], meetingObjectives: [{ id: 'existing-objective', text: 'Review the supplier report.', evidenceIds: ['T0001'] }],
     includeSections, qualityState: { preparation: { retained: true } },
     passProvenance: [{ stage: 'discussion', pass: 'existing' }]
   };
+  if (reviewed?.has(statement)) {
+    draft.qualityState.summary = { reviewerSummaryHash: reviewed.get(statement) };
+  }
   const ports = policyPorts(draft, publication, reviewed);
   const calls = [], prompts = [];
   const context = {
@@ -71,7 +73,6 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
     return result;
   };
   const run = createOriginalSummaryStage({
-    ...ports,
     verifyMeetingAgentSummaryTiming: createSummaryTimingVerifier(ports),
     // Prompt composition is a separate production port with existing contract
     // tests. Capture its complete input instead of replacing any output policy.
@@ -177,7 +178,8 @@ test('Summary timing splits checks into bounded batches', async () => {
 test('Original Summary preserves reviewer-owned timing when the checker proposes another approved date', async () => {
   const manual = 'The supplier report is due Friday.';
   const approved = 'The supplier report is due Monday.';
-  const f = fixture({ includeSections: { meetingObjectives: false }, reviewed: new Map([[manual, 'saved-reviewer-hash']]),
+  const reviewerHash = crypto.createHash('sha256').update(manual).digest('hex');
+  const f = fixture({ includeSections: { meetingObjectives: false }, reviewed: new Map([[manual, reviewerHash]]),
     publication: { discussion: [{ points: [{ text: approved, evidenceIds: ['T0001'] }] }], actions: [] },
     timingReply(_pass, prompt) {
       const items = JSON.parse(prompt.slice(prompt.indexOf('ITEMS:\n') + 'ITEMS:\n'.length));
@@ -187,7 +189,7 @@ test('Original Summary preserves reviewer-owned timing when the checker proposes
   });
   const result = await f.run(f.context);
   assert.equal(result.changes.executiveSummary, manual);
-  assert.equal(result.changes.qualityState.summary.reviewerSummaryHash, 'saved-reviewer-hash');
+  assert.equal(result.changes.qualityState.summary.reviewerSummaryHash, reviewerHash);
   assert.equal(result.changes.qualityState.summary.temporalReview.counts.uncertain, 1);
   assert.ok(result.reviewFlags.some(flag => /reviewer temporal wording preserved/.test(flag.message)));
 });

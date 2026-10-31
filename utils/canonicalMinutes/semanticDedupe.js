@@ -1,5 +1,7 @@
 'use strict';
 
+const { nearDuplicate: lexicalNearDuplicate } = require('../meetingMinutesRecordMatching');
+
 // Semantic near-duplicate detection for published rows and points.
 //
 // The lexical dedupe (min-set overlap >= 0.6) cannot see paraphrases: "Provide the
@@ -16,10 +18,6 @@
 // today's behaviour, never worse.
 
 const { clean } = require('./evidence');
-// Required lazily: trooperPolish requires this module for `cosine`, so a top-level
-// require here would be circular and would resolve `nearDuplicate` to undefined -
-// silently disabling the lexical fallback exactly when the worker is down.
-const lexicalNearDuplicate = (left, right) => require('./trooperPolish').nearDuplicate(left, right);
 
 const WORKER_URL = () => (process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767').replace(/\/$/, '');
 

@@ -28,6 +28,8 @@
     "tests/meeting-minutes-parallel-timing.test.js",
     "tests/meeting-minutes-parallel-ui.test.js",
     "tests/meeting-minutes-shared-publication.test.js",
+    "tests/meeting-minutes-discussion-finalization.test.js",
+    "tests/meeting-minutes-summary-publication.test.js",
     "tests/project-approved-history.test.js",
     "tests/project-report-editing.test.js",
     "tests/project-update-beta-ui.test.js",
