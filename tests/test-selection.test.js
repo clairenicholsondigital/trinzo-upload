@@ -194,3 +194,89 @@ test('release cannot replace all Git changes with a hand-picked development file
   assert.equal(result.status, 1);
   assert.match(result.stderr, /release checks derive all changes from Git/);
 });
+
+test('comment-only filenames and requires do not create consumers or persistence requirements', t => {
+  const { select, write } = fixture(t);
+  write('tests/commented-target.test.js', '');
+  write('utils/inner.js', [
+    '// commented-target.test.js',
+    "// 'commented-target.test.js'",
+    '// "commented-target.test.js"',
+    '/* commented-target.test.js */',
+    "/* 'commented-target.test.js' */",
+    '/* "commented-target.test.js" */',
+    "// require('./comment-target');",
+    "/* require('./comment-target'); */"
+  ].join('\n'));
+  write('tests/database.test.js', [
+    '// "commented-target.test.js"',
+    "/* require('../utils/comment-target'); */"
+  ].join('\n'));
+  const commentResult = select(['tests/commented-target.test.js']);
+  assert.deepEqual(commentResult.files, ['tests/commented-target.test.js', 'tests/core.test.js']);
+  assert.equal(commentResult.integrationRequired, false);
+  assert.equal(commentResult.python, 'core');
+
+  write('utils/comment-target.js', '');
+  write('tests/real-reader.test.js', "require('../utils/comment-target');");
+  const requireResult = select(['utils/comment-target.js']);
+  assert.deepEqual(requireResult.files, ['tests/core.test.js', 'tests/real-reader.test.js']);
+  assert.equal(requireResult.integrationRequired, false);
+});
+test('real requires and quoted source or fixture readers retain their consumers', t => {
+  const { select, write } = fixture(t);
+  write('tests/source-reader.test.js', "require('../utils/source-reader');");
+  write('utils/source-reader.js', [
+    "require('./actual-input');",
+    "fs.readFileSync(path.join(__dirname, 'fixtures', 'joined-source.json'), 'utf8');",
+    'fs.readFileSync("fixtures/double-quoted.json", "utf8");',
+    "fs.readFileSync('fixtures/with\\'quote/escaped-quote.json', 'utf8');"
+  ].join('\n'));
+  write('utils/actual-input.js', '');
+  for (const file of ['utils/actual-input.js', 'tests/fixtures/joined-source.json',
+    'tests/fixtures/double-quoted.json', 'tests/fixtures/escaped-quote.json']) {
+    const result = select([file]);
+    assert.deepEqual({ files: result.files, python: result.python, integrationRequired: result.integrationRequired },
+      { files: ['tests/core.test.js', 'tests/source-reader.test.js'], python: 'core', integrationRequired: false }, file);
+  }
+});
+test('executable strings, templates, regular expressions and nested expressions survive comment filtering', t => {
+  const { select, write } = fixture(t);
+  write('tests/syntax-reader.test.js', [
+    'fs.readFileSync("https://fixtures/string-reader.json", "utf8");',
+    'fs.readFileSync(`fixtures/* template-reader.json */`, "utf8");',
+    'const pattern = /[/*]source-regex.json/;',
+    'const urlPattern = /https?:\\/\\/fixtures\\/url-regex.json/;',
+    'const nested = `https://outer/${`inner /* literal text */ ${require("../utils/nested-target")}`}`;'
+  ].join('\n'));
+  write('utils/nested-target.js', '');
+  for (const file of ['tests/fixtures/string-reader.json', 'tests/fixtures/template-reader.json',
+    'tests/fixtures/source-regex.json', 'tests/fixtures/url-regex.json', 'utils/nested-target.js']) {
+    const result = select([file]);
+    assert.deepEqual(result.files, ['tests/core.test.js', 'tests/syntax-reader.test.js'], file);
+  }
+});
+test('uncertain JavaScript and unreported expression comments retain conservative source mappings', t => {
+  const { select, write } = fixture(t);
+  write('tests/malformed-target.test.js', '');
+  write('utils/inner.js', 'const invalid = ; // malformed-target.test.js');
+  const result = select(['tests/malformed-target.test.js']);
+  assert.ok(['tests/core.test.js', 'tests/malformed-target.test.js', 'tests/related.test.js']
+    .every(file => result.files.includes(file)));
+
+  write('utils/inner.js', 'const duplicate = { value: 1, value: 2 }; // malformed-target.test.js');
+  const warningResult = select(['tests/malformed-target.test.js']);
+  assert.ok(['tests/core.test.js', 'tests/malformed-target.test.js', 'tests/related.test.js']
+    .every(file => warningResult.files.includes(file)));
+
+  for (const source of [
+    'const inline = (1 /* malformed-target.test.js */);',
+    'const template = `plain ${1 /* malformed-target.test.js */}`;',
+    'const nested = `outer ${`inner ${1 /* require("./comment-target"); malformed-target.test.js */}`}`;'
+  ]) {
+    write('utils/inner.js', source);
+    const inlineResult = select(['tests/malformed-target.test.js']);
+    assert.ok(['tests/core.test.js', 'tests/malformed-target.test.js', 'tests/related.test.js']
+      .every(file => inlineResult.files.includes(file)), source);
+  }
+});

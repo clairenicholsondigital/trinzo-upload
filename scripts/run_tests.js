@@ -32,15 +32,98 @@ function modulePath(root, from, request) {
   return path.relative(root, found || (/\.[a-z]+$/i.test(target) ? target : target + '.js')).split(path.sep).join('/');
 }
 
+function dependencySource(source, file) {
+  if (!/\.[cm]?jsx?$/i.test(file)) return source;
+  const starts = [...source.matchAll(/\/(?=[/*])/g)].map(match => match.index);
+  if (!starts.length) return source;
+  try {
+    const { transformSync } = require('esbuild');
+    const options = { loader: 'js', legalComments: 'external', treeShaking: false, logLevel: 'silent' };
+    if (transformSync(source, options).warnings.length) return source;
+    let prefix = '__selector_comment_';
+    while (source.includes(prefix)) prefix += '_';
+    const marker = new RegExp('^ @license ' + prefix + '(\\d+)__ ');
+    const ranges = [];
+    let attempts = 0;
+    function collect(indices) {
+      if (++attempts > 32) throw new Error('Comment parser budget exceeded');
+      let marked = '', offset = 0;
+      for (const index of indices) {
+        const at = starts[index] + 2;
+        marked += source.slice(offset, at) + ' @license ' + prefix + index + '__ ';
+        offset = at;
+      }
+      marked += source.slice(offset);
+      let result;
+      try { result = transformSync(marked, options); }
+      catch {
+        // A possible opener may straddle a regex delimiter. Retry smaller groups.
+        if (indices.length > 1) {
+          const middle = Math.floor(indices.length / 2);
+          collect(indices.slice(0, middle)); collect(indices.slice(middle));
+        }
+        return;
+      }
+      if (result.warnings.length) throw new Error('Uncertain comment parse');
+      const comments = result.legalComments || '';
+      let cursor = 0;
+      while (cursor < comments.length) {
+        if (/\s/.test(comments[cursor])) { cursor++; continue; }
+        const kind = comments.slice(cursor, cursor + 2);
+        let end;
+        if (kind === '//') {
+          const newline = comments.slice(cursor).search(/[\r\n\u2028\u2029]/);
+          end = newline < 0 ? comments.length : cursor + newline;
+        } else if (kind === '/*') {
+          end = comments.indexOf('*/', cursor + 2);
+          if (end < 0) throw new Error('Unterminated parser comment');
+          end += 2;
+        } else throw new Error('Unexpected parser comment output');
+        const match = comments.slice(cursor + 2, end).match(marker);
+        if (match) {
+          const index = Number(match[1]), start = starts[index];
+          if (!indices.includes(index) || source.slice(start, start + 2) !== kind) throw new Error('Unknown comment marker');
+          let finish;
+          if (kind === '//') {
+            const newline = source.slice(start).search(/[\r\n\u2028\u2029]/);
+            finish = newline < 0 ? source.length : start + newline;
+          } else {
+            finish = source.indexOf('*/', start + 2);
+            if (finish < 0) throw new Error('Unterminated source comment');
+            finish += 2;
+          }
+          ranges.push([start, finish]);
+        }
+        cursor = end;
+      }
+    }
+    // Only mask parser-reported comments; unreported inline comments stay conservative.
+    // Generated code can fold strings/expressions, so it is never the search input.
+    collect(starts.map((_, index) => index));
+    ranges.sort((a, b) => a[0] - b[0]);
+    let cleaned = '', offset = 0;
+    for (const [start, end] of ranges) {
+      if (start < offset) continue;
+      cleaned += source.slice(offset, start) + source.slice(start, end).replace(/[^\r\n\u2028\u2029]/g, ' ');
+      offset = end;
+    }
+    return cleaned + source.slice(offset);
+  } catch {
+    // Missing tooling, unsupported syntax, warnings or limits retain the old mapping.
+    return source;
+  }
+}
+
 function dependencyReader(root) {
   const cache = new Map();
   return function read(file) {
     if (cache.has(file)) return cache.get(file);
     const absolute = path.join(root, file);
     const source = fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf8') : '';
-    const dependencies = [...source.matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)]
+    const searchable = dependencySource(source, file);
+    const dependencies = [...searchable.matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)]
       .map(match => modulePath(root, file, match[1]));
-    const record = { source, dependencies };
+    const record = { source, searchable, dependencies };
     cache.set(file, record);
     return record;
   };
@@ -52,7 +135,7 @@ function dependsOn(test, changed, read, visited = new Set()) {
   visited.add(test);
   const record = read(test);
   // Also retain tests reading fixtures/source via fs/path.join rather than require.
-  if (record.source.includes(path.basename(changed))) return true;
+  if (record.searchable.includes(path.basename(changed))) return true;
   return record.dependencies.some(file => dependsOn(file, changed, read, visited));
 }
 
