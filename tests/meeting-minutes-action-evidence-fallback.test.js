@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const V=require('../utils/meetingMinutesAgentV2');
+const ResultNormalization = require('../utils/meetingMinutesResultNormalization');
 const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const { normaliseSourceUnits } = require('../utils/meetingMinutesSource');
 const source=()=>normaliseSourceUnits([
@@ -23,7 +23,7 @@ for(const verb of ['Assess','Evaluate'])test(`${verb}: lexical-only fallback can
 });
 test('normalization surfaces uncertainty against the retained source without rewriting the instruction',()=>{
  const units=source(),action={id:'assessment',action:wording('Assess'),owners:['Taylor Finch'],evidenceIds:['T0005','T0006'],timing:{kind:'not_stated',wording:'',exactDate:''},reviewFlagIds:[]};
- const out=V.normaliseAgentResult({actions:[action]},units,'',{enforceEvidence:false});
+ const out=ResultNormalization.normaliseAgentResult({actions:[action]},units,'',{enforceEvidence:false});
  assert.equal(out.actions.length,1);assert.equal(out.actions[0].action,action.action);assert.ok(!out.actions[0].evidenceIds.includes('T0001'));
  for(const id of action.evidenceIds)assert.ok(out.actions[0].evidenceIds.includes(id));
  assert.ok(out.reviewFlags.some(flag=>flag.kind==='missing_evidence'&&flag.status==='open'&&flag.evidenceIds.includes('T0005')));

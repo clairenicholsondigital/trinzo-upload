@@ -3,7 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const V = require('../utils/meetingMinutesAgentV2');
+const Source = require('../utils/meetingMinutesSource'),
+  ResultNormalization = require('../utils/meetingMinutesResultNormalization');
 const { normalizeUnassignedSupportingDetails: normalize, withoutRepresentedUnassignedDetails: without,
   collectUnassignedSupportingDetails: collect } = require('../utils/meetingMinutesSupportingDetails');
 const row = extra => ({ id: 'generated-a', text: 'The supplier provided the revised calibration certificate.',
@@ -139,10 +140,10 @@ test('three copies retain all origins and histories, with stable first position'
 });
 test('filing origins survive reviewer-save normalization of supporting and promoted rows', () => {
   const detail = { ...normalize(pair())[0], reviewerAuthored: true };
-  const units = V.normaliseSourceUnits([{ id: 'T0001', text: detail.text }, { id: 'T0002', text: detail.text }]);
+  const units = Source.normaliseSourceUnits([{ id: 'T0001', text: detail.text }, { id: 'T0002', text: detail.text }]);
   for (const promoted of [false, true]) {
     const point = promoted ? detail : { id: 'parent', text: detail.text, evidenceIds: ['T0001'], supportingDetails: [detail] };
-    const result = V.normaliseAgentResult({ discussion: [{ topic: 'Equipment', points: [point] }], actions: [] }, units, 'discussion',
+    const result = ResultNormalization.normaliseAgentResult({ discussion: [{ topic: 'Equipment', points: [point] }], actions: [] }, units, 'discussion',
       { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true });
     const retained = promoted ? result.discussion[0].points[0] : result.discussion[0].points[0].supportingDetails[0];
     assert.deepEqual(retained.filingOrigins, detail.filingOrigins);

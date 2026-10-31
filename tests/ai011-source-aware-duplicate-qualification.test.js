@@ -2,13 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  dedupeHybridActionRecords,
-  reconcileFinalApprovedActions
-} = require('../routes/api').stagedEvaluation;
+const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
+const { reconcileFinalApprovedActions } = require('../utils/meetingMinutesFinalActionPreservation');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 const TimingIntegrity = require('../utils/meetingMinutesTiming');
-const { finaliseActionTimings } = require('../utils/meetingMinutesAgentV2');
+const { finaliseActionTimings } = require('../utils/meetingMinutesProposalTiming');
 
 const timing = (wording, kind = 'dependency') => ({ kind, wording, exactDate: '' });
 const untimed = () => ({ kind: 'not_stated', wording: '', exactDate: '' });

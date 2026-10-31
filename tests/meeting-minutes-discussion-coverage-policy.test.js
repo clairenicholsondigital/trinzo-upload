@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const P=require('../utils/meetingMinutesDiscussionCoveragePolicy');
 const {createEvaluationSession}=require('../scripts/lib/meetingMinutesEvaluationSession');
-const api=require('../routes/api').stagedEvaluation;
+const StageProtocol = require('../utils/meetingMinutesStageProtocol');
 test('new Discussion capabilities default off and legacy/resumed work cannot adopt current flags',()=>{
  const enabled=P.captureDiscussionCoveragePolicy({MEETING_MINUTES_AGENT_DISCUSSION_MAIN_POINT_COVERAGE_V1:'1',MEETING_MINUTES_AGENT_DISCUSSION_POINT_DECISION_COVERAGE_V1:'1'});
  assert.ok(Object.isFrozen(enabled));assert.equal(enabled.mainPoint,true);assert.equal(enabled.pointDecision,true);
@@ -21,7 +21,7 @@ test('private evaluations capture both Discussion switches once and paired compa
 test('speculative fingerprints separate changed Discussion configuration and preserve active snapshots',()=>{
  const off={version:1,mainPoint:false,pointDecision:false},on={version:1,mainPoint:true,pointDecision:false};
  const draft={details:{meetingDate:'2026-10-21'},sourceUnits:[],preparedTranscript:'Source',generation:{status:'running',discussionCoveragePolicy:off}};
- const a=api.meetingAgentStageInputFingerprint({...draft,_discussionCoveragePolicy:off},'discussion');
- const b=api.meetingAgentStageInputFingerprint({...draft,_discussionCoveragePolicy:on},'discussion');assert.notEqual(a,b);
+ const a=StageProtocol.meetingAgentStageInputFingerprint({...draft,_discussionCoveragePolicy:off},'discussion');
+ const b=StageProtocol.meetingAgentStageInputFingerprint({...draft,_discussionCoveragePolicy:on},'discussion');assert.notEqual(a,b);
  assert.deepEqual(P.discussionCoveragePolicyForFingerprint(draft),off);
 });

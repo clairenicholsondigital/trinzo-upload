@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { actionCandidateInventory } = require('../utils/meetingMinutesAgentV2');
+const { actionCandidateInventory } = require('../utils/meetingMinutesActionCandidateInventory');
 const { timedStepCoverage, mergeTimedStepRecovery } = require('../utils/meetingMinutesTimedStepCoverage');
 const options = { meetingDate: '2026-06-17' };
 const units = [{ id: 'T0001', speaker: 'Morgan', text: "I'll write the supplier letter this week." },

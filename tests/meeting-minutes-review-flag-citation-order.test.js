@@ -2,7 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
+const MinutesDraftStorage = require('../utils/meetingMinutesDraftStorage');
+const MinutesEvidenceContext = require('../utils/meetingMinutesEvidenceContext');
+const MinutesReviewFlags = require('../utils/meetingMinutesReviewFlags');
 const { actionTimingIssueFlag } = require('../utils/meetingMinutesTimingFlags');
 
 // Use the real synchronous stage merge and publication helpers. A DB or
@@ -16,7 +19,8 @@ require.cache[fetchPath].exports = forbidden;
 const db = require('../utils/db');
 const originalDb = { ...db };
 for (const [key, value] of Object.entries(db)) if (typeof value === 'function') db[key] = forbidden;
-const api = require('../routes/api').stagedEvaluation;
+const MinutesGenerationAdmission = require('../utils/meetingMinutesGenerationAdmission');
+const MinutesDraftView = require('../utils/meetingMinutesDraftView');
 Object.assign(db, originalDb);
 require.cache[fetchPath].exports = originalFetch;
 test.after(() => assert.equal(externalCalls, 0));
@@ -41,14 +45,14 @@ function fixture(flags) {
 }
 
 function publish(input) {
-  const normalised = V.normaliseAgentResult(input, units, 'actions', { meetingDate: '2026-10-21' });
-  const draft = api.applyStageResultVirtually({ draftId: 'citation-order', revision: 1, payloadVersion: V.PAYLOAD_VERSION,
+  const normalised = MinutesResultNormalization.normaliseAgentResult(input, units, 'actions', { meetingDate: '2026-10-21' });
+  const draft = MinutesGenerationAdmission.applyStageResultVirtually({ draftId: 'citation-order', revision: 1, payloadVersion: MinutesDraftStorage.PAYLOAD_VERSION,
     details: { meetingTitle: 'Equipment review', meetingType: 'General', meetingDate: '2026-10-21' },
-    sourceUnits: units, preparedTranscript: V.preparedTranscriptFromUnits(units), discussion: [], actions: [],
+    sourceUnits: units, preparedTranscript: MinutesEvidenceContext.preparedTranscriptFromUnits(units), discussion: [], actions: [],
     reviewFlags: [], qualityState: {}, currentStep: 3, selectedStep: 3 }, 'actions', {
     changes: { discussion: normalised.discussion, actions: normalised.actions }, reviewFlags: normalised.reviewFlags
   });
-  return { normalised, visible: api.publicMeetingAgentDraft(draft) };
+  return { normalised, visible: MinutesDraftView.publicMeetingAgentDraft(draft) };
 }
 
 test('fresh duplicate warnings share one visible review item regardless of citation or flag order', () => {
@@ -104,7 +108,7 @@ test('citation-set comparison preserves different warnings and independent revie
     assert.deepEqual(input, before);
     for (const result of [normalised, visible]) {
       assert.equal(result.reviewFlags.length, 2, JSON.stringify([first, second]));
-      for (const flag of flags) assert.deepEqual(result.reviewFlags.find(row => row.id === flag.id), V.normaliseFlag(flag));
+      for (const flag of flags) assert.deepEqual(result.reviewFlags.find(row => row.id === flag.id), MinutesReviewFlags.normaliseFlag(flag));
       assert.deepEqual(result.actions[0].reviewFlagIds, ['check-a', 'check-b']);
       assert.deepEqual(result.discussion[0].points[0].reviewFlagIds, ['check-a']);
       assert.deepEqual(result.discussion[0].points[0].supportingDetails[0].reviewFlagIds, ['check-b']);

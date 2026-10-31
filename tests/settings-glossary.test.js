@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const settingsStore = require('../utils/settingsStore');
 const { DEFAULT_TERMS } = require('../utils/settingsDefaults');
 const { normaliseDomainTerms, autoCorrections } = require('../utils/domainTerms');
-const { normaliseKnownTerms } = require('../utils/meetingMinutesAgentV2');
+const { normaliseKnownTerms } = require('../utils/meetingMinutesText');
 const { reviewGeneratedContent } = require('../utils/terminologyQa');
 const { validateTerm } = require('../utils/settingsDb');
 

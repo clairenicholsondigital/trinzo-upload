@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isClientReadyActionWording } = require('../routes/api').stagedEvaluation;
+const { isClientReadyActionWording } = require('../utils/meetingMinutesActionDuplicatePolicy');
 
 test('everyday imperatives for specific work are client-ready action wording', () => {
   for (const wording of [

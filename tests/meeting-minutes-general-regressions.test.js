@@ -1,9 +1,14 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyRequesterOwnerRule, normaliseAgentResult, ownerAssignedInMeeting } = require('../utils/meetingMinutesAgentV2');
+const { applyRequesterOwnerRule, ownerAssignedInMeeting } = require('../utils/meetingMinutesPeopleEvidence');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 const { applyProposal, buildProposal } = require('../utils/meetingMinutesProposals');
-const api = require('../routes/api').stagedEvaluation;
+const MinutesActionDuplicatePolicy = require('../utils/meetingMinutesActionDuplicatePolicy');
+const MinutesDraftView = require('../utils/meetingMinutesDraftView');
+const MinutesPublication = require('../utils/meetingMinutesPublication');
+const MinutesCandidateLedger = require('../utils/meetingMinutesCandidateLedger');
+const MinutesProposalReview = require('../utils/meetingMinutesProposalReview');
 const action = (id, wording, owners = ['Alex Green'], evidenceIds = ['T0001']) => ({
   id, action: wording, owners, evidenceIds, reviewFlagIds: [],
   timing: { kind: 'not_stated', wording: '', exactDate: '' }
@@ -43,7 +48,7 @@ test('combining actions never rewrites the discovery records or their nested fie
   const records = [action('a', 'Send the draft checklist to Priya Shah.'),
     action('b', 'Send the completed draft checklist to Priya Shah.', ['Alex Green'], ['T0001', 'T0002'])];
   const before = structuredClone(records);
-  const combined = api.dedupeHybridActionRecords(records);
+  const combined = MinutesActionDuplicatePolicy.dedupeHybridActionRecords(records);
   assert.deepEqual(records, before);
   combined[0].owners.push('Someone Else');
   assert.deepEqual(records, before);
@@ -52,13 +57,13 @@ test('combining actions never rewrites the discovery records or their nested fie
 test('delivery bundling preserves the complete recipient group without putting recipients among the documents', () => {
   const records = [action('one', 'Send the purchase order to Morgan Lee and Priya Shah.'),
     action('two', 'Send the delivery confirmation to Morgan Lee and Priya Shah.', ['Alex Green'], ['T0002'])];
-  const result = api.dedupeHybridActionRecords(records);
+  const result = MinutesActionDuplicatePolicy.dedupeHybridActionRecords(records);
   assert.equal(result.length, 1);
   assert.equal(result[0].action, 'Provide Morgan Lee and Priya Shah with the purchase order and the delivery confirmation.');
 });
 
 test('different complete recipient groups must not be bundled together', () => {
-  const result = api.dedupeHybridActionRecords([
+  const result = MinutesActionDuplicatePolicy.dedupeHybridActionRecords([
     action('one', 'Send the purchase order to Morgan Lee and Priya Shah.'),
     action('two', 'Send the delivery confirmation to Morgan Lee and Jordan Reed.', ['Alex Green'], ['T0002'])
   ]);
@@ -69,9 +74,9 @@ test('an incidental copying correction cannot hide a substantive letter-writing 
   const wording = 'Write to the landlord about the broken gate, copy in the property manager.';
   const sourceUnits = [{ id: 'T0001', speaker: 'Alex Green', text: "I'll write properly this time and copy the manager into the email about the gate." }];
   const d = { details: {}, sourceUnits, discussion: [], actions: [action('one', wording)], reviewFlags: [] };
-  assert.equal(api.publicMeetingAgentDraft(d).actions[0]?.action, wording);
-  assert.equal(api.meetingAgentDraftForPdf(d).actions[0]?.action, wording);
-  assert.equal(api.meetingAgentDraftForDocx(d).actions[0]?.action, wording);
+  assert.equal(MinutesDraftView.publicMeetingAgentDraft(d).actions[0]?.action, wording);
+  assert.equal(MinutesPublication.meetingAgentDraftForPdf(d).actions[0]?.action, wording);
+  assert.equal(MinutesPublication.meetingAgentDraftForDocx(d).actions[0]?.action, wording);
 });
 
 test('a nearby assignment of different work cannot remove a model-supplied owner', () => {
@@ -88,12 +93,12 @@ test('a nearby assignment of different work cannot remove a model-supplied owner
 test('confirming an input stays separate from reviewing a standard against that input', () => {
   const records = [action('one', 'Confirm the product power specification.', ['Morgan Lee']),
     action('two', 'Review the safety standard against the confirmed product power specification.', ['Priya Shah'])];
-  assert.equal(api.dedupeHybridActionRecords(records).length, 2);
+  assert.equal(MinutesActionDuplicatePolicy.dedupeHybridActionRecords(records).length, 2);
 });
 
 test('a discovery ledger keeps its original wording, owners and citations through later edits', () => {
   const source = action('one', 'Confirm the supplier address.');
-  const ledger = api.hybridCandidateLedgerFromResult({ actions: [source] }, 'primary');
+  const ledger = MinutesCandidateLedger.hybridCandidateLedgerFromResult({ actions: [source] }, 'primary');
   source.action = 'Review the supplier assessment.';
   source.owners.push('Someone Else');
   source.evidenceIds.push('T0002');
@@ -103,7 +108,7 @@ test('a discovery ledger keeps its original wording, owners and citations throug
 });
 
 test('recipient-first parsing distinguishes capitalised document names from recipients', () => {
-  const rows = api.dedupeHybridActionRecords([
+  const rows = MinutesActionDuplicatePolicy.dedupeHybridActionRecords([
     action('one', 'Provide Morgan Lee and Priya Shah with Finance Report.'),
     action('two', 'Email Morgan Lee and Priya Shah with Staff Roster.', ['Alex Green'], ['T0002'])
   ]);
@@ -137,7 +142,7 @@ test('automatic adoption preserves uncertain removals and exposes possible addit
     { id: 'possible', type: 'add', after: add, selected: false, reviewContext: { reason: 'Nobody took this on.' } },
     { id: 'safe', type: 'add', index: 1, after: action('c', 'Send the revised report.'), selected: true }
   ] };
-  const review = api.automaticMeetingAgentProposalReview(proposal, []);
+  const review = MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, []);
   assert.deepEqual(review.acceptedIds, ['safe']);
   assert.deepEqual(applyProposal([retained], proposal, review.acceptedIds).map(row => row.id), ['a', 'c']);
   assert.equal(review.reviewFlags.length, 2);
@@ -150,11 +155,11 @@ test('delivery bundles do not concatenate differently qualified versions of the 
   const rows = [action('one', 'Share the access report with Priya Shah.'),
     action('two', 'Share the access report with Priya Shah after the review.', ['Alex Green'], ['T0002']),
     action('three', 'Send the inspection checklist to Priya Shah.', ['Alex Green'], ['T0003'])];
-  const result = api.bundleSameRecipientDeliveries(rows);
+  const result = MinutesActionDuplicatePolicy.bundleSameRecipientDeliveries(rows);
   assert.deepEqual(result, rows, 'overlapping documents require deduplication rather than concatenation');
-  const distinct = api.bundleSameRecipientDeliveries([rows[0], rows[2]]);
+  const distinct = MinutesActionDuplicatePolicy.bundleSameRecipientDeliveries([rows[0], rows[2]]);
   assert.equal(distinct.length, 1);
-  assert.deepEqual(api.bundleSameRecipientDeliveries(distinct), distinct, 'repeated assembly is idempotent');
+  assert.deepEqual(MinutesActionDuplicatePolicy.bundleSameRecipientDeliveries(distinct), distinct, 'repeated assembly is idempotent');
 });
 
 
@@ -162,7 +167,7 @@ test('a delivery dependency stays attached to its own action without an appended
   const conditional = { ...action('one', 'Share the inspection report with Priya Shah after the checks are complete.'),
     timing: { kind: 'dependency', wording: 'after the inspection checks have finished', exactDate: '' } };
   const other = action('two', 'Send the access register to Priya Shah.');
-  assert.deepEqual(api.bundleSameRecipientDeliveries([conditional, other]), [conditional, other]);
+  assert.deepEqual(MinutesActionDuplicatePolicy.bundleSameRecipientDeliveries([conditional, other]), [conditional, other]);
 });
 
 
@@ -170,11 +175,11 @@ test('automatic duplicate removal requires complete retained work rather than sh
   const full = action('one', 'Create the access register and send the inspection report.');
   const partial = action('two', 'Send the inspection report.');
   const proposal = { stage: 'actions', changes: [{ id: 'remove', type: 'remove', before: full, selected: true }] };
-  assert.deepEqual(api.automaticMeetingAgentProposalReview(proposal, [], [full, partial]).acceptedIds, []);
+  assert.deepEqual(MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], [full, partial]).acceptedIds, []);
   const duplicate = { ...full, id: 'three' };
-  assert.deepEqual(api.automaticMeetingAgentProposalReview(proposal, [], [full, duplicate]).acceptedIds, ['remove']);
+  assert.deepEqual(MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], [full, duplicate]).acceptedIds, ['remove']);
   const both = { stage: 'actions', changes: [...proposal.changes,
     { id: 'also-remove', type: 'remove', before: duplicate, selected: true }] };
-  assert.deepEqual(api.automaticMeetingAgentProposalReview(both, [], [full, duplicate]).acceptedIds, [],
+  assert.deepEqual(MinutesProposalReview.automaticMeetingAgentProposalReview(both, [], [full, duplicate]).acceptedIds, [],
     'two duplicate removals cannot cite each other as the surviving work');
 });

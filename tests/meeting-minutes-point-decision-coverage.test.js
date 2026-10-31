@@ -3,11 +3,11 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const C=require('../utils/canonicalMinutes/discussionClaimConsolidation');
 const B=require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const P=require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
-const V=require('../utils/meetingMinutesAgentV2');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
 function fixture(){
  const row=(id,text)=>({id,text,evidenceIds:['T0001'],reviewFlagIds:[],supportingDetails:[]});
  const sources=[{id:'T0001',speaker:'Chair',text:'The committee approved the onboarding policy for suppliers.'}];
- const discussion=V.normaliseAgentResult({discussion:[{id:'topic',topic:'Onboarding',points:[row('point','Supplier policy was approved.')],decisions:[row('decision',sources[0].text)],openQuestions:[]}]},sources,'discussion',{enforceEvidence:false}).discussion;
+ const discussion=MinutesResultNormalization.normaliseAgentResult({discussion:[{id:'topic',topic:'Onboarding',points:[row('point','Supplier policy was approved.')],decisions:[row('decision',sources[0].text)],openQuestions:[]}]},sources,'discussion',{enforceEvidence:false}).discussion;
  return {discussion,sources};
 }
 function options(veto=false){return {encode:async values=>values.map(()=>[1,0]),

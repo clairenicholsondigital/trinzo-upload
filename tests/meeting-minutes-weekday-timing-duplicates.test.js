@@ -8,7 +8,8 @@ const {
 const {
   commitmentDuplicate, commitmentVariantCovered, mergeCommitmentDuplicates, reconcileCommitmentVariants
 } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { dedupeHybridActionRecords, reconcileFinalApprovedActions } = require('../routes/api').stagedEvaluation;
+const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
+const { reconcileFinalApprovedActions } = require('../utils/meetingMinutesFinalActionPreservation');
 
 const timing = (wording, extra = {}) => ({ kind: 'dependency', wording, exactDate: '', ...extra });
 const row = (id, action, wording, extra = {}) => ({

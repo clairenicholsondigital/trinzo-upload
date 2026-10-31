@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { actionIsLosslesslyCovered, exactActionIdentityConflict } = require('../utils/canonicalMinutes/actionDuplicateCoverage');
 const { commitmentDuplicate, mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
-const { dedupeHybridActionRecords, reconcileFinalApprovedActions } = require('../routes/api').stagedEvaluation;
+const { dedupeHybridActionRecords } = require('../utils/meetingMinutesActionDuplicatePolicy');
+const { reconcileFinalApprovedActions } = require('../utils/meetingMinutesFinalActionPreservation');
 
 const action = (id, wording, extra = {}) => ({
   id, action: wording, owners: ['Morgan Lee'],

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 const { boundedReviewEvidence } = require('../utils/meetingMinutesReviewEvidence');
 
 const wording = 'The inspection review remains scheduled for Friday.';

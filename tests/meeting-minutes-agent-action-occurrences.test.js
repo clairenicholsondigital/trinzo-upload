@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
-const { normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 const Timing = require('../utils/meetingMinutesTiming');
 
 const root = path.resolve(__dirname, '..');

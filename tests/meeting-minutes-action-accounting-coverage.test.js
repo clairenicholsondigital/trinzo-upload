@@ -2,15 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  hybridCandidateMatchesRecord,
-  hybridCandidateCoveredByRecord,
-  hybridCandidateDispositions,
-  publishedActionCoversProposal,
-  removePublishedActionProposalDuplicates,
-  dedupeHybridActionRecords,
-  dedupeHybridActionProposals
-} = require('../routes/api').stagedEvaluation;
+const { hybridCandidateMatchesRecord, dedupeHybridActionRecords, dedupeHybridActionProposals } = require('../utils/meetingMinutesActionDuplicatePolicy');
+const { hybridCandidateCoveredByRecord, hybridCandidateDispositions, publishedActionCoversProposal, removePublishedActionProposalDuplicates } = require('../utils/meetingMinutesActionPromotion');
 
 const action = (wording, extra = {}) => ({
   id: 'shared-id', action: wording, owners: ['Alex Green'],

@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const { filingSuggestions, filingReviewFlags } = require('../utils/meetingMinutesFilingReview');
 const { groupedEntries, suggestionBasis } = require('../public/meeting-minutes-filing-order');
 const { withoutRepresentedUnassignedDetails } = require('../utils/meetingMinutesSupportingDetails');
-const { normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
-const api = require('../routes/api').stagedEvaluation;
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
+const MinutesDraftView = require('../utils/meetingMinutesDraftView');
+const MinutesReviewerState = require('../utils/meetingMinutesReviewerState');
 const record = (id, extra = {}) => ({ id, text: 'The calibration certificate covers pressure measurements.',
   evidenceIds: ['T0001'], reviewFlagIds: [], ...extra });
 const fixture = () => ({ sourceUnits: [{ id: 'T0001', speaker: 'Alex Green', text: 'The calibration certificate covers pressure measurements.' }],
@@ -69,11 +70,11 @@ test('warning recovery uses durable definitions, preserves current resolution an
 });
 test('public projection recovers warnings and suggestions without exposing private pass evidence or persisting suggestions', () => {
   const draft = fixture(); draft.unassignedSupportingDetails[0].reviewFlagIds = ['missing'];
-  const visible = api.publicMeetingAgentDraft(draft);
+  const visible = MinutesDraftView.publicMeetingAgentDraft(draft);
   assert.match(visible.reviewFlags.find(flag => flag.id === 'missing').message, /unavailable/);
   assert.deepEqual(visible.filingReview.suggestions, []);
   assert.equal(visible.passCache, undefined);
-  const payload = api.meetingAgentDraftPayload(visible);
+  const payload = MinutesReviewerState.meetingAgentDraftPayload(visible);
   assert.equal(payload.filingReview, undefined);
   assert.ok(payload.reviewFlags.some(flag => flag.id === 'missing'));
 });

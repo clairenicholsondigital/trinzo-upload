@@ -2,30 +2,35 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const api = require('../routes/api').stagedEvaluation;
+const MinutesAgentPrompts = require('../utils/meetingMinutesAgentPrompts');
+const MinutesCandidateLedger = require('../utils/meetingMinutesCandidateLedger');
+const MinutesRefereeCandidates = require('../utils/meetingMinutesRefereeCandidates');
+const MinutesResponseContracts = require('../utils/meetingMinutesResponseContracts');
+const MinutesRefereeActionRecovery = require('../utils/meetingMinutesRefereeActionRecovery');
 const Timing = require('../utils/meetingMinutesTiming');
-const V2 = require('../utils/meetingMinutesAgentV2');
+const MinutesSource = require('../utils/meetingMinutesSource');
+const MinutesEvidenceContext = require('../utils/meetingMinutesEvidenceContext');
 
 const meetingDate = '2026-10-21';
-const units = V2.normaliseSourceUnits([
+const units = MinutesSource.normaliseSourceUnits([
   { speaker: 'Morgan', text: 'I will review the permit pack next month.' },
   { speaker: 'Casey', text: 'I will send the supplier checklist.' },
   { speaker: 'Chair', text: 'I will arrange the training call next week.' }
 ]);
-const transcript = V2.preparedTranscriptFromUnits(units);
+const transcript = MinutesEvidenceContext.preparedTranscriptFromUnits(units);
 const action = (timing, extra = {}) => ({
   id: 'permit', action: 'Review the permit pack.', owners: ['Morgan'],
   timing, evidenceIds: ['T0001'], ...extra
 });
 const payload = (contract, repair = false) => JSON.parse(
-  (repair ? api.meetingMinutesAgentRefereeRepairPrompt : api.meetingMinutesAgentRefereePrompt)({
+  (repair ? MinutesAgentPrompts.meetingMinutesAgentRefereeRepairPrompt : MinutesAgentPrompts.meetingMinutesAgentRefereePrompt)({
     stage: 'actions', transcript, sourceUnits: units, details: { meetingDate }, contract
   }).split('refereePayload:\n')[1]
 );
 const contractFor = (rows, requestId = 'timing-scope') => {
-  const ledger = api.hybridCandidateLedgerFromResult({ actions: rows }, 'recovery');
-  const candidates = api.meetingAgentRefereeCandidates('actions', ledger);
-  return api.meetingMinutesAgentRefereeContract('actions', candidates, requestId, { selected: true });
+  const ledger = MinutesCandidateLedger.hybridCandidateLedgerFromResult({ actions: rows }, 'recovery');
+  const candidates = MinutesRefereeCandidates.meetingAgentRefereeCandidates('actions', ledger);
+  return MinutesRefereeCandidates.meetingMinutesAgentRefereeContract('actions', candidates, requestId, { selected: true });
 };
 
 for (const scenario of [
@@ -75,7 +80,7 @@ for (const scenario of [
       assert.deepEqual(submitted.expectedCandidateIds, contract.expectedCandidateIds);
       assert.equal(submitted.expectedCandidateCount, 1);
       assert.equal(submitted.preparedTranscript,
-        api.meetingAgentRefereeEvidencePacket(units, contract.candidates, transcript).preparedTranscript);
+        MinutesAgentPrompts.meetingAgentRefereeEvidencePacket(units, contract.candidates, transcript).preparedTranscript);
       assert.match(submitted.writingRules[0], /a rejected or uncertain date does not reject an otherwise supported action/);
       if (repair) assert.equal(submitted.repairAttempt, true);
     }
@@ -100,7 +105,7 @@ test('an unassessed candidate does not acquire application timing provenance', (
   for (const repair of [false, true]) {
     assert.equal(payload(contract, repair).candidateEnsemble[0].timingProvenance, undefined);
   }
-  assert.equal(api.meetingAgentActionAuditCandidates(contract.candidates)[0].timingProvenance, undefined);
+  assert.equal(MinutesAgentPrompts.meetingAgentActionAuditCandidates(contract.candidates)[0].timingProvenance, undefined);
 });
 
 test('legacy or malformed scope is empty and cannot override application status or source', () => {
@@ -140,11 +145,11 @@ test('action audit, critic and salvage retain the same bounded assessment scope'
   const checked = Timing.assessActionTiming(action({ kind: 'target', wording: 'next month', exactDate: '2026-10-23' }), units, { meetingDate });
   const contract = contractFor([checked.action]);
   const packed = payload(contract).candidateEnsemble[0];
-  const audit = api.meetingAgentActionAuditCandidates(contract.candidates);
+  const audit = MinutesAgentPrompts.meetingAgentActionAuditCandidates(contract.candidates);
   assert.deepEqual(audit, [packed]);
   for (const [buildPrompt, marker] of [
-    [api.meetingMinutesAgentCriticPrompt, 'REMAINING CANDIDATES:\n'],
-    [api.meetingMinutesAgentSalvagePrompt, 'STRONG UNRESOLVED CANDIDATES:\n']
+    [MinutesAgentPrompts.meetingMinutesAgentCriticPrompt, 'REMAINING CANDIDATES:\n'],
+    [MinutesAgentPrompts.meetingMinutesAgentSalvagePrompt, 'STRONG UNRESOLVED CANDIDATES:\n']
   ]) {
     const prompt = buildPrompt({ transcript, details: { meetingDate }, discussion: [], actions: [], candidates: contract.candidates });
     const submitted = JSON.parse(prompt.split(marker)[1].split('\n\n')[0]);
@@ -158,7 +163,7 @@ test('scope leaves candidate identity, ordering, evidence and referee dispositio
     id: 'checklist', action: 'Send the supplier checklist.', owners: ['Casey'], evidenceIds: ['T0002']
   });
   const contract = contractFor([checked.action, sibling]);
-  const reversed = api.meetingMinutesAgentRefereeContract('actions', [...contract.candidates].reverse(), 'timing-scope-reversed', { selected: true });
+  const reversed = MinutesRefereeCandidates.meetingMinutesAgentRefereeContract('actions', [...contract.candidates].reverse(), 'timing-scope-reversed', { selected: true });
   for (const current of [contract, reversed]) {
     const submitted = payload(current);
     assert.deepEqual(submitted.candidateEnsemble.map(candidate => candidate.candidateId), current.expectedCandidateIds);
@@ -177,17 +182,17 @@ test('scope leaves candidate identity, ordering, evidence and referee dispositio
       schemaVersion: 4, requestId: current.requestId, stage: 'ACTION_REFEREE',
       expectedCandidateCount: 2, returnedDispositionCount: 2, candidateDispositions: dispositions
     };
-    assert.equal(api.meetingAgentDispositionError(response, current.candidates, current), null);
+    assert.equal(MinutesResponseContracts.meetingAgentDispositionError(response, current.candidates, current), null);
     for (const invalid of [dispositions.slice(1), [...dispositions, dispositions[0]],
       [...dispositions.slice(1), { ...dispositions[0], candidateId: 'unknown' }]]) {
-      assert.ok(api.meetingAgentDispositionError({ ...response, candidateDispositions: invalid }, current.candidates, current));
+      assert.ok(MinutesResponseContracts.meetingAgentDispositionError({ ...response, candidateDispositions: invalid }, current.candidates, current));
     }
-    const published = api.reconstructRefereeActions(dispositions, current.candidates, units, { meetingDate });
+    const published = MinutesRefereeActionRecovery.reconstructRefereeActions(dispositions, current.candidates, units, { meetingDate });
     assert.equal(published.actions.length, 2);
     const permit = published.actions.find(row => row.action === checked.action.action);
     assert.deepEqual(permit.owners, checked.action.owners);
     assert.deepEqual(permit.timing, checked.action.timing);
-    const rejected = api.reconstructRefereeActions(dispositions.map(row => row.candidateId === contract.expectedCandidateIds[0]
+    const rejected = MinutesRefereeActionRecovery.reconstructRefereeActions(dispositions.map(row => row.candidateId === contract.expectedCandidateIds[0]
       ? { ...row, disposition: 'reject' } : row), current.candidates, units, { meetingDate });
     assert.equal(rejected.actions.length, 1);
     assert.equal(rejected.actions[0].action, sibling.action, 'a rejected candidate cannot consume its sibling');
@@ -212,7 +217,7 @@ function auditPackingFixture() {
     }),
     candidate('audit-extra', 10, 20)
   ];
-  const contract = api.meetingMinutesAgentRefereeContract('actions', candidates, 'audit-packing', { selected: true });
+  const contract = MinutesRefereeCandidates.meetingMinutesAgentRefereeContract('actions', candidates, 'audit-packing', { selected: true });
   const full = payload(contract).candidateEnsemble;
   const withoutScope = row => {
     const copy = structuredClone(row);
@@ -235,7 +240,7 @@ function auditPackingFixture() {
 test('near the audit limit rejection scope cannot displace baseline candidates or change their order', () => {
   const { candidates, legacyPair, boundaryBudget, withoutScope } = auditPackingFixture();
   const original = structuredClone(candidates);
-  const out = api.meetingAgentActionAuditCandidates(candidates, boundaryBudget);
+  const out = MinutesAgentPrompts.meetingAgentActionAuditCandidates(candidates, boundaryBudget);
   assert.deepEqual(out.map(row => row.candidateId), ['audit-small-scope', 'audit-large-scope']);
   assert.deepEqual(out.map(withoutScope), legacyPair, 'work, owners, timing and evidence remain unchanged');
   assert.deepEqual(out, legacyPair, 'with no scope room, retain the legacy application provenance');
@@ -247,7 +252,7 @@ test('audit enrichment uses available characters while retaining a larger row wi
   const { candidates, full, legacyPair, withoutScope } = auditPackingFixture();
   const smallScopeChars = JSON.stringify(full[1]).length - JSON.stringify(legacyPair[0]).length;
   const budget = JSON.stringify(legacyPair).length + smallScopeChars;
-  const out = api.meetingAgentActionAuditCandidates(candidates, budget);
+  const out = MinutesAgentPrompts.meetingAgentActionAuditCandidates(candidates, budget);
   assert.deepEqual(out.map(row => row.candidateId), ['audit-small-scope', 'audit-large-scope']);
   assert.deepEqual(out.map(withoutScope), legacyPair);
   assert.deepEqual(out[0], full[1], 'the smaller scope fits exactly into the remaining characters');
@@ -259,7 +264,7 @@ test('an audit with scope room preserves the candidate cap and includes complete
   const { candidates, full } = auditPackingFixture();
   const expected = [full[1], full[0]];
   const budget = JSON.stringify(expected).length + 1;
-  const out = api.meetingAgentActionAuditCandidates(candidates, budget, 2);
+  const out = MinutesAgentPrompts.meetingAgentActionAuditCandidates(candidates, budget, 2);
   assert.deepEqual(out.map(row => row.candidateId), ['audit-small-scope', 'audit-large-scope']);
   assert.deepEqual(out, expected);
   assert.ok(JSON.stringify(out).length <= budget);

@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const api = require('../routes/api').stagedEvaluation;
+const RefereeBatches = require('../utils/meetingMinutesRefereeBatches'),
+  ResultAggregation = require('../utils/meetingMinutesResultAggregation');
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function contract(stage, ids) {
@@ -32,7 +33,7 @@ function result(stage, rows, extras = {}) {
 }
 
 async function schedule(values, delays, limit) {
-  return api.meetingAgentRunOrderedConcurrent(values, async (value, index) => {
+  return RefereeBatches.meetingAgentRunOrderedConcurrent(values, async (value, index) => {
     await wait(delays[index]);
     return value;
   }, limit);
@@ -47,7 +48,7 @@ for (const scenario of [
     const batches = ids.map((id, index) => result(
       scenario.stage, [disposition(id, scenario.dispositions[index])]
     ));
-    const sequential = api.mergeBatchedMeetingAgentRefereeResults(
+    const sequential = ResultAggregation.mergeBatchedMeetingAgentRefereeResults(
       batches, contract(scenario.stage, ids)
     );
     const concurrent = await schedule(
@@ -55,7 +56,7 @@ for (const scenario of [
       batches.map((_, index) => (batches.length - index) * 5),
       scenario.concurrency
     );
-    const parallel = api.mergeBatchedMeetingAgentRefereeResults(
+    const parallel = ResultAggregation.mergeBatchedMeetingAgentRefereeResults(
       concurrent.values, contract(scenario.stage, ids)
     );
 
@@ -70,14 +71,14 @@ for (const scenario of [
 test('one repaired batch does not rerun or discard successful siblings', async () => {
   const ids = ['candidate-1', 'candidate-2', 'candidate-3'];
   const calls = [0, 0, 0];
-  const concurrent = await api.meetingAgentRunOrderedConcurrent(ids, async (id, index) => {
+  const concurrent = await RefereeBatches.meetingAgentRunOrderedConcurrent(ids, async (id, index) => {
     calls[index] += 1;
     await wait(index === 1 ? 10 : 2);
     return result('ACTION_REFEREE', [disposition(id, index === 2 ? 'reject' : 'publish')], {
       repairAttempted: index === 1
     });
   }, 3);
-  const merged = api.mergeBatchedMeetingAgentRefereeResults(
+  const merged = ResultAggregation.mergeBatchedMeetingAgentRefereeResults(
     concurrent.values, contract('ACTION_REFEREE', ids)
   );
   assert.deepEqual(calls, [1, 1, 1]);
@@ -110,11 +111,11 @@ for (const capture of [
     )).preIngestionResponse);
     const ids = batches.flatMap((batch) => batch.candidateDispositions.map((row) => row.candidateId));
     const refereeContract = contract(capture.stage, ids);
-    const sequential = api.mergeBatchedMeetingAgentRefereeResults(batches, refereeContract);
+    const sequential = ResultAggregation.mergeBatchedMeetingAgentRefereeResults(batches, refereeContract);
     const concurrent = await schedule(
       batches, batches.map((_, index) => (batches.length - index) * 5), capture.count
     );
-    const parallel = api.mergeBatchedMeetingAgentRefereeResults(concurrent.values, refereeContract);
+    const parallel = ResultAggregation.mergeBatchedMeetingAgentRefereeResults(concurrent.values, refereeContract);
     assert.equal(JSON.stringify(parallel), JSON.stringify(sequential));
   });
 }

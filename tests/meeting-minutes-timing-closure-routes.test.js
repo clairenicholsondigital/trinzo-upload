@@ -1,29 +1,31 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const api = require('../routes/api').stagedEvaluation;
+const MinutesActionDuplicatePolicy = require('../utils/meetingMinutesActionDuplicatePolicy');
+const MinutesPassCache = require('../utils/meetingMinutesPassCache');
+const MinutesGenerationAdmission = require('../utils/meetingMinutesGenerationAdmission');
 const crypto = require('node:crypto');
 
 test('the presentation gate retains ordinary acquisition and installation imperatives', () => {
   for (const action of ['Take an inspection photograph for the supplier report.',
     'Fit the replacement actuator to the ventilation unit.',
     'Install the replacement actuator to the ventilation unit.']) {
-    assert.equal(api.isClientReadyActionWording(action), true, action);
+    assert.equal(MinutesActionDuplicatePolicy.isClientReadyActionWording(action), true, action);
   }
   for (const action of ["I'll take an inspection photograph tomorrow.",
     "We will fit the replacement actuator on Friday.",
     'And take the inspection photograph.', 'The replacement actuator.', '']) {
-    assert.equal(api.isClientReadyActionWording(action), false, action);
+    assert.equal(MinutesActionDuplicatePolicy.isClientReadyActionWording(action), false, action);
   }
 });
 
 test('warm result caches cannot reuse a pre-policy Microsoft response', () => {
   const prompt = 'ACTION_DISCOVERY\nA source-bound timing example';
   const oldKey = crypto.createHash('sha256').update(prompt).digest('hex');
-  const key = api.meetingAgentPassCacheKey(prompt);
+  const key = MinutesPassCache.meetingAgentPassCacheKey(prompt);
   assert.notEqual(key, oldKey);
-  assert.equal(key, api.meetingAgentPassCacheKey(prompt));
-  assert.notEqual(key, api.meetingAgentPassCacheKey(prompt + ' changed'));
+  assert.equal(key, MinutesPassCache.meetingAgentPassCacheKey(prompt));
+  assert.notEqual(key, MinutesPassCache.meetingAgentPassCacheKey(prompt + ' changed'));
 });
 
 test('a complete applied temporal recheck retires stale generated warnings while preserving reviewer decisions', () => {
@@ -33,9 +35,9 @@ test('a complete applied temporal recheck retires stale generated warnings while
   const fresh = { reviewFlags: [open, reviewed, noted], actions: [], discussion: [] };
   const complete = { executiveSummary: 'The review has concluded.', meetingObjectives: [],
     qualityState: { summary: { temporalReview: { complete: true, expected: 0 } } } };
-  const applied = api.meetingAgentRegenerationChanges(fresh, 'summary', complete, { reviewFlags: [] });
+  const applied = MinutesGenerationAdmission.meetingAgentRegenerationChanges(fresh, 'summary', complete, { reviewFlags: [] });
   assert.deepEqual(applied.reviewFlags.map(flag => flag.id), ['reviewed', 'noted']);
-  const partial = api.meetingAgentRegenerationChanges(fresh, 'summary', { ...complete,
+  const partial = MinutesGenerationAdmission.meetingAgentRegenerationChanges(fresh, 'summary', { ...complete,
     qualityState: { summary: { temporalReview: { complete: false } } } }, { reviewFlags: [] });
   assert.ok(partial.reviewFlags.some(flag => flag.id === 'old' && flag.status === 'open'));
 });
@@ -44,11 +46,11 @@ test('covered timed-step warnings retire only when the checked register is actua
   const flag = { id: 'step', kind: 'timing', temporalField: 'timedStepCoverage', status: 'open', message: 'A source timed step was missing.' };
   const changes = { actions: [], qualityState: { actions: { timedStepCoverage: { final: { complete: true } } } } };
   const fresh = { actions: [], discussion: [], reviewFlags: [flag], sourceUnits: [] };
-  const applied = api.meetingAgentRegenerationChanges(fresh, 'actions', changes, { reviewFlags: [] });
+  const applied = MinutesGenerationAdmission.meetingAgentRegenerationChanges(fresh, 'actions', changes, { reviewFlags: [] });
   assert.equal(applied.reviewFlags.length, 0);
   const manual = { ...fresh, actions: [{ id: 'manual', action: 'Retain the reviewer instruction.', owners: [],
     timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: [], reviewerAuthored: true }] };
-  const protectedResult = api.meetingAgentRegenerationChanges(manual, 'actions', changes, { reviewFlags: [] });
+  const protectedResult = MinutesGenerationAdmission.meetingAgentRegenerationChanges(manual, 'actions', changes, { reviewFlags: [] });
   assert.equal(protectedResult.keptReviewerActions, true);
   assert.ok(protectedResult.reviewFlags.some(flag => flag.id === 'step'));
 });

@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const T = require('../utils/meetingMinutesTiming');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesProposalTiming = require('../utils/meetingMinutesProposalTiming');
 const options = { meetingDate: '2026-10-22' };
 const row = wording => ({ id: 'send-report', action: 'Send the report.', owners: ['Alex Reed'],
   evidenceIds: ['T0001'], reviewFlagIds: [], timing: { kind: 'deadline', wording, exactDate: '2026-10-23' } });
@@ -19,7 +19,7 @@ for (const qualifier of ['about', 'around']) {
     assert.equal(result.action.timing.exactDate, '2026-10-23');
   });
   test(qualifier + ' qualification reaches the final action and its visible linked warning', () => {
-    const result = V.finaliseActionTimings([row('Friday')], source('I will send the report ' + qualifier + ' Friday.'), options);
+    const result = MinutesProposalTiming.finaliseActionTimings([row('Friday')], source('I will send the report ' + qualifier + ' Friday.'), options);
     assert.equal(result.actions[0].timing.kind, 'target');
     assert.ok(result.flags.some(flag => flag.systemTimingIssue?.code === 'source_timing_qualification'
       && result.actions[0].reviewFlagIds.includes(flag.id)));
@@ -89,7 +89,7 @@ for (const suffix of ['for 3 pumps', 'for £3', 'for 3pmotors']) {
 }
 test('conflicting shorthand creates a visible warning at the final generation boundary', () => {
   const input = row('Friday at 4pm');
-  const result = V.finaliseActionTimings([input], source('I will send the report on Friday at 3pm.'), options);
+  const result = MinutesProposalTiming.finaliseActionTimings([input], source('I will send the report on Friday at 3pm.'), options);
   assert.equal(result.actions[0].timing.kind, 'not_stated');
   assert.ok(result.flags.some(flag => flag.systemTimingIssue?.code === 'timing_value_removed'
     && result.actions[0].reviewFlagIds.includes(flag.id)));
@@ -97,7 +97,7 @@ test('conflicting shorthand creates a visible warning at the final generation bo
 });
 test('reviewer-authored timing and existing review links remain intact', () => {
   const input = { ...row('Friday at 4pm'), reviewerAuthored: true, reviewFlagIds: ['reviewer-note'] };
-  const result = V.finaliseActionTimings([input], source('I will send the report on Friday at 3pm.'), options);
+  const result = MinutesProposalTiming.finaliseActionTimings([input], source('I will send the report on Friday at 3pm.'), options);
   assert.equal(result.actions[0].timing.wording, 'Friday at 4pm');
   assert.equal(result.actions[0].timing.exactDate, '2026-10-23');
   assert.deepEqual(result.actions[0].reviewFlagIds, ['reviewer-note']);

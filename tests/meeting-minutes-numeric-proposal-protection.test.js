@@ -2,8 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const A = require('../routes/api').stagedEvaluation;
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesProposalSelection = require('../utils/meetingMinutesProposalSelection');
+const MinutesProposalReview = require('../utils/meetingMinutesProposalReview');
+const MinutesProposals = require('../utils/meetingMinutesProposals');
 const row = action => ({ id: 'action-1', occurrenceId: 'occ-action-1', action, owners: ['Morgan Lee'],
   timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] });
 function fixture(beforeText, afterText) {
@@ -25,18 +26,18 @@ for (const [before, after] of [
 ]) test(`fresh and previously-selected numerical loss is deferred: ${before}`, () => {
   const { current, units, proposal } = fixture(before, after);
   const original = structuredClone({ current, units, proposal });
-  const selected = A.preselectActionProposal(proposal, current, units);
+  const selected = MinutesProposalSelection.preselectActionProposal(proposal, current, units);
   assert.equal(selected.changes[0].selected, false);
   assert.match(selected.changes[0].reviewContext.reason, /removes or changes/);
   // Serialized selections from drafts saved before the fix get the same gate.
   const saved = JSON.parse(JSON.stringify(proposal));
-  const review = A.automaticMeetingAgentProposalReview(saved, [], current, units);
+  const review = MinutesProposalReview.automaticMeetingAgentProposalReview(saved, [], current, units);
   assert.deepEqual(review.acceptedIds, []);
   assert.ok(review.reviewFlags.some(flag => flag.status === 'open' && /not applied/i.test(flag.message)));
-  assert.deepEqual(V.applyProposal(current, saved, review.acceptedIds), current);
+  assert.deepEqual(MinutesProposals.applyProposal(current, saved, review.acceptedIds), current);
   assert.deepEqual({ current, units, proposal }, original);
   // A human can deliberately accept the exact suggested revision.
-  const manual = V.applyProposal(current, proposal, ['edit']);
+  const manual = MinutesProposals.applyProposal(current, proposal, ['edit']);
   assert.equal(manual[0].action, after);
   assert.equal(manual[0].occurrenceId, current[0].occurrenceId);
 });
@@ -50,9 +51,9 @@ for (const [before, after] of [
   ['Order between 2 and 5 cartridges.', 'Buy 2–5 cartridges.'],
 ]) test(`harmless equivalent numbers remain automatically eligible: ${before}`, () => {
   const { current, units, proposal } = fixture(before, after);
-  const selected = A.preselectActionProposal(proposal, current, units);
+  const selected = MinutesProposalSelection.preselectActionProposal(proposal, current, units);
   assert.equal(selected.changes[0].selected, true);
-  const review = A.automaticMeetingAgentProposalReview(proposal, [], current, units);
+  const review = MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], current, units);
   assert.deepEqual(review.acceptedIds, ['edit']);
-  assert.equal(V.applyProposal(current, proposal, review.acceptedIds)[0].action, after);
+  assert.equal(MinutesProposals.applyProposal(current, proposal, review.acceptedIds)[0].action, after);
 });

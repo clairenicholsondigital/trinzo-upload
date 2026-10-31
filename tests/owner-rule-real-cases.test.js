@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesPeopleEvidence = require('../utils/meetingMinutesPeopleEvidence');
 
 // Owners lost in traced runs on 2026-09-27 (drafts 1020, 1021, 1023, 1024), each
 // removed by applyRequesterOwnerRule on the ground that the person was in the
@@ -13,10 +13,10 @@ test('a chair handing work to two named people with a modal keeps both', () => {
     unit('T0147', 'Jacqui Fox', 'And then once we know that, we can review, David and Colm can review the standard again, just to understand, is that flow rate within the range of applicability within the standard?'),
     unit('T0148', 'Jacqui Fox', 'as to whether you need to consider.')
   ];
-  assert.ok(V.assignsWorkTo('David', units[1].text));
-  assert.ok(V.assignsWorkTo('Colm', units[1].text));
-  assert.ok(!V.assignsWorkTo('Colm', "Colm can't review the standard this week."));
-  const out = V.applyRequesterOwnerRule([{
+  assert.ok(MinutesPeopleEvidence.assignsWorkTo('David', units[1].text));
+  assert.ok(MinutesPeopleEvidence.assignsWorkTo('Colm', units[1].text));
+  assert.ok(!MinutesPeopleEvidence.assignsWorkTo('Colm', "Colm can't review the standard this week."));
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Review the applicability of ISO 27427:2023 against the device flow-rate specification once the flow rate is confirmed.',
     owners: ['David Didsbury', 'Colm'], evidenceIds: ['T0147']
   }], units);
@@ -33,7 +33,7 @@ test('a person narrating their own work in progress owns it', () => {
     unit('T0183', 'Andrew Kane', "So, I've been looking at that code, and I think those were generated using this tool, that font creator."),
     unit('T0185', 'Andrew Kane', "So, I'm trying to get access to that.")
   ];
-  const out = V.applyRequesterOwnerRule([{
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Complete the remaining language implementation work by resolving missing character support in the drivers.',
     owners: ['Andrew Kane'], evidenceIds: ['T0178', 'T0181']
   }], units);
@@ -48,7 +48,7 @@ test('"I\'ve just been simulating real faults" answers "didn\'t you this afterno
     unit('T0118', 'Andrew Kane', 'I sent you on a screenshot of the debug menu, yeah.'),
     unit('T0121', 'Andrew Kane', "So, there's some, you were asking about like the audio menu, which I haven't actually been using for this test and I've just been simulating real faults.")
   ];
-  const out = V.applyRequesterOwnerRule([{
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Test the additional debug commands and observe the resulting behaviour on the system.',
     owners: ['Andrew Kane'], evidenceIds: ['T0116', 'T0121', 'T0118']
   }], units);
@@ -65,7 +65,7 @@ test('an anaphoric "I\'ll have a quick look" with someone else named nearby is k
     unit('T0073', 'Andrew Kane', "Yeah, I'm not sure for this, but definitely could be."),
     unit('T0074', 'Jacqui Fox', "Okay, I'll have a quick look as well to see if that's the case.")
   ];
-  const out = V.applyRequesterOwnerRule([{
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Check whether the justification for fan logic battery alarms and real-time clock issues is documented in the risk analysis.',
     owners: ['Jacqui Fox'], evidenceIds: ['T0060', 'T0062', 'T0072']
   }], units);
@@ -79,8 +79,8 @@ test('"Rebecca is kind of managing that through with Andrew" next to the cited l
     unit('T0019', 'Jacqui Fox', 'So Rebecca is kind of managing that through with Andrew.'),
     unit('T0020', 'Rebecca Gill', 'Yes.')
   ];
-  assert.ok(V.narratesOwnership('Rebecca', units[1].text));
-  const out = V.applyRequesterOwnerRule([{
+  assert.ok(MinutesPeopleEvidence.narratesOwnership('Rebecca', units[1].text));
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Update the risk table with the cybersecurity considerations for the USB ports.',
     owners: ['Jacqui Fox'], evidenceIds: ['T0018']
   }], units);
@@ -99,7 +99,7 @@ test('someone else\'s work narrated fifteen rows away in the same long turn is n
     unit('T0055', 'Kevin Beattie', "I've replied to some of that other feedback that Colm and Louise put on the other documents as well, so that's work in progress."),
     unit('T0061', 'Kevin Beattie', "and then you can write 'cause I'm reviewing or rewriting the documents on there, so yeah.")
   ];
-  const out = V.applyRequesterOwnerRule([{
+  const out = MinutesPeopleEvidence.applyRequesterOwnerRule([{
     action: 'Send the revised documents by email for review after completing the rewrites and responses to feedback.',
     owners: ['Kevin Beattie'], evidenceIds: ['T0007', 'T0055', 'T0061']
   }], units);

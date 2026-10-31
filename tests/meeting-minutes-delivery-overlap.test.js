@@ -1,7 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const api = require('../routes/api').stagedEvaluation;
+const ActionDuplicatePolicy = require('../utils/meetingMinutesActionDuplicatePolicy'),
+  DraftView = require('../utils/meetingMinutesDraftView'),
+  Publication = require('../utils/meetingMinutesPublication');
 const action = (id, text, extra = {}) => ({
   id, action: text, owners: ['Alex Green'], evidenceIds: ['T0001'],
   reviewFlagIds: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, ...extra
@@ -22,16 +24,16 @@ for (const separator of ['-', '‐', '‑', '‒', '–', '—']) {
       ];
       if (reverse) rows.reverse();
       const before = structuredClone(rows);
-      assert.deepEqual(api.bundleSameRecipientDeliveries(rows), before);
-      const assembled = api.dedupeHybridActionRecords(rows);
+      assert.deepEqual(ActionDuplicatePolicy.bundleSameRecipientDeliveries(rows), before);
+      const assembled = ActionDuplicatePolicy.dedupeHybridActionRecords(rows);
       assert.equal(assembled.length, 2);
       for (const row of before) {
         assert.deepEqual(assembled.find(item => item.id === row.id), row);
       }
       assert.deepEqual(rows, before);
-      assert.deepEqual(api.dedupeHybridActionRecords(assembled), assembled);
+      assert.deepEqual(ActionDuplicatePolicy.dedupeHybridActionRecords(assembled), assembled);
       const draft = { details: {}, sourceUnits: [], discussion: [], actions: assembled, reviewFlags: [] };
-      for (const publish of [api.publicMeetingAgentDraft, api.meetingAgentDraftForPdf, api.meetingAgentDraftForDocx]) {
+      for (const publish of [DraftView.publicMeetingAgentDraft, Publication.meetingAgentDraftForPdf, Publication.meetingAgentDraftForDocx]) {
         assert.deepEqual(publish(structuredClone(draft)).actions.map(row => row.action), assembled.map(row => row.action));
       }
     });
@@ -41,7 +43,7 @@ for (const separator of ['-', '‐', '‑', '‒', '–', '—']) {
 test('exact Unicode instructions still deduplicate through preserved-wording proof', () => {
   const first = action('one', 'Send the service‑access codes to Priya Shah.');
   const second = { ...structuredClone(first), id: 'two', evidenceIds: ['T0001', 'T0002'] };
-  const rows = api.dedupeHybridActionRecords([first, second]);
+  const rows = ActionDuplicatePolicy.dedupeHybridActionRecords([first, second]);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].action, first.action);
   assert.deepEqual(rows[0].evidenceIds, ['T0001', 'T0002']);
@@ -54,11 +56,11 @@ test('distinct hyphenated documents can still form a delivery bundle with their 
       timing: { kind: 'target', wording: 'next week', exactDate: '' }, evidenceIds: ['T0002']
     })
   ];
-  const result = api.bundleSameRecipientDeliveries(rows);
+  const result = ActionDuplicatePolicy.bundleSameRecipientDeliveries(rows);
   assert.equal(result.length, 1);
   assert.equal(result[0].action, 'Provide Priya Shah with the equipment-checklist after approval and the visitor-register next week.');
   assert.deepEqual(result[0].evidenceIds, ['T0001', 'T0002']);
-  assert.deepEqual(api.bundleSameRecipientDeliveries(result), result);
+  assert.deepEqual(ActionDuplicatePolicy.bundleSameRecipientDeliveries(result), result);
 });
 
 test('overlap refusal applies to recipient-first wording without dropping a distinct third delivery', () => {
@@ -67,5 +69,5 @@ test('overlap refusal applies to recipient-first wording without dropping a dist
     action('two', 'Provide Priya Shah with the service-access codes and usage queries.'),
     action('three', 'Send the inspection checklist to Priya Shah.', { evidenceIds: ['T0003'] })
   ];
-  assert.deepEqual(api.bundleSameRecipientDeliveries(rows), rows);
+  assert.deepEqual(ActionDuplicatePolicy.bundleSameRecipientDeliveries(rows), rows);
 });

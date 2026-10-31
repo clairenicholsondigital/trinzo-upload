@@ -1,7 +1,9 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const S = require('../utils/meetingMinutesSupportingDetails');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesSource = require('../utils/meetingMinutesSource');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
+const MinutesText = require('../utils/meetingMinutesText');
 const { filingProvenance } = require('../utils/meetingMinutesFilingProvenance');
 const row = (extra = {}) => ({ id: 'discovery-a', text: 'The supplier provided the revised calibration certificate.',
   evidenceIds: ['T0001', 'T0002'], reviewFlagIds: ['check'], supportingDetails: [],
@@ -90,12 +92,12 @@ test('archive capacity overflow keeps entries separate without truncating histor
 
 test('filing, promotion, save/reload and restoration retain every archived source record', () => {
   const original = row(), merged = S.mergeUnassignedSupportingDetails(collect(original), collect(plain()))[0];
-  const units = V.normaliseSourceUnits(original.evidenceIds.map(id => ({ id, text: original.text })));
+  const units = MinutesSource.normaliseSourceUnits(original.evidenceIds.map(id => ({ id, text: original.text })));
   const originalPool = structuredClone([merged]);
   for (const promoted of [false, true]) {
     const filed = { ...structuredClone(merged), reviewerAuthored: true };
     const point = promoted ? filed : { id: 'parent', text: original.text, evidenceIds: original.evidenceIds, supportingDetails: [filed] };
-    const saved = V.normaliseAgentResult({ discussion: [{ topic: 'Equipment', points: [point] }], actions: [] }, units,
+    const saved = MinutesResultNormalization.normaliseAgentResult({ discussion: [{ topic: 'Equipment', points: [point] }], actions: [] }, units,
       'discussion', { preserveReviewerEdits: true, enforceEvidence: false, dedupeActions: false, mergeTopics: false });
     const retained = promoted ? saved.discussion[0].points[0] : saved.discussion[0].points[0].supportingDetails[0];
     assert.deepEqual(retained.filingOrigins, merged.filingOrigins);
@@ -113,7 +115,7 @@ test('glossary, colloquial-time and date formatting never rewrite archived origi
   const original = row({ text: 'The supplier scheduled the meds app review for monday, July 1st at half two.' });
   const retained = collect(original)[0], origins = structuredClone(retained.filingOrigins);
   const dates = require('../utils/spokenForms').normaliseDatePhrasesDeep;
-  const formatted = V.normaliseKnownTermsDeep(dates({ discussion: [{ points: [retained] }] }));
+  const formatted = MinutesText.normaliseKnownTermsDeep(dates({ discussion: [{ points: [retained] }] }));
   assert.notEqual(formatted.discussion[0].points[0].text, original.text);
   assert.deepEqual(formatted.discussion[0].points[0].filingOrigins, origins);
 });

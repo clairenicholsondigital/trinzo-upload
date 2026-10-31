@@ -2,17 +2,18 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesSource = require('../utils/meetingMinutesSource');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
 const Timing = require('../utils/meetingMinutesTiming');
 
 const options = { meetingDate: '2026-02-03' };
-const units = rows => V.normaliseSourceUnits(rows.map(([speaker, text]) => ({ speaker, text })));
+const units = rows => MinutesSource.normaliseSourceUnits(rows.map(([speaker, text]) => ({ speaker, text })));
 const row = (changes = {}) => ({
   id: 'count', action: 'Start the warehouse stock count.', owners: ['Morgan'],
   timing: { kind: 'target', wording: 'Hopefully late next month at least.', exactDate: '' },
   evidenceIds: ['T0015'], ...changes
 });
-const normalise = (action, source, extra = {}) => V.normaliseAgentResult({ actions: [action] }, source, 'actions', { ...options, ...extra });
+const normalise = (action, source, extra = {}) => MinutesResultNormalization.normaliseAgentResult({ actions: [action] }, source, 'actions', { ...options, ...extra });
 
 function stockCountSource(final = 'Morgan, finish the storage audit and the stock count, hopefully late next month to start the count at least.') {
   return units([

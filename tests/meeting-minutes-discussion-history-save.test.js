@@ -5,7 +5,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const V = require('../utils/meetingMinutesAgentV2');
+const Source = require('../utils/meetingMinutesSource'),
+  DraftStorage = require('../utils/meetingMinutesDraftStorage'),
+  DraftContext = require('../utils/meetingMinutesDraftContext'),
+  ResultNormalization = require('../utils/meetingMinutesResultNormalization'),
+  Text = require('../utils/meetingMinutesText');
 const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const { reconcileDiscussionClauseSources } = require('../utils/meetingMinutesDiscussionSources');
 const { originalEnquiryActions, sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
@@ -18,14 +22,14 @@ const reviewerOptions = {
 };
 
 function draftFixture() {
-  const sourceUnits = V.normaliseSourceUnits([
+  const sourceUnits = Source.normaliseSourceUnits([
     { id: 'T0001', speaker: 'Morgan', text: 'The inspection review remains scheduled for Friday.' },
     { id: 'T0002', speaker: 'Morgan', text: 'The laboratory remains available during the inspection.' },
     { id: 'T0003', speaker: 'Morgan', text: 'The team approved the revised checklist.' },
     { id: 'T0004', speaker: 'Morgan', text: 'Which site will host the assessment?' }
   ]);
   return {
-    draftId: 'history-save', revision: 1, payloadVersion: V.PAYLOAD_VERSION,
+    draftId: 'history-save', revision: 1, payloadVersion: DraftStorage.PAYLOAD_VERSION,
     currentStep: 2, selectedStep: 2, details: {}, sourceUnits,
     discussion: [{
       id: 'inspection', topic: 'Inspection', mergedTopicIds: ['earlier-inspection'],
@@ -68,14 +72,14 @@ function patchHarness(initial) {
     requireAuth() {},
     loadOwnedMeetingAgentDraft: async () => structuredClone(stored),
     assertMeetingAgentDateInput() {},
-    sanitiseMeetingAgentDetails: V.sanitiseDetails,
+    sanitiseMeetingAgentDetails: DraftContext.sanitiseDetails,
     TIMING_POLICY_VERSION: 1,
     publicMeetingAgentDraft: value => structuredClone(value),
     meetingAgentSummaryTextHash: value => String(value || ''),
     markMeetingAgentReviewerEdits,
     normalizeUnassignedSupportingDetails,
     withoutRepresentedUnassignedDetails,
-    normaliseAgentResult: V.normaliseAgentResult,
+    normaliseAgentResult: ResultNormalization.normaliseAgentResult,
     resolveEvidence: resolveEvidence,
     reconcileDiscussionClauseSources,
     originalEnquiryActions,
@@ -89,12 +93,12 @@ function patchHarness(initial) {
     discussionActionSeparation: require('../utils/canonicalMinutes/discussionActionSeparation'),
     meetingAgentTimingAnchor: () => '',
     rebaseMeetingAgentProposal: value => value,
-    MEETING_AGENT_PAYLOAD_VERSION: V.PAYLOAD_VERSION,
+    MEETING_AGENT_PAYLOAD_VERSION: DraftStorage.PAYLOAD_VERSION,
     MEETING_AGENT_MAX_STEP: 5,
     mergeMeetingAgentFlags,
     reopenFlagsOfReAddedItems: flags => flags,
     reconcileMeetingAgentOrphanFlags: flags => flags,
-    meetingMinutesAgentText: V.text,
+    meetingMinutesAgentText: Text.text,
     meetingAgentReviewHistoryEntry() { throw new Error('Unexpected review history write'); },
     meetingAgentDerivedStaleStages: () => [],
     includedSections: value => value,
@@ -206,7 +210,7 @@ test('reviewer history accepts bounded string IDs, removes duplicates and self r
   input.discussion[0].points[0].mergedFromIds = malformed;
   input.discussion[0].points[0].supportingDetails[0].mergedFromIds = ['laboratory', ...malformed];
   const original = structuredClone(input);
-  const result = V.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
+  const result = ResultNormalization.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
   assert.deepEqual(result.discussion[0].mergedTopicIds, ['old-record', 'review', exactLimit]);
   assert.deepEqual(result.discussion[0].points[0].mergedFromIds, ['old-record', exactLimit]);
   assert.deepEqual(result.discussion[0].points[0].supportingDetails[0].mergedFromIds,
@@ -216,7 +220,7 @@ test('reviewer history accepts bounded string IDs, removes duplicates and self r
     const next = draftFixture();
     next.discussion[0].mergedTopicIds = invalid;
     next.discussion[0].points[0].mergedFromIds = invalid;
-    const output = V.normaliseAgentResult(next, next.sourceUnits, '', reviewerOptions);
+    const output = ResultNormalization.normaliseAgentResult(next, next.sourceUnits, '', reviewerOptions);
     assert.equal(output.discussion[0].mergedTopicIds, undefined);
     assert.equal(output.discussion[0].points[0].mergedFromIds, undefined);
   }
@@ -228,7 +232,7 @@ test('oversized reviewer merge-history arrays have a fixed input and output budg
   input.discussion[0].points[0].mergedFromIds = Array.from({ length: 1200 }, (_, index) => `old-point-${index}`);
   input.discussion[0].points[0].supportingDetails[0].mergedFromIds =
     Array.from({ length: 1200 }, (_, index) => `old-child-${index}`);
-  const result = V.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
+  const result = ResultNormalization.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
   const topic = result.discussion[0];
   assert.equal(topic.mergedTopicIds.length, 1000);
   assert.equal(topic.points[0].mergedFromIds.length, 1000);
@@ -246,7 +250,7 @@ test('merge-history IDs confer no authorship, confirmation, evidence or timing p
   point.source = 'stage_2_human_confirmation';
   point.timingDecision = { status: 'confirmed', sourceEvidenceIds: ['T9999'] };
   point.arbitraryClientProperty = { reviewerAuthored: true };
-  const result = V.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
+  const result = ResultNormalization.normaliseAgentResult(input, input.sourceUnits, '', reviewerOptions);
   const row = result.discussion[0].points[0];
   assert.deepEqual(row.mergedFromIds, point.mergedFromIds);
   assert.equal(row.reviewerAuthored, undefined);
@@ -260,7 +264,7 @@ test('merge-history IDs confer no authorship, confirmation, evidence or timing p
   const withoutHistory = structuredClone(input);
   delete withoutHistory.discussion[0].mergedTopicIds;
   delete withoutHistory.discussion[0].points[0].mergedFromIds;
-  const comparison = V.normaliseAgentResult(withoutHistory, input.sourceUnits, '', reviewerOptions);
+  const comparison = ResultNormalization.normaliseAgentResult(withoutHistory, input.sourceUnits, '', reviewerOptions);
   assert.deepEqual(row.evidenceIds, comparison.discussion[0].points[0].evidenceIds);
   assert.deepEqual(result.reviewFlags, comparison.reviewFlags, 'history cannot alter source validation or warning decisions');
 });
@@ -293,7 +297,7 @@ test('generated JSON cannot turn merge-history metadata into reviewer exemptions
   topic.points[0].confirmedTopic = true;
   topic.points[0].timingDecision = { status: 'confirmed' };
   topic.points[0].supportingDetails[0].reviewerAuthored = true;
-  const result = V.normaliseAgentResult(input, input.sourceUnits, 'discussion', { enforceEvidence: false });
+  const result = ResultNormalization.normaliseAgentResult(input, input.sourceUnits, 'discussion', { enforceEvidence: false });
   const generated = result.discussion[0];
   assert.equal(generated.mergedTopicIds, undefined);
   assert.equal(generated.reviewerAuthored, undefined);

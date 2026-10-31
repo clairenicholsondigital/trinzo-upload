@@ -3,18 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const {
-  meetingAgentRegenerationChanges,
-  meetingAgentActionsFingerprint,
-  meetingAgentDiscussionFingerprint,
-  rebaseMeetingAgentProposal,
-  resolveMeetingAgentProposalFlags,
-  reconcileMeetingAgentOrphanFlags,
-  meetingAgentReviewSnapshot,
-  meetingAgentReviewHistoryEntry,
-  publicMeetingAgentDraft
-} = require('../routes/api').stagedEvaluation;
-const { normaliseAgentResult, reconcileRecordFlags } = require('../utils/meetingMinutesAgentV2');
+const { meetingAgentRegenerationChanges, meetingAgentActionsFingerprint } = require('../utils/meetingMinutesGenerationAdmission');
+const { meetingAgentDiscussionFingerprint } = require('../utils/meetingMinutesDiscussionFingerprint');
+const { rebaseMeetingAgentProposal, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
+const { reconcileMeetingAgentOrphanFlags, publicMeetingAgentDraft } = require('../utils/meetingMinutesDraftView');
+const { meetingAgentReviewSnapshot, meetingAgentReviewHistoryEntry } = require('../utils/meetingMinutesReviewerState');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
+const { reconcileRecordFlags } = require('../utils/meetingMinutesReviewFlags');
 
 const units = [
   { id: 'T0001', speaker: 'Alex Reed', text: 'I will send the revised report to the client.' },

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const api = require('../routes/api').stagedEvaluation;
+const MinutesPublication = require('../utils/meetingMinutesPublication');
 const { promoteMaterialTimingDetails } = require('../utils/meetingMinutesTemporalPublication');
 
 test('courtesy cleanup retains required content and a separately timed supporting step', () => {
@@ -13,7 +13,7 @@ test('courtesy cleanup retains required content and a separately timed supportin
     'Take the photo tomorrow and include it with the letter.'
   ]) {
     const row = { id: 'letter', action, owners: ['Morgan'], evidenceIds: ['T0001', 'T0002'] };
-    assert.equal(api.stripMinorCommunicationCourtesy(row, sourceUnits).action, action);
+    assert.equal(MinutesPublication.stripMinorCommunicationCourtesy(row, sourceUnits).action, action);
   }
 });
 
@@ -32,7 +32,7 @@ test('a material deadline is visible in ordinary publication without losing its 
   assert.equal(promoteMaterialTimingDetails(promoted.discussion, sourceUnits, { meetingDate: '2026-06-17' }).promoted, 0);
   const draft = { details: { meetingDate: '2026-06-17' }, discussion, sourceUnits, actions: [],
     qualityState: { preparation: { dateContext: { source: 'reviewer', meetingDate: '2026-06-17' } } } };
-  const publication = api.meetingAgentDraftForPdf(draft);
+  const publication = MinutesPublication.meetingAgentDraftForPdf(draft);
   assert.ok(publication.discussion.flatMap(topic => topic.points).includes(text));
 });
 
@@ -62,8 +62,8 @@ test('a real apology cannot remove an attachment or timed copying requirement', 
     { id: 'T0002', speaker: 'Morgan', text: "I will copy her tomorrow and include a photo." }];
   for (const action of ['Write the letter and include a photo.', 'Copy her tomorrow and include a photo.']) {
     const row = { action, evidenceIds: ['T0001', 'T0002'] };
-    assert.equal(api.stripMinorCommunicationCourtesy(row, sourceUnits).action, action);
+    assert.equal(MinutesPublication.stripMinorCommunicationCourtesy(row, sourceUnits).action, action);
   }
   const onlyAttachment = { action: 'Include the inspection photo with the letter.', evidenceIds: ['T0001'] };
-  assert.equal(api.stripMinorCommunicationCourtesy(onlyAttachment, sourceUnits).action, onlyAttachment.action);
+  assert.equal(MinutesPublication.stripMinorCommunicationCourtesy(onlyAttachment, sourceUnits).action, onlyAttachment.action);
 });

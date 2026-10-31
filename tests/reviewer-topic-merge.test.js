@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { normaliseAgentResult } = require('../utils/meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 
 const units = [
   { id: 'T0001', text: 'We reviewed the delivery timeline for the launch.' },
