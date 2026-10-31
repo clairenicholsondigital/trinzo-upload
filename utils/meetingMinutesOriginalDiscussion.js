@@ -1,5 +1,14 @@
 'use strict';
 
+const {
+  discussionStructureDiagnostics, finalisePromotedDiscussion, promoteAllDiscussionDetails
+} = require('./meetingMinutesDiscussionFinalization');
+const {
+  removeHeadingFragmentsFromDiscussion, removeMinorCommunicationCourtesyDiscussion,
+  removeWithheldGeneratedDiscussion
+} = require('./meetingMinutesPublication');
+const { mergeGroundedObjectiveRecords } = require('./meetingMinutesSummaryPublication');
+
 const { effectiveDiscussionRefereeDispositions } = require('./meetingMinutesRefereeCandidates');
 
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
@@ -22,9 +31,9 @@ const {
   decisionCheckItems, decisionCheckPrompt, demoteSupersededRows, discussionFidelityCheckItems,
   discussionFidelityCheckPrompt, filterUnsupportedQuantifiedDiscussion, groundUnstatedDiscussionMonths,
   labelSupersededContext, answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
-  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled, mergeGroundedObjectiveRecords,
-  openQuestionCheckItems, openQuestionCheckPrompt, promoteMaterialObjectionDetails,
-  promoteNamedFactDetails, supersededCheckItems, supersededVerdicts
+  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled, openQuestionCheckItems,
+  openQuestionCheckPrompt, promoteMaterialObjectionDetails, promoteNamedFactDetails,
+  supersededCheckItems, supersededVerdicts
 } = require('./meetingMinutesAgentV2');
 const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
 const {
@@ -82,8 +91,6 @@ function createOriginalDiscussionStage(services) {
     discussionOverlapConsolidationPrompt,
     discussionRefereeFallbackPlan,
     discussionRefereeSufficiency,
-    discussionStructureDiagnostics,
-    finalisePromotedDiscussion,
     hybridCandidateDispositions,
     includeAllDiscussionDetailsExperiment,
     limitSupportingDetails,
@@ -97,13 +104,9 @@ function createOriginalDiscussionStage(services) {
     meetingMinutesDiscussionRestatementsEnabled,
     meetingMinutesPromoteNamedFactsEnabled,
     mergeHybridDiscussionTopics,
-    promoteAllDiscussionDetails,
     promotePrioritySupportingDetails,
     reconstructMissingRefereeDiscussion,
     refereeClusterSupportingCandidates,
-    removeHeadingFragmentsFromDiscussion,
-    removeMinorCommunicationCourtesyDiscussion,
-    removeWithheldGeneratedDiscussion,
     startPrivateActionPrimaryPrewarm,
     startPrivateStagedCandidateLedger,
   } = services;

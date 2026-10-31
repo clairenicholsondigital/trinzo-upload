@@ -1,5 +1,7 @@
 'use strict';
 
+const { clean } = require('./canonicalMinutes/evidence');
+
 const crypto = require('node:crypto');
 const { text } = require('./meetingMinutesText');
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
@@ -59,4 +61,24 @@ function hybridContentTokenOverlap(left, right) {
   return shared / Math.min(a.size, b.size);
 }
 
-module.exports = { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS, hybridRecordText, hybridTokenOverlap, hybridContentTokenOverlap };
+function tokenSet(value) {
+  return new Set(clean(value).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3 && !['team', 'reviewed', 'specific', 'regarding', 'including'].includes(token)));
+}
+
+function nearDuplicate(left, right) {
+  const a = tokenSet(left); const b = tokenSet(right);
+  if (!a.size || !b.size) return false;
+  const shared = [...a].filter((token) => b.has(token)).length;
+  return shared / Math.min(a.size, b.size) >= 0.72;
+}
+
+module.exports = {
+  stableId,
+  contentTokens,
+  tokenOverlap,
+  COMMON_SPEECH_WORDS,
+  hybridRecordText,
+  hybridTokenOverlap,
+  hybridContentTokenOverlap,
+  nearDuplicate
+};

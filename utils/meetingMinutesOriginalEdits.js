@@ -1,15 +1,17 @@
 'use strict';
 
+const {
+  meetingAgentReviewerSummaryHash, meetingAgentSummaryAuthority, groundedExecutiveSummary,
+  groundedObjectiveRecords
+} = require('./meetingMinutesSummaryPublication');
+
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
 const {
   isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags, coverageFlags
 } = require('./meetingMinutesReviewFlags');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 
-const {
-  actionCandidateInventory, discussionCandidateInventory, groundedExecutiveSummary,
-  groundedObjectiveRecords
-} = require('./meetingMinutesAgentV2');
+const { actionCandidateInventory, discussionCandidateInventory } = require('./meetingMinutesAgentV2');
 const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { safeLogError } = require('./apiErrors');
@@ -21,8 +23,6 @@ function createOriginalEditStage(services) {
     MEETING_AGENT_STAGE_STEP,
     askPowerAutomateMeetingMinutesAgent,
     askPowerAutomateMeetingMinutesAgentWithRetry,
-    meetingAgentReviewerSummaryHash,
-    meetingAgentSummaryAuthority,
     meetingMinutesAgentPrompt,
     verifyMeetingAgentSummaryTiming,
   } = services;

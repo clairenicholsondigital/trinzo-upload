@@ -127,7 +127,7 @@ test('audit source evidence bypasses glossary rewriting and is excluded from pub
 function progressHarness() {
   let stored={draftId:'draft',sourceUnits:[],discussion:[],actions:[],qualityState:{actions:{keep:'other-stage'}},generation:{status:'running',stage:'discussion'}};
   const start=source.indexOf('async function updateMeetingAgentHybridProgress(');
-  const end=source.indexOf('\nfunction meetingAgentSummaryAuthority',start);
+  const end=source.indexOf('\n}\n',start)+2;
   const context={MEETING_AGENT_BOOT_ID:'fixture',Date,
     meetingAgentSerialDraftWrite:async(id,fn)=>fn(),getMeetingMinutesAgentDraft:async()=>structuredClone(stored),
     normaliseMeetingAgentGeneration:v=>v,normaliseMeetingAgentPassCache:v=>v,

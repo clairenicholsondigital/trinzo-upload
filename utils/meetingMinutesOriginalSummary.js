@@ -1,12 +1,17 @@
 'use strict';
 
+const {
+  meetingAgentReviewerSummaryHash, meetingAgentSummaryAuthority, groundedExecutiveSummary,
+  mergeGroundedObjectiveRecords
+} = require('./meetingMinutesSummaryPublication');
+
 const { meetingAgentTimingAnchor } = require('./meetingMinutesDraftContext');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 
 const { annotateMeetingAgentPassImpact, meetingAgentCallPerformance,
   meetingAgentExecutionTelemetry, meetingAgentMaterialPassImpact } = require('./meetingMinutesAgentGeneration');
 const { applyIncludedSections, summaryStageIsEmpty } = require('./includedSections');
-const { groundedExecutiveSummary, mergeGroundedObjectiveRecords } = require('./meetingMinutesAgentV2');
+
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { summaryTemporalCheckItems, summaryTemporalCheckPrompt,
   applySummaryTemporalCheckResults } = require('./meetingMinutesTemporalReview');
@@ -14,8 +19,6 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 
 function createOriginalSummaryStage(services) {
   const {
-    meetingAgentReviewerSummaryHash,
-    meetingAgentSummaryAuthority,
     meetingMinutesAgentPrompt,
     verifyMeetingAgentSummaryTiming,
   } = services;

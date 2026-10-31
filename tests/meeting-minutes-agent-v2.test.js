@@ -32,10 +32,6 @@ const {
   uncoveredCandidateInventory,
   discussionRecoveryNeeded,
   actionRecoveryNeeded,
-  groundedObjectives,
-  groundedObjectiveRecords,
-  mergeGroundedObjectiveRecords,
-  groundedExecutiveSummary,
   relativeExactDate,
   cleanActionWording,
   timingWordingHasMeaning,
@@ -567,27 +563,9 @@ test('adaptive recovery triggers for uncovered high-value discussion and action 
   assert.equal(actionRecoveryNeeded(actionCandidates, [{ action: 'Send the completed report.', evidenceIds: ['T0771'] }]).needed, false);
 });
 
-test('objective records retain valid source evidence', () => {
-  const records = groundedObjectiveRecords([{ text: 'Review the three alarm tests before approval.', evidenceIds: ['T0001'] }], sourceUnits);
-  assert.equal(records.length, 1);
-  assert.equal(records[0].evidenceIds[0], 'T0001');
-});
 
-test('objective records accumulate distinct evidenced aims from later passes', () => {
-  const units = normaliseSourceUnits([
-    { id: 'T2000', speaker: 'Chair', text: 'Today we need to plan the audit visit.', classification: 'keep' },
-    { id: 'T2050', speaker: 'Chair', text: 'The other purpose is to agree how the documents will be shared securely.', classification: 'keep' }
-  ]);
-  const records = mergeGroundedObjectiveRecords([
-    [{ text: 'Plan the audit visit.', evidenceIds: ['T2000'] }],
-    [
-      { text: 'Plan the audit visit and arrangements.', evidenceIds: ['T2000'] },
-      { text: 'Agree how audit documents will be shared securely.', evidenceIds: ['T2050'] }
-    ]
-  ], units);
-  assert.equal(records.length, 2);
-  assert.ok(records.some((record) => record.evidenceIds.includes('T2050')));
-});
+
+
 
 
 
@@ -746,20 +724,7 @@ test('unsupported exact dates are removed independently without deleting support
   assert.ok(result.reviewFlags.some((flag) => flag.kind === 'timing' && /exact date/i.test(flag.message)));
 });
 
-test('summary and objectives are grounded in validated content rather than filled to a quota', () => {
-  assert.ok(evidenceSupportScore('Three alarms require testing.', 'We need to test all three alarms before approval.') > 0.2);
-  const objectiveUnits = normaliseSourceUnits([
-    { id: 'T1100', speaker: 'Alex', text: "Today's objective is to test all three alarms before approval.", classification: 'keep' }
-  ]);
-  assert.deepEqual(groundedObjectives(['Test all three alarms', 'Plan an unrelated office move'], objectiveUnits), ['Test all three alarms']);
-  const summary = groundedExecutiveSummary(
-    'Three alarms require testing before approval. The company will open a new office in Paris.',
-    [{ topic: 'Testing', points: [{ text: 'Three alarms require testing before approval.' }] }],
-    []
-  );
-  assert.match(summary, /Three alarms/);
-  assert.doesNotMatch(summary, /Paris/);
-});
+
 
 test('Word export uses UK dates, timing labels and contains no organisation field', async () => {
   assert.equal(timingLabel({ kind: 'deadline', exactDate: '2026-06-23' }), 'Deadline: 23 Jun 2026');

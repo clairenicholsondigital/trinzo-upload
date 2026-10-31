@@ -625,6 +625,77 @@ contract subset does not complete those policies or the broader simplification.
 Publication/Library/exports, reviewer save/history and preparation/generation
 lifecycle remain the next stages; deferred work is not counted as implemented.
 
+### Shared publication content and export projections
+
+`utils/meetingMinutesPublication.js` now owns the complete existing publication
+content path used by Library/editor reads, approved-summary authority and both
+export projections. Its source-backed cleanup, narrow number/currency/date
+presentation, reviewer protections, hidden headings and optional sections keep
+their original behavior. Word and PDF consume this actual owner; ordinary and
+evidence exports retain their separate supporting-detail, warning and source
+appendices. Beta continues using its own reviewed-field clone rather than the
+Original cleanup rules. The existing Word/PDF renderers and route handlers stay
+in place, including authentication, ownership, filenames, headers and errors.
+
+`utils/meetingMinutesSummaryPublication.js` owns approved publication authority,
+reviewer-summary hashes and the four existing source-grounded summary/objective
+functions previously defined in V2. It imports the actual publication and source
+owners. Summary hashes still reflect the same published prose, and grounded
+objectives retain their evidence search, thresholds, merge order and caps.
+`utils/meetingMinutesDiscussionFinalization.js` owns the complete final discussion
+refile/organise/promote/cleanup/diagnostics path. Its optional semantic/rewrite
+and unassigned-detail callbacks remain genuine caller-owned process boundaries;
+no new policy callback bag is introduced.
+
+The existing lazy SemanticDedupe → TrooperPolish → SemanticDedupe cycle is removed
+as part of this same boundary. RecordMatching receives the exact `tokenSet` and
+`nearDuplicate` functions, using canonical Evidence's actual `clean` function.
+TrooperPolish retains its public `nearDuplicate` binding as that same function;
+SemanticDedupe imports it directly for the worker-unavailable fallback. The 0.72
+lexical threshold and its distinct stop words are unchanged. This does not
+replace other duplicate rules with a superficially similar matcher.
+
+All 38 moved declarations (29 functions and nine constants, 593 declaration
+lines) retain their exact bodies and free bindings. Constant initialization
+order is preserved. Production consumers use the actual owners, including the
+four moved V2 summary bindings; public API/V2 compatibility exports remain.
+The source cache/reset, durable warning registry, diagnostics and original
+generation state retain their identities. The complete owner graph includes
+lazy paths and is checked for cycles and API/V2 back-references; settings/database
+and existing semantic-worker dependencies remain real dependencies.
+
+Ten Original policy ports become direct imports, reducing supplied entries from
+101 to 91. API still imports 66 V2-local bindings, and 83 exported bindings remain
+local to V2. API falls from 15,494 to 14,927 lines and V2 from 4,428 to 4,355;
+these are entrypoint sizes, not deletion across the whole repository. The
+existing `createSummaryTimingVerifier` factory and its caller
+contract remain: API supplies the actual SummaryPublication functions, while
+provider calls, response validation, budgets and checker accounting stay in the
+Original Summary generation boundary. Removing its policy parameters is not
+counted as completed work.
+
+Ten existing pure publication/summary cases move unchanged into compact checks
+for their actual owners, with the same source fixture and assertions. Mixed
+public-draft, save/reload, export, semantic fallback and provider-boundary tests
+remain. No regression cases are added or removed. The new owners retain
+persistence-sensitive selection; updating the compact suite requires the full
+release profile. Two Original Summary fixtures now supply the actual normalized
+publication fields and persisted reviewer hash used by these real owners. The
+reviewer case expects an independently computed SHA-256 hash in place of its old
+opaque stub value. Their checks on content, timing, ownership and the execution
+cache remain, and two source-reading contracts follow the actual owner files.
+
+Stage 4 is now in progress, with this publication content/export boundary
+implemented. The full `publicMeetingAgentDraft` envelope remains in API: its
+prewarm/speculation readers use the same three live generation caches, and its
+proposal, warning, restore and history views cross the later reviewer/generation
+boundaries. Read-only publication does not acquire a new cache, mutate saved
+drafts, persist formatting or run providers. The owner-scoped Library query and
+authenticated transport stay with their current owners. Stage 3, the full
+publication/Library stage, reviewer save/history and preparation/generation
+lifecycle remain unfinished; these explicit boundaries are not implementation
+of the deferred work.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

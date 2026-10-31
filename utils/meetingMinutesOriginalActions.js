@@ -1,5 +1,7 @@
 'use strict';
 
+const { stripMinorCommunicationCourtesy } = require('./meetingMinutesPublication');
+
 const { surroundingEvidence } = require('./meetingMinutesEvidenceContext');
 
 const { normaliseAgentDeclaredProposals } = require('./meetingMinutesDiscoveryValidation');
@@ -87,7 +89,6 @@ function createOriginalActionsStage(services) {
     retainedDocumentReferenceReviewFlags,
     safeAgentProposalPromotion,
     splitCompoundActionList,
-    stripMinorCommunicationCourtesy,
     strongOmittedDiscoveryProposals,
     strongUnresolvedActionCandidateFlags,
     traceOwners,

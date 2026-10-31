@@ -1,5 +1,7 @@
 'use strict';
 
+const { groundedObjectiveRecords } = require('./meetingMinutesSummaryPublication');
+
 const {
   compactMeetingAgentRefereeCandidate, meetingMinutesAgentRefereeContract
 } = require('./meetingMinutesRefereeCandidates');
@@ -28,7 +30,7 @@ const { discussionAnchorInventory } = require("./meetingMinutesAgentV2");
 const { discussionCandidateInventory } = require("./meetingMinutesAgentV2");
 const { discussionRecoveryNeeded } = require("./meetingMinutesAgentV2");
 const { discussionSelectionCoverage } = require("./meetingMinutesDiscussionCoverage");
-const { groundedObjectiveRecords } = require("./meetingMinutesAgentV2");
+
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag } = require("./meetingMinutesReviewFlags");
 const { meetingMinutesAgentText } = require("./meetingMinutesPlainText");
 const { mergeTimedStepRecovery } = require("./meetingMinutesTimedStepCoverage");

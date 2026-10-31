@@ -28,6 +28,7 @@ class FrontendContractTest(unittest.TestCase):
         page = (REPO_DIR / "views" / "meeting-minutes-agent.html").read_text(encoding="utf-8")
         client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
         agent_normalization = (REPO_DIR / "utils" / "meetingMinutesResultNormalization.js").read_text(encoding="utf-8")
+        publication = (REPO_DIR / "utils" / "meetingMinutesPublication.js").read_text(encoding="utf-8")
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
@@ -81,7 +82,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('overflow-y:hidden;resize:none', page)
         self.assertIn("autoGrow(document.getElementById('summaryFields'))", client)
         self.assertIn('function includedSectionState()', client)
-        self.assertIn('applyIncludedSections(draft', api)
+        self.assertIn('applyIncludedSections(draft', publication)
         self.assertIn('data-action-transcript-panel', client)
         self.assertIn('data-transcript-toggle-label', client)
         self.assertIn("transcriptPanel.open = opening", client)
