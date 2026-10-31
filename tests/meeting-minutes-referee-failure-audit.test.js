@@ -1,9 +1,16 @@
 'use strict';
 const test=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const audit=require('../utils/meetingMinutesRefereeFailureAudit');
-const {createOriginalExecution}=require('../utils/meetingMinutesOriginalExecution');
+const {createOriginalExecution: realCreateOriginalExecution}=require('../utils/meetingMinutesOriginalExecution');
+const transportOwner=require('../utils/meetingMinutesAgentTransport');
+function createOriginalExecution(services) {
+  const provider=test.mock.method(transportOwner,'askPowerAutomateMeetingMinutesAgentWithRetry',services.askPowerAutomateMeetingMinutesAgentWithRetry);
+  try { return realCreateOriginalExecution(services); }
+  finally { provider.mock.restore(); }
+}
 const A=require('../routes/api').stagedEvaluation;
 const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
+const transportSource=fs.readFileSync(require.resolve('../utils/meetingMinutesAgentTransport'),'utf8');
 const payload=prompt=>JSON.parse(prompt.split('refereePayload:\n')[1]);
 const child={candidateId:'child',recordType:'discussion_point',text:'The supplier requires oversight.',evidenceIds:['T0001']};
 const parent={candidateId:'parent',targetId:'approved-parent',recordType:'discussion_point',text:'The supplier oversight remains unresolved.',evidenceIds:['T0010']};
@@ -42,8 +49,8 @@ test('empty-target discussion and action prompts do not acquire extra catalogue 
 // Execute the actual retry function with an isolated provider stub. No network,
 // real transcripts, credentials, library, timers or database writes are used.
 function retryHarness(ask, reportedError = () => null) {
-  const from=source.indexOf('async function askPowerAutomateMeetingMinutesAgentWithRetry(');
-  const to=source.indexOf('\nfunction normaliseStagedCandidateResult',from);
+  const from=transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgentWithRetry(');
+  const to=transportSource.indexOf('\n}\n',from)+2;
   assert.ok(from>=0&&to>from);
   const warnings=[];
   const context={Date,Number,Math,JSON,Promise,process:{env:{}},
@@ -52,7 +59,7 @@ function retryHarness(ask, reportedError = () => null) {
     askPowerAutomateMeetingMinutesAgent:ask,meetingAgentResultError:reportedError,
     meetingAgentFailureClass:A.meetingAgentFailureClass,refereeFailureSnapshot:audit.refereeFailureSnapshot,
     console:{warn:value=>warnings.push(value)}};
-  vm.runInNewContext(source.slice(from,to)+'\nthis.run=askPowerAutomateMeetingMinutesAgentWithRetry;',context);
+  vm.runInNewContext(transportSource.slice(from,to)+'\nthis.run=askPowerAutomateMeetingMinutesAgentWithRetry;',context);
   return {run:context.run,warnings};
 }
 test('a rejected reply is captured before adapters mutate it, with its actual repair prompt',async()=>{
@@ -175,17 +182,17 @@ test('the production referee call actually wires rejection capture to the durabl
 });
 
 function transportHarness(body, status = 200) {
-  const helper=source.indexOf('function meetingAgentHasTypedError(');
-  const start=helper>=0?helper:source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
-  const transport=source.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})',start);
-  const end=source.indexOf('\n}\n',transport)+3;
+  const helper=transportSource.indexOf('function meetingAgentHasTypedError(');
+  const start=helper>=0?helper:transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
+  const transport=transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})',start);
+  const end=transportSource.indexOf('\n}\n',transport)+3;
   assert.ok(start>=0&&end>start,'transport source boundaries must exist');let calls=0;
   const state={timeoutCleared:false,slotReleased:false};let beforeBodyRead;
   const context={URL,AbortController,Number,Math,JSON,Set,process:{env:{}},
     setTimeout:()=>0,clearTimeout:()=>{state.timeoutCleared=true;},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',
     acquireMeetingAgentCallSlot:async()=>()=>{state.slotReleased=true;},parseJsonLenient:A.parseJsonLenient,meetingAgentResultError:A.meetingAgentResultError,
     fetch:async()=>{calls++;return {ok:status>=200&&status<300,status,text:async()=>{beforeBodyRead={...state};return typeof body==='function'?body():body;}};}};
-  vm.runInNewContext(source.slice(start,end)+'\nthis.ask=askPowerAutomateMeetingMinutesAgent;',context);
+  vm.runInNewContext(transportSource.slice(start,end)+'\nthis.ask=askPowerAutomateMeetingMinutesAgent;',context);
   return {ask:context.ask,get calls(){return calls;},get state(){return state;},get beforeBodyRead(){return beforeBodyRead;}};
 }
 test('malformed response bodies reach the private failure audit before structural parsing rejects them',async()=>{

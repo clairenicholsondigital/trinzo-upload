@@ -22,9 +22,8 @@ const { reconcileDiscussionClauseSources } = require('./meetingMinutesDiscussion
 const { preserveCopiedReviewerContent } = require('./meetingMinutesReviewedAiEdits');
 
 function createOriginalEditStage(services) {
+  const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry } = require('./meetingMinutesAgentTransport');
   const {
-    askPowerAutomateMeetingMinutesAgent,
-    askPowerAutomateMeetingMinutesAgentWithRetry,
     verifyMeetingAgentSummaryTiming,
   } = services;
 

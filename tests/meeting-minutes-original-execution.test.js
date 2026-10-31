@@ -17,12 +17,16 @@ finally { Module._load = originalLoad; }
 function context(t, provider, options = {}) {
   t.mock.method(console, 'info', () => {});
   t.mock.method(console, 'warn', () => {});
-  const create = createOriginalExecution({
-    askPowerAutomateMeetingMinutesAgentWithRetry: provider,
-    usePrivateActionPrimaryPrewarm: async () => {
-      throw new Error('Discussion execution must not perform action prewarm I/O.');
-    }
-  });
+  const transport = require('../utils/meetingMinutesAgentTransport');
+  const mocked = t.mock.method(transport, 'askPowerAutomateMeetingMinutesAgentWithRetry', provider);
+  let create;
+  try {
+    create = createOriginalExecution({
+      usePrivateActionPrimaryPrewarm: async () => {
+        throw new Error('Discussion execution must not perform action prewarm I/O.');
+      }
+    });
+  } finally { mocked.mock.restore(); }
   return create({ draftId: 'execution-fixture', details: { meetingDate: '2026-10-30' },
     sourceUnits: [], discussion: [], actions: [], passCache: [] }, 'discussion', options);
 }

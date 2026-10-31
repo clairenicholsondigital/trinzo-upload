@@ -16,8 +16,8 @@ const { normaliseMeetingAgentPassCache } = require("./meetingMinutesPassCache");
 const { refereeFailureSnapshot } = require("./meetingMinutesRefereeFailureAudit");
 
 function createOriginalExecution(services) {
+  const { askPowerAutomateMeetingMinutesAgentWithRetry } = require('./meetingMinutesAgentTransport');
   const {
-    askPowerAutomateMeetingMinutesAgentWithRetry,
     usePrivateActionPrimaryPrewarm,
   } = services;
 

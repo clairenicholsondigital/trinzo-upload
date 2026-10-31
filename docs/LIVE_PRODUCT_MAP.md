@@ -849,6 +849,50 @@ unfinished. Background generation, summary timing, speculative scheduling and
 the genuine injected process save operation remain generation boundaries.
 Verified deletion and retirement of compatibility exports remain later work.
 
+## Provider transport and verified private-code deletion
+
+PR #221 completed the Library/read/export and reviewer transaction/history
+acceptance: the deployed tree passed the required isolated persistence checks,
+eight exact desktop/mobile screenshot comparisons, saved-data fingerprints and
+ordinary/evidence Word/PDF output comparisons. Stage 4 and Stage 5 are complete;
+shared Original policy ownership, generation lifecycle and verified retirement
+remain ongoing.
+
+`utils/meetingMinutesAgentTransport.js` now owns the complete Original provider
+request lifecycle: queue, pacing, foreground priority, shared asynchronous call
+context, route selection, response decoding, typed failures, deadlines, retries
+and private failure capture. Sixteen existing declarations (319 declaration
+lines) move unchanged. There is one queue/context/timer/counter lifetime and one
+retry-delay array. The API and its compatibility exports use those identities;
+Original Execution, Edits and Finalization import the owner directly inside
+their existing factories. The remaining supplied Original service entries fall
+from 78 to 76. Existing request validation, transformation, repair and observation
+hooks retain their ordering and semantics.
+
+The bounded deletion pass removes 37 unused import bindings, six unexported
+private functions (197 lines) and a three-line synchronous parser wrapper.
+Its three callers now use the existing parser directly. Caller, source-reader
+and initialization checks cover the tracked tree and release entrypoints;
+removed import targets still initialize through retained imports. Public API/V2
+compatibility exports and their live implementations remain. Eight other
+apparently unused bodies, one source-contract-pinned import alias and the live
+async generation wrapper remain until their contracts and lifecycle are resolved.
+
+Existing transport test drivers now stub the canonical provider owner while the
+real factories capture it. Two Python source assertions follow that owner with
+their original methods and literals. No cases or assertions are added or removed.
+The existing transport/failure-audit test file joins the compact product profile,
+and future transport edits retain database-sensitive release selection.
+
+API falls from 12,473 to 11,913 lines; V2 remains 4,128 lines. The new transport
+owner has 372 physical lines, including unchanged comments and composition.
+The deletion figures above distinguish removed code from relocated code. This
+completes the transport implementation, with frozen release/deployment evidence
+required for acceptance. Prewarm, speculation/adoption, background persistence,
+authenticated generation dispatch and summary timing remain Stage 6 work.
+Frontend assets, storage/schema, renderer implementations, provider prompts,
+configuration, dependencies and Python processing remain unchanged.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

@@ -1,6 +1,6 @@
-const { reconcileSiblingTimingDecisions, sameTimingWork, timingBoundToActionSteps, compoundActionClauses, ACTION_VERBS, sourceBindsTimingToStep, sourceInstructionClauses, finaliseActionTimings } = require('./meetingMinutesProposalTiming');
+const { reconcileSiblingTimingDecisions, timingBoundToActionSteps, compoundActionClauses, ACTION_VERBS, sourceBindsTimingToStep, finaliseActionTimings } = require('./meetingMinutesProposalTiming');
 const { salientDetailInventory, MEETING_ADMIN_PATTERN } = require('./meetingMinutesAssessmentEvidence');
-const { commitmentQuoteTiesOwner, FIRST_PERSON_COMMITMENT } = require('./meetingMinutesActionSourceMatching');
+const { commitmentQuoteTiesOwner } = require('./meetingMinutesActionSourceMatching');
 const { candidatePromptPack } = require('./meetingMinutesCandidatePack');
 'use strict';
 
@@ -15,7 +15,7 @@ const {
   ASKS_WHEN, UNKNOWN_TIMING_ANSWER, ANSWER_TIMING, answerNamesSubject, sharesSubjectWord,
   CITED_TIMING_PHRASE, timingRecoveryBlocked, sourceBoundRecoveredTiming, NON_SUBSTANTIVE_TIMING_BRIDGE,
   resolveOfferedDateChoice, backfillAskedTiming, backfillCitedTiming, timingFrom,
-  recoveredTimingEvidence, replaceEmbeddedTiming, timingClauseIssue, dateWordingVariants,
+  recoveredTimingEvidence, replaceEmbeddedTiming, timingClauseIssue,
   sourceRecoveredTiming, timingClauseChecksEnabled, evidenceClauses, TIMING_INFERENCE_POLICY_VERSION
 } = require('./meetingMinutesActionTimingInference');
 const { anchorOwnerCommitment } = require('./meetingMinutesActionFieldGrounding');
