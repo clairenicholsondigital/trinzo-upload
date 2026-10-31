@@ -1,5 +1,7 @@
 'use strict';
 
+const { preselectActionProposal, meetingAgentProposalChangeIsVisible } = require('./meetingMinutesProposalSelection');
+
 const { hybridCandidateLedgerFromResult } = require('./meetingMinutesCandidateLedger');
 
 const { finaliseMeetingAgentTimingProposal, finaliseActionTimings, reconcileSiblingTimingDecisions } = require('./meetingMinutesProposalTiming');
@@ -81,13 +83,11 @@ function createOriginalActionsStage(services) {
     isReviewableActionProposal,
     meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
-    meetingAgentProposalChangeIsVisible,
     meetingMinutesAgentCompactDiscussionEnabled,
     meetingMinutesAgentCriticPrompt,
     meetingMinutesAgentSalvagePrompt,
     meetingMinutesMinuteInstructionRuleEnabled,
     meetingMinutesProposalRecheckEnabled,
-    preselectActionProposal,
     publishedActionCoversProposal,
     reconcileAcceptedRefereeActions,
     reconcileFinalApprovedActions,

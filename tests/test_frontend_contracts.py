@@ -22,6 +22,7 @@ class FrontendContractTest(unittest.TestCase):
     def test_meeting_minutes_agent_uses_evidence_backed_resumable_workflow(self):
         server = (REPO_DIR / "server.js").read_text(encoding="utf-8")
         api = (REPO_DIR / "routes" / "api.js").read_text(encoding="utf-8")
+        lifecycle = (REPO_DIR / "utils" / "meetingMinutesGenerationLifecycle.js").read_text(encoding="utf-8")
         generation = (REPO_DIR / "utils" / "meetingMinutesAgentGeneration.js").read_text(encoding="utf-8")
         original_edits = (REPO_DIR / "utils" / "meetingMinutesOriginalEdits.js").read_text(encoding="utf-8")
         transport = (REPO_DIR / "utils" / "meetingMinutesAgentTransport.js").read_text(encoding="utf-8")
@@ -96,12 +97,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertNotIn('.meeting-agent-page .summary-field textarea{min-height:170px}', page)
         # Background generation: start, poll, and the stale-run detector.
         self.assertIn('generation.bootId !== bootId', generation)
-        self.assertIn('bootId: MEETING_AGENT_BOOT_ID', api)
+        self.assertIn('bootId: MEETING_AGENT_BOOT_ID', lifecycle)
         self.assertIn("setImmediate", api)
         self.assertIn("function pollGeneration", client)
         self.assertIn("function startBackgroundStage", client)
         # A background write must land on a fresh read, never a captured revision.
-        self.assertIn("{ authUser: { userId } }", api)
+        self.assertIn("{ authUser: { userId } }", lifecycle)
         # The steer is read from the persisted draft so the worker takes the same path.
         self.assertIn("steer: draft.steer", api)
         self.assertIn('data-owner-chip', client)
@@ -163,7 +164,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('.stage-next-action{', page)
         self.assertIn("processing\n        ? 'Transcript uploaded — processing has started in the background.'", client)
         self.assertIn("startInitialMeetingAgentProcessing", api)
-        self.assertIn("runMeetingAgentBackgroundStage(saved.draftId", api)
+        self.assertIn("runMeetingAgentBackgroundStage(saved.draftId", lifecycle)
         self.assertIn('It is being processed in the background now.', page)
         self.assertNotIn('review the proposed changes', client.lower())
         self.assertIn('actionCommitmentChainInventory', api)

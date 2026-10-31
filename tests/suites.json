@@ -2,6 +2,7 @@
   "core": [
     "tests/auth-session.test.js",
     "tests/meeting-minutes-agent-background-persistence.test.js",
+    "tests/meeting-minutes-agent-speculation.test.js",
     "tests/meeting-minutes-staged-ready-join.test.js",
     "tests/meeting-minutes-timing-closure-inference-cache.test.js",
     "tests/meeting-minutes-stage-persistence.test.js",
