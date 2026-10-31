@@ -3,23 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { createOriginalSummaryStage, createSummaryTimingVerifier } = require('../utils/meetingMinutesOriginalSummary');
+const { createOriginalSummaryStage, verifyMeetingAgentSummaryTiming } = require('../utils/meetingMinutesOriginalSummary');
+const { meetingAgentSummaryTextHash } = require('../utils/meetingMinutesSummaryPublication');
 const { meetingAgentReviewPacketError } = require('../utils/meetingMinutesReviewAccounting');
 const { meetingAgentResultCounts } = require('../utils/meetingMinutesAgentGeneration');
 const { normaliseMeetingAgentPassCache } = require('../utils/meetingMinutesPassCache');
-
-// Standalone timing-verifier tests supply explicit approved views. The Summary
-// stage uses the real publication and reviewer-authority owners.
-function policyPorts(draft, publication = { discussion: draft.discussion || [], actions: draft.actions || [] }, reviewed = new Map()) {
-  return {
-    meetingAgentSummaryAuthority: () => publication,
-    meetingAgentTimingAnchor: () => draft.details?.meetingDate || '',
-    meetingAgentReviewerSummaryHash: (_draft, value) => reviewed.get(value) || ''
-  };
-}
-function verifyMeetingAgentSummaryTiming(draft, values, call) {
-  return createSummaryTimingVerifier(policyPorts(draft))(draft, values, call);
-}
 
 function fixture({ includeSections, reply, timingReply, reviewed, publication } = {}) {
   const statement = 'The supplier report is due Friday.';
@@ -33,9 +21,20 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
     passProvenance: [{ stage: 'discussion', pass: 'existing' }]
   };
   if (reviewed?.has(statement)) {
+    draft.executiveSummary = statement;
     draft.qualityState.summary = { reviewerSummaryHash: reviewed.get(statement) };
   }
-  const ports = policyPorts(draft, publication, reviewed);
+  if (publication) {
+    // Retain the raw generation evidence while the canonical publication owner
+    // excludes its superseded row and exposes the approved wording for review.
+    draft.qualityState.discussion = { fidelityWithheldRows: draft.discussion.flatMap(topic =>
+      topic.points.map(record => ({ record }))) };
+    draft.discussion.push(...publication.discussion.map(topic => ({
+      topic: 'Supplier report', decisions: [], openQuestions: [], ...topic,
+      points: topic.points.map(record => ({ supportingDetails: [], reviewFlagIds: [], ...record }))
+    })));
+    draft.actions = publication.actions;
+  }
   const calls = [], prompts = [];
   const context = {
     draft, stage: 'summary', transcript: draft.preparedTranscript, details: draft.details,
@@ -77,9 +76,7 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
       ok: true, elapsedMs: 5, promptChars: prompt.length }], ...meetingAgentResultCounts(result || {}) });
     return result;
   };
-  const run = createOriginalSummaryStage({
-    verifyMeetingAgentSummaryTiming: createSummaryTimingVerifier(ports),
-  });
+  const run = createOriginalSummaryStage();
   return { draft, context, calls, prompts, run, statement };
 }
 
@@ -159,9 +156,10 @@ test('Original Summary applies a source-supported timing correction using approv
 test('Summary timing splits checks into bounded batches', async () => {
   const text = 'The supplier report is due Friday.';
   const objectives = Array.from({ length: 9 }, (_, index) => ({ id: `o${index}`, text, evidenceIds: ['T0001'] }));
-  const draft = { details: { meetingDate: '2026-06-17' }, sourceUnits: [], discussion: [], actions: [] };
-  const approved = { discussion: [{ points: [{ id: 'approved', text, evidenceIds: ['T0001'] }] }], actions: [] };
-  const verifier = createSummaryTimingVerifier(policyPorts(draft, approved));
+  const draft = { details: { meetingDate: '2026-06-17' },
+    sourceUnits: [{ id: 'T0001', text }],
+    discussion: [{ topic: 'Supplier report', points: [{ id: 'approved', text, evidenceIds: ['T0001'] }], decisions: [], openQuestions: [] }], actions: [] };
+  const verifier = verifyMeetingAgentSummaryTiming;
   const calls = [];
   const result = await verifier(draft, { executiveSummary: text, meetingObjectives: objectives }, async (pass, prompt, options) => {
     calls.push({ pass, prompt, options }); return null;
@@ -177,7 +175,7 @@ test('Summary timing splits checks into bounded batches', async () => {
 test('Original Summary preserves reviewer-owned timing when the checker proposes another approved date', async () => {
   const manual = 'The supplier report is due Friday.';
   const approved = 'The supplier report is due Monday.';
-  const reviewerHash = crypto.createHash('sha256').update(manual).digest('hex');
+  const reviewerHash = meetingAgentSummaryTextHash(manual);
   const f = fixture({ includeSections: { meetingObjectives: false }, reviewed: new Map([[manual, reviewerHash]]),
     publication: { discussion: [{ points: [{ text: approved, evidenceIds: ['T0001'] }] }], actions: [] },
     timingReply(_pass, prompt) {

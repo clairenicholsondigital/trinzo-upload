@@ -1,6 +1,7 @@
 'use strict';
 
 const { meetingMinutesAgentPrompt } = require('./meetingMinutesAgentPrompts');
+const { verifyMeetingAgentSummaryTiming } = require('./meetingMinutesOriginalSummary');
 const { MEETING_AGENT_STAGE_STEP } = require('./meetingMinutesStageProtocol');
 
 const {
@@ -22,12 +23,8 @@ const { safeLogError } = require('./apiErrors');
 const { reconcileDiscussionClauseSources } = require('./meetingMinutesDiscussionSources');
 const { preserveCopiedReviewerContent } = require('./meetingMinutesReviewedAiEdits');
 
-function createOriginalEditStage(services) {
+function createOriginalEditStage() {
   const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry } = require('./meetingMinutesAgentTransport');
-  const {
-    verifyMeetingAgentSummaryTiming,
-  } = services;
-
   return async function generateMeetingAgentStageRaw(draft, stage, instruction) {
     const transcript = String(draft.preparedTranscript || '').trim();
     if (transcript.length < 100) {

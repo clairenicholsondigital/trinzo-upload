@@ -19,11 +19,7 @@ const { summaryTemporalCheckItems, summaryTemporalCheckPrompt,
   applySummaryTemporalCheckResults } = require('./meetingMinutesTemporalReview');
 const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccounting');
 
-function createOriginalSummaryStage(services) {
-  const {
-    verifyMeetingAgentSummaryTiming,
-  } = services;
-
+function createOriginalSummaryStage() {
   return async function runOriginalSummaryStage(context) {
     let {
       call,
@@ -99,13 +95,7 @@ function createOriginalSummaryStage(services) {
   };
 }
 
-function createSummaryTimingVerifier(services) {
-  const {
-    meetingAgentSummaryAuthority,
-    meetingAgentReviewerSummaryHash,
-  } = services;
-
-  return async function verifyMeetingAgentSummaryTiming(draft, values, call) {
+async function verifyMeetingAgentSummaryTiming(draft, values, call) {
     const authority = meetingAgentSummaryAuthority(draft);
     const options = { meetingDate: meetingAgentTimingAnchor(draft),
       summaryReviewerAuthored: Boolean(meetingAgentReviewerSummaryHash(draft, values.executiveSummary)) };
@@ -121,7 +111,6 @@ function createSummaryTimingVerifier(services) {
       }
     )))).flatMap(result => Array.isArray(result?.results) ? result.results : []);
     return applySummaryTemporalCheckResults(values, items, results, options);
-  };
-}
+  }
 
-module.exports = { createOriginalSummaryStage, createSummaryTimingVerifier };
+module.exports = { createOriginalSummaryStage, verifyMeetingAgentSummaryTiming };

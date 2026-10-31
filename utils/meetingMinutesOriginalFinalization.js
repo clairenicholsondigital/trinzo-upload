@@ -1,6 +1,7 @@
 'use strict';
 
 const { normaliseMeetingAgentMinuteNumbers } = require('./meetingMinutesPublication');
+const { reconcileFinalApprovedActions, semanticReceiptCoversActionProposal } = require('./meetingMinutesFinalActionPreservation');
 
 const { meetingAgentFlagUntouched, meetingAgentProposalReviewFlagId } = require('./meetingMinutesReviewFlags');
 
@@ -20,13 +21,8 @@ const { normalisePresentationCurrency } = require('./canonicalMinutes/textNormal
 const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const { reconcileGeneratedSemanticStage } = require('./meetingMinutesSemanticStage');
 
-function createOriginalFinalization(services) {
+function createOriginalFinalization() {
   const { askPowerAutomateMeetingMinutesAgentWithRetry } = require('./meetingMinutesAgentTransport');
-  const {
-    reconcileFinalApprovedActions,
-    semanticReceiptCoversActionProposal,
-  } = services;
-
   async function finishMeetingAgentSemanticStage(result, draft, stage, options = {}) {
     // Bind witnesses to the exact prepared-source schema persisted by payload(),
     // including legacy callers lacking default source fields. Raw transcript

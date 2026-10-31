@@ -3,21 +3,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
-const { createOriginalEditStage } = require('../utils/meetingMinutesOriginalEdits');
 const originalLoad = Module._load;
 const forbidden = [];
 const deny = label => () => {
   forbidden.push(label);
   throw new Error('Direct Original edits fixture forbids ' + label);
 };
-let services;
+let createOriginalEditStage;
 Module._load = function (name) {
   if (name === 'node-fetch') return deny('provider transport');
   if (name === 'pg') return { Pool: class { constructor() { deny('pg.Pool')(); } } };
   if (name === 'child_process') return new Proxy({}, { get: (_target, key) => deny('child_process.' + String(key)) });
   return originalLoad.apply(this, arguments);
 };
-try { services = require('../routes/api').stagedEvaluation.originalMinutesStageServices; }
+try { ({ createOriginalEditStage } = require('../utils/meetingMinutesOriginalEdits')); }
 finally { Module._load = originalLoad; }
 
 const point = (id, text, extra = {}) => ({ id, text, evidenceIds: ['T0001'],
@@ -46,7 +45,7 @@ function generator(reply, retryReply) {
     return { result: await retryReply(prompt, options) };
   });
   let run;
-  try { run = createOriginalEditStage(services); }
+  try { run = createOriginalEditStage(); }
   finally { primary.mock.restore(); review.mock.restore(); }
   return { run, calls };
 }

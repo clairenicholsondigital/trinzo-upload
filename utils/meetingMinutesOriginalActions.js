@@ -1,5 +1,9 @@
 'use strict';
 
+const { meetingMinutesAgentCompactDiscussionEnabled, meetingMinutesMinuteInstructionRuleEnabled, meetingMinutesProposalRecheckEnabled } = require('./meetingMinutesOriginalFeatures');
+const { meetingAgentActionAuditCandidates, meetingMinutesAgentCriticPrompt, meetingMinutesAgentSalvagePrompt } = require('./meetingMinutesAgentPrompts');
+
+const { reconcileFinalApprovedActions } = require('./meetingMinutesFinalActionPreservation');
 const { preselectActionProposal, meetingAgentProposalChangeIsVisible } = require('./meetingMinutesProposalSelection');
 
 const { hybridCandidateLedgerFromResult } = require('./meetingMinutesCandidateLedger');
@@ -81,16 +85,9 @@ function createOriginalActionsStage(services) {
     hybridCandidateCoveredByRecord,
     hybridCandidateDispositions,
     isReviewableActionProposal,
-    meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
-    meetingMinutesAgentCompactDiscussionEnabled,
-    meetingMinutesAgentCriticPrompt,
-    meetingMinutesAgentSalvagePrompt,
-    meetingMinutesMinuteInstructionRuleEnabled,
-    meetingMinutesProposalRecheckEnabled,
     publishedActionCoversProposal,
     reconcileAcceptedRefereeActions,
-    reconcileFinalApprovedActions,
     removePublishedActionProposalDuplicates,
     safeAgentProposalPromotion,
     splitCompoundActionList,

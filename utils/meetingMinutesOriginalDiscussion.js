@@ -1,5 +1,8 @@
 'use strict';
 
+const { includeAllDiscussionDetailsExperiment, meetingMinutesAgentCompactDiscussionEnabled, meetingMinutesAgentCompactDiscussionShadowEnabled, meetingMinutesAgentDiscussionOrganiseEnabled, meetingMinutesAgentGlobalTopicArrangerEnabled, meetingMinutesAgentPromoteMaterialSupportingEnabled, meetingMinutesDiscussionRestatementsEnabled, meetingMinutesPromoteNamedFactsEnabled } = require('./meetingMinutesOriginalFeatures');
+const { discussionOverlapConsolidationPrompt, meetingMinutesAgentTopicArrangementPrompt, meetingMinutesAgentTopicArrangementRepairPrompt } = require('./meetingMinutesAgentPrompts');
+
 const {
   compactDiscussionPropositions, dedupeSupportingDetailsSemantically, limitSupportingDetails,
   mergeHybridDiscussionTopics, promotePrioritySupportingDetails
@@ -91,20 +94,9 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 function createOriginalDiscussionStage(services) {
   const {
     corroboratedOmittedDiscussionRecords,
-    discussionOverlapConsolidationPrompt,
     discussionRefereeFallbackPlan,
     discussionRefereeSufficiency,
     hybridCandidateDispositions,
-    includeAllDiscussionDetailsExperiment,
-    meetingMinutesAgentCompactDiscussionEnabled,
-    meetingMinutesAgentCompactDiscussionShadowEnabled,
-    meetingMinutesAgentDiscussionOrganiseEnabled,
-    meetingMinutesAgentGlobalTopicArrangerEnabled,
-    meetingMinutesAgentPromoteMaterialSupportingEnabled,
-    meetingMinutesAgentTopicArrangementPrompt,
-    meetingMinutesAgentTopicArrangementRepairPrompt,
-    meetingMinutesDiscussionRestatementsEnabled,
-    meetingMinutesPromoteNamedFactsEnabled,
     reconstructMissingRefereeDiscussion,
     refereeClusterSupportingCandidates,
     startPrivateActionPrimaryPrewarm,

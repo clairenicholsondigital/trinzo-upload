@@ -11,7 +11,7 @@ const { createOriginalActionsStage } = require('./meetingMinutesOriginalActions'
 function createOriginalMinutesStages(services) {
   const createExecution = createOriginalExecution(services);
   const discover = createOriginalDiscovery(services);
-  const summary = createOriginalSummaryStage(services);
+  const summary = createOriginalSummaryStage();
   const discussion = createOriginalDiscussionStage(services);
   const actions = createOriginalActionsStage(services);
   return async function generateOriginalMinutesStage(draft, stage, options = {}) {
