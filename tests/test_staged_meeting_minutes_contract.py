@@ -12,6 +12,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         staged_editorial = (REPO_DIR / "utils" / "stagedEditorial.js").read_text(encoding="utf-8")
         meeting_type = (REPO_DIR / "utils" / "meetingMinutesStageMeetingType.js").read_text(encoding="utf-8")
         prompts = (REPO_DIR / "utils" / "meetingMinutesAgentPrompts.js").read_text(encoding="utf-8")
+        action_recovery = (REPO_DIR / "utils" / "meetingMinutesRefereeActionRecovery.js").read_text(encoding="utf-8")
         # Old unused backend presence checks were retired with their implementations.
         # Canonical dispatch, editorial behavior and queued-stage wiring remain checked.
 
@@ -66,7 +67,7 @@ class StagedMeetingMinutesContractTest(unittest.TestCase):
         self.assertIn("misattributed_discussion_evidence", staged_editorial)
         self.assertIn("function stagedTextHasFutureCommitmentMarker", api)
         self.assertIn("future commitment", prompts)
-        self.assertIn("dependency", api)
+        self.assertIn("dependency", action_recovery)
         self.assertIn("workstreamStateCount", api)
         self.assertIn("missingWorkstreamCount", api)
         self.assertIn("missingWorkstreams", api)

@@ -996,6 +996,42 @@ frontend assets, saved formats/schema, renderers, provider configuration,
 dependencies and Python processing are unchanged. Frozen release checks and
 before/after deployment comparisons certify the completed batch separately.
 
+## Remaining Original algorithms and tracing ownership
+
+`meetingMinutesDiscoveryInventory` owns candidate inventories and their complete
+coverage definitions, with V2 retaining its existing compatibility exports.
+`meetingMinutesRefereeDiscussion` owns discussion sufficiency, fallback and
+reconstruction. `meetingMinutesRefereeActionRecovery` owns action reconstruction,
+owner borrowing and omitted commitment recovery. `meetingMinutesActionPromotion`
+owns source-bound promotion, filtering and compound splitting. The actual
+console/filesystem tracing routines live in `meetingMinutesOriginalTracing`;
+they retain the existing diagnostics singleton, context, ordering and optional
+file-write behavior.
+
+The 57 existing declarations (1,521 declaration lines) keep their algorithms and
+canonical bindings. Original consumers import these implementations directly.
+The supplied map falls from 38 entries to five genuine prewarm/embedding-worker
+execution ports. API falls from 8,282 to 6,675 lines and V2 from 3,615 to 3,499;
+these reductions include relocation. Thirty-seven original import bindings are
+removed and 23 unnecessary new projections are omitted. Every original require
+initializer/order and the 116 historical unused API imports remain; the bounded
+new-orphan review is separate from a general historical cleanup.
+
+Four bounded existing-file cases cover canonical inventory identity/order,
+shared diagnostic events and actual disabled/enabled/file-failure tracing.
+Existing cases and assertions remain; one Python source assertion follows its
+actual action-recovery owner. The two database browser fixtures serve relative
+view paths from an explicit trusted test root, preserving their assertions while
+supporting hidden checkout directories. Production file-serving policy stays
+unchanged. All 26 prompts, frontend assets, public routes/exports, saved formats,
+renderers, provider configuration and Python runtime remain unchanged.
+
+The real embedding worker/composition boundary and canonical staged processing,
+evaluation and queued ingestion remain unfinished. Test consumers still need
+ownership review so ordinary helper edits trigger relevant checks without
+losing explicit API/V2 compatibility coverage. Frozen release/deployment
+acceptance is required for this batch.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

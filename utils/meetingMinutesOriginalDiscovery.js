@@ -1,4 +1,7 @@
 'use strict';
+const { discussionCandidateInventory, dedupeActionDiscoveryInventory, deterministicHybridLedger } = require('./meetingMinutesDiscoveryInventory');
+const { enrichDiscussionEvidenceFromDispositions } = require('./meetingMinutesRefereeDiscussion');
+const { reconstructRefereeActions } = require('./meetingMinutesRefereeActionRecovery');
 
 const { meetingAgentTopicSegmentsEnabled, meetingMinutesAgentAnchoredActionEnabled, meetingMinutesAgentAnchoredDiscussionEnabled, meetingMinutesAgentDedupedCoverageEnabled, meetingMinutesAgentFastActionPathEnabled, meetingMinutesAgentGlobalDiscussionRefereeEnabled, meetingMinutesAgentPrimaryUnionEnabled, meetingMinutesDiscussionActionCandidatesEnabled } = require('./meetingMinutesOriginalFeatures');
 const { meetingMinutesAgentAnchoredActionPrompt, meetingMinutesAgentAnchoredDiscussionPrompt, meetingMinutesAgentRecoveryPrompt, meetingMinutesAgentRefereePrompt, meetingMinutesAgentRefereeRepairPrompt, meetingMinutesAgentTopicNamingPrompt } = require('./meetingMinutesAgentPrompts');
@@ -35,7 +38,7 @@ const { actionRecoveryNeeded } = require("./meetingMinutesAgentV2");
 const { discourseSegments } = require("./canonicalMinutes/discourseSegments");
 const { discussionActionCandidates } = require("./meetingMinutesAgentV2");
 const { discussionAnchorInventory } = require("./meetingMinutesAgentV2");
-const { discussionCandidateInventory } = require("./meetingMinutesAgentV2");
+require("./meetingMinutesAgentV2");
 const { discussionRecoveryNeeded } = require("./meetingMinutesAgentV2");
 const { discussionSelectionCoverage } = require("./meetingMinutesDiscussionCoverage");
 
@@ -58,10 +61,6 @@ const { timedStepCoverage } = require("./meetingMinutesTimedStepCoverage");
 function createOriginalDiscovery(services) {
   const {
     awaitPrivateStagedCandidateLedger,
-    dedupeActionDiscoveryInventory,
-    deterministicHybridLedger,
-    enrichDiscussionEvidenceFromDispositions,
-    reconstructRefereeActions,
   } = services;
 
   return async function runOriginalDiscovery(context) {
