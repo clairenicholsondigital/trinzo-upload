@@ -297,10 +297,18 @@ function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceU
   };
 }
 
+// A retry after an empty-discovery validation failure used to re-send the
+// byte-identical prompt. Tell the model what was missing instead.
+function meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt }) {
+  const detail = meetingMinutesAgentText(error?.message, 400);
+  return `${originalPrompt}\n\nREPAIR INSTRUCTION: ${detail} Return the complete JSON object again. Give every UNCOVERED CANDIDATE a candidateDisposition with a reason (reject, completed or suggestion when it is not a genuine outstanding commitment), and return each genuine commitment as an action with owners, timing and evidenceIds.`;
+}
+
 module.exports = {
   normaliseAgentDeclaredProposals,
   meetingAgentEmptyDiscoveryError,
   normaliseRefereeDeclaredProposals,
   normaliseAnchoredActionDiscovery,
-  normaliseAnchoredDiscussionDiscovery
+  normaliseAnchoredDiscussionDiscovery,
+  meetingAgentEmptyDiscoveryRepairPrompt
 };

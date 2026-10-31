@@ -1,11 +1,13 @@
 'use strict';
 
 const {
-  meetingAgentEmptyDiscoveryError,
-  normaliseAgentDeclaredProposals,
-  normaliseAnchoredActionDiscovery,
-  normaliseAnchoredDiscussionDiscovery,
-  normaliseRefereeDeclaredProposals
+  compactMeetingAgentRefereeCandidate, meetingMinutesAgentRefereeContract
+} = require('./meetingMinutesRefereeCandidates');
+
+const {
+  meetingAgentEmptyDiscoveryError, normaliseAgentDeclaredProposals, normaliseAnchoredActionDiscovery,
+  normaliseAnchoredDiscussionDiscovery, normaliseRefereeDeclaredProposals,
+  meetingAgentEmptyDiscoveryRepairPrompt
 } = require('./meetingMinutesDiscoveryValidation');
 
 const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatchedMeetingAgentRefereeResults } = require('./meetingMinutesResultAggregation');
@@ -47,13 +49,11 @@ function createOriginalDiscovery(services) {
   const {
     awaitPrivateStagedCandidateLedger,
     cachedStagedCandidatesForStage,
-    compactMeetingAgentRefereeCandidate,
     dedupeActionDiscoveryInventory,
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
     hybridCandidateLedgerFromResult,
     meetingAgentActionPrimaryPromptForDraft,
-    meetingAgentEmptyDiscoveryRepairPrompt,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
     meetingMinutesAgentAnchoredActionPrompt,
@@ -65,7 +65,6 @@ function createOriginalDiscovery(services) {
     meetingMinutesAgentPrimaryPrompt,
     meetingMinutesAgentPrimaryUnionEnabled,
     meetingMinutesAgentRecoveryPrompt,
-    meetingMinutesAgentRefereeContract,
     meetingMinutesAgentRefereePrompt,
     meetingMinutesAgentRefereeRepairPrompt,
     meetingMinutesAgentTopicNamingPrompt,

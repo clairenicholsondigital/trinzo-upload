@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { meetingAgentEmptyDiscoveryError, normaliseAgentDeclaredProposals, normaliseAnchoredActionDiscovery } = require('../utils/meetingMinutesDiscoveryValidation');
+const { meetingAgentEmptyDiscoveryError, normaliseAgentDeclaredProposals, normaliseAnchoredActionDiscovery, meetingAgentEmptyDiscoveryRepairPrompt } = require('../utils/meetingMinutesDiscoveryValidation');
 const { normaliseAgentCandidateDispositions } = require('../utils/meetingMinutesResponseContracts');
 
 test('empty discussion discovery retries only when substantive evidence exists', () => {
@@ -136,4 +136,12 @@ test('an empty action recovery result is accepted when the agent disposed of eve
     { candidateId: 'window-1', recordType: 'action', priority: 3, owners: [] },
     { candidateId: 'window-2', recordType: 'action_chain', priority: 4, dispositionHint: 'suggestion', signals: {}, ownerHints: [] }
   ]), null);
+});
+
+test('an empty-discovery retry carries a repair instruction naming what was missing', () => {
+  const error = new Error('The action agent returned an empty draft despite substantive evidence candidates (2 of 3 without a reasoned disposition: chain-1, c5).');
+  const prompt = meetingAgentEmptyDiscoveryRepairPrompt({ error, originalPrompt: 'ORIGINAL' });
+  assert.ok(prompt.startsWith('ORIGINAL'));
+  assert.match(prompt, /REPAIR INSTRUCTION: .*chain-1, c5/);
+  assert.match(prompt, /candidateDisposition with a reason/);
 });

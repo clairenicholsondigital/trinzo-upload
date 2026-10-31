@@ -1,12 +1,17 @@
 'use strict';
 
+const { surroundingEvidence } = require('./meetingMinutesEvidenceContext');
+
 const { normaliseAgentDeclaredProposals } = require('./meetingMinutesDiscoveryValidation');
 
 const { dedupeHybridActionProposals, dedupeHybridActionRecords, isClientReadyActionWording } = require('./meetingMinutesActionDuplicatePolicy');
 const { meetingAgentInfrastructureFailure, normaliseAgentCandidateDispositions, reconcileRefereeActionMaterialization } = require('./meetingMinutesResponseContracts');
-const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
+const {
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag,
+  reconcileRecordFlags, mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId
+} = require('./meetingMinutesReviewFlags');
 const { actionNegatedByEvidence, isMeetingAdminAction } = require('./meetingMinutesActionEvidence');
-const { applyRequesterOwnerRule } = require('./meetingMinutesPeopleEvidence');
+const { applyRequesterOwnerRule, meetingAgentPeopleNames } = require('./meetingMinutesPeopleEvidence');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
@@ -22,7 +27,7 @@ const {
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled, mergeDuplicateCommitments,
   reconcileSiblingTimingDecisions, softenBestEffortCompletion, splitExplicitMultiOwnerActions,
-  surroundingEvidence, timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
+  timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
 } = require('./meetingMinutesAgentV2');
 const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
 const {
@@ -67,9 +72,7 @@ function createOriginalActionsStage(services) {
     isVagueReconstructedAction,
     meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
-    meetingAgentPeopleNames,
     meetingAgentProposalChangeIsVisible,
-    meetingAgentProposalReviewFlagId,
     meetingMinutesAgentCompactDiscussionEnabled,
     meetingMinutesAgentCriticPrompt,
     meetingMinutesAgentSalvagePrompt,

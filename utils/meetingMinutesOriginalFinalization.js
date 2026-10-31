@@ -1,5 +1,7 @@
 'use strict';
 
+const { meetingAgentFlagUntouched, meetingAgentProposalReviewFlagId } = require('./meetingMinutesReviewFlags');
+
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
@@ -19,8 +21,6 @@ const { reconcileGeneratedSemanticStage } = require('./meetingMinutesSemanticSta
 function createOriginalFinalization(services) {
   const {
     askPowerAutomateMeetingMinutesAgentWithRetry,
-    meetingAgentFlagUntouched,
-    meetingAgentProposalReviewFlagId,
     normaliseMeetingAgentMinuteNumbers,
     reconcileFinalApprovedActions,
     semanticReceiptCoversActionProposal,

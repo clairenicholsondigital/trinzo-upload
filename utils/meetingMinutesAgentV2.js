@@ -8,7 +8,7 @@ const {
   CITED_TIMING_PHRASE, timingRecoveryBlocked, sourceBoundRecoveredTiming, NON_SUBSTANTIVE_TIMING_BRIDGE,
   resolveOfferedDateChoice, backfillAskedTiming, backfillCitedTiming, timingFrom,
   recoveredTimingEvidence, replaceEmbeddedTiming, timingClauseIssue, dateWordingVariants,
-  sourceRecoveredTiming, timingClauseChecksEnabled, evidenceClauses
+  sourceRecoveredTiming, timingClauseChecksEnabled, evidenceClauses, TIMING_INFERENCE_POLICY_VERSION
 } = require('./meetingMinutesActionTimingInference');
 const { anchorOwnerCommitment } = require('./meetingMinutesActionFieldGrounding');
 const {
@@ -23,7 +23,9 @@ const {
   laterRevisionUnit
 } = require('./meetingMinutesEvidenceChecks');
 const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
-const { documentReferenceContextEvidence } = require('./meetingMinutesAssessmentEvidence');
+const {
+  documentReferenceContextEvidence, requiresDocumentReferenceReview
+} = require('./meetingMinutesAssessmentEvidence');
 
 const { stableId, contentTokens, tokenOverlap, COMMON_SPEECH_WORDS } = require('./meetingMinutesRecordMatching');
 const { buildProposal, applyProposal } = require('./meetingMinutesProposals');
@@ -32,7 +34,7 @@ const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const {
   includedUnit, clearMeetingMinutesAgentV2MemoryCaches, resolutionTokens, evidenceContextFor,
   preparedTranscriptFromUnits, comparisonText, evidenceWindowUnits, evidenceWindowText, materialTokens,
-  explicitValuePresent, polarity, evidenceSupportScore
+  explicitValuePresent, polarity, evidenceSupportScore, surroundingEvidence
 } = require('./meetingMinutesEvidenceContext');
 const { CALENDAR_TIMING, DEPENDENCY_TIMING, hasTimingSignal, normaliseTimingWording, timingPublicationIssue, timingForPublication, timingWordingHasMeaning } = require('./meetingMinutesTimingPublication');
 
@@ -42,7 +44,7 @@ const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutes
 const { sanitiseDetails } = require('./meetingMinutesDraftContext');
 const {
   normaliseFlag, reconcileRecordFlags, reconcileUsefulRecordFlags, isSalientCoverageFlag,
-  isUsefulReviewFlag, COVERAGE_FLAG_MESSAGE
+  isUsefulReviewFlag, coverageFlags
 } = require('./meetingMinutesReviewFlags');
 const { convertSpokenNumbers } = require('./spokenNumbers');
 const { alignEllipticalDateRangesWithEvidence } = require('./spokenForms');
@@ -88,13 +90,6 @@ const { boundedReviewEvidence } = require('./meetingMinutesReviewEvidence');
 const { SCHEMA_VERSION } = require('./meetingMinutesResponseContracts');
 
 const { PAYLOAD_VERSION, migrateDraftPayload } = require('./meetingMinutesDraftStorage');
-// Application-derived timing in cached action candidates is versioned separately
-// from the shared source assessment policy and the Microsoft response schema.
-const TIMING_INFERENCE_POLICY_VERSION = 1;
-
-function requiresDocumentReferenceReview(action = {}) {
-  return (Array.isArray(action?.reviewFlagIds) ? action.reviewFlagIds : []).some(id => String(id).startsWith('flag-document-reference-'));
-}
 const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute)|meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
 // Declarative technical behaviour is discussion evidence even when it contains no
 // decision, owner or future action. Giving it an explicit candidate kind protects
@@ -4198,21 +4193,6 @@ function finaliseActionTimings(actions = [], units = [], options = {}) {
   return { actions: checked, flags, assessments };
 }
 
-function coverageFlags(inventory = [], result = {}) {
-  const output = JSON.stringify({
-    discussion: result.discussion || [],
-    actions: result.actions || [],
-    executiveSummary: result.executiveSummary || '',
-    meetingObjectives: result.meetingObjectives || result.objectives || []
-  });
-  return inventory.filter((item) => Math.max(tokenOverlap(item.text, output), evidenceSupportScore(item.text, output)) < 0.28).slice(0, 12).map((item, index) => normaliseFlag({
-    id: `coverage-${item.id}`,
-    kind: item.kind === 'standard_reference' ? 'unclear_reference' : 'uncertain_fact',
-    message: `${COVERAGE_FLAG_MESSAGE} “${item.text.slice(0, 220)}”`,
-    evidenceIds: item.evidenceIds
-  }, index));
-}
-
 function groundedObjectives(values = [], units = []) {
   const opening = normaliseSourceUnits(units).filter(includedUnit).slice(0, 30)
     .filter((unit) => /\b(?:agenda|aim|objective|purpose|focus|today|here to|want to|need to (?:cover|discuss|review)|going to (?:cover|discuss|review))\b/i.test(unit.text));
@@ -4284,14 +4264,6 @@ function groundedExecutiveSummary(value, discussion = [], actions = []) {
   const next = (Array.isArray(actions) ? actions : []).map((item) => text(item?.action, 500))
     .filter((item) => item && !isRoutineMeetingAdministrationText(item)).slice(0, 2);
   return text([...facts, ...next].join(' '), 1500);
-}
-
-function surroundingEvidence(units = [], ids = []) {
-  const rows = normaliseSourceUnits(units);
-  const wanted = new Set(ids);
-  const indexes = rows.map((unit, index) => wanted.has(unit.id) ? index : -1).filter((index) => index >= 0);
-  const include = new Set(indexes.flatMap((index) => [index - 1, index, index + 1]).filter((index) => index >= 0 && index < rows.length));
-  return [...include].sort((a, b) => a - b).map((index) => ({ ...rows[index], cited: wanted.has(rows[index].id) }));
 }
 
 module.exports = {

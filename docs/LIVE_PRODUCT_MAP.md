@@ -568,13 +568,62 @@ all assertions. The failed release is archived before the required full rerun.
 Application code is unchanged by either test correction. Compact coverage and
 persistence-sensitive selection updates require the full release profile.
 
-Stage 3 remains in progress. Referee-candidate projection/contract ownership,
-effective discussion disposition accounting and the generation repair prompt
-still need explicit implementation or a named later-stage assignment. The
-broader remaining service inventory must also be checked against the stage's
-actual ownership criteria. Publication/Library/exports, reviewer save/history
-and preparation/generation lifecycle remain later stages. Completing this
-normalization/validation batch does not complete those stages.
+That normalization/validation batch left referee-candidate projection,
+contract/accounting and the repair prompt for the next shared-owner boundary.
+
+### Referee candidate contracts and shared leaf bindings
+
+`utils/meetingMinutesRefereeCandidates.js` now owns the eight existing candidate
+and referee functions (382 declaration lines). Candidate selection, context
+budgets, timing signatures, compaction, immutable request contracts and effective
+discussion accounting use the same algorithms and actual shared dependencies.
+Candidate order, source/priority ranking, limits, live environment reads,
+retained target identities and timing provenance remain. The context-cap helper
+stays private; the seven cross-module or compatibility bindings are exported.
+
+DiscoveryValidation receives the unchanged four-line empty-result repair prompt.
+ReviewFlags receives the existing untouched-flag predicate, proposal warning ID
+and source-coverage warning projection. PeopleEvidence owns the existing people
+register union, using its real `mentionedPeople` function and Source owner; a
+local constant alias preserves the original declaration and exception fallback.
+AssessmentEvidence owns the document-reference review marker; EvidenceContext
+owns the cited-neighbour projection. ActionTimingInference owns its existing
+policy version 1, still separate from Timing integrity policy version 4.
+
+All 16 moved declarations (15 functions and one constant, 423 declaration lines)
+retain their exact bytes and actual free bindings. The shared warning registry,
+source-array cache/reset, diagnostics and existing module identities stay in
+their owners. The complete import graph includes lazy settings/database and
+timing-review paths; it has no API/V2 back-reference or cycle for these owners.
+There is no new factory, policy callback bag, wrapper or copied state.
+
+Original Discovery, Discussion, Actions and Finalization import the seven moved
+service policies directly, reducing supplied entries from 108 to 101. Original
+Actions and Edits import the moved V2 leaves directly. API also imports the five
+already-shared payload, text and timing bindings from their actual owners.
+V2 retains its four moved public leaf bindings as the same function/value
+identities. API falls from 15,911 to 15,494 lines and V2 from 4,456 to 4,428;
+these figures describe the entrypoints, not deletion across the whole repository.
+All 94 routes, 223 API exports, 158 V2 exports and 27 provider prompt definitions,
+including the moved repair prompt, retain their existing contracts and bytes.
+
+Seven existing pure candidate/accounting cases and the existing repair-prompt
+case move into compact owner checks. No regression cases or assertion expressions
+are added or removed. Mixed generation, review, publication and persistence
+coverage stays in place. RefereeCandidates retains persistence-sensitive test
+selection; the suite/selector update requires the full release profile.
+
+This implements the remaining four contracts in the historical 18-contract
+subset. **Stage 3 remains in progress.** The 101 supplied entries still include
+eight genuine process/provider coordination ports, five publication boundaries,
+two reviewer boundaries, 17 generation switches, 14 generation prompt composers,
+one stage address and 54 higher publication/reviewer/generation policies. Those
+54 have explicit assignments to later stages and remain unimplemented there.
+API still imports 70 V2-local bindings, and 87 exported bindings remain local to
+V2; their publication and generation ownership is outstanding. Completing this
+contract subset does not complete those policies or the broader simplification.
+Publication/Library/exports, reviewer save/history and preparation/generation
+lifecycle remain the next stages; deferred work is not counted as implemented.
 
 ## Evidence and limits
 

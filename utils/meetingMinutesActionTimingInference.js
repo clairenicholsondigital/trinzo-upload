@@ -449,6 +449,10 @@ function replaceEmbeddedTiming(actionText = '', previousTiming = '', replacement
   return revised || source;
 }
 
+// Application-derived timing in cached action candidates is versioned separately
+// from the shared source assessment policy and the Microsoft response schema.
+const TIMING_INFERENCE_POLICY_VERSION = 1;
+
 module.exports = {
   ANSWER_TIMING,
   ASKS_WHEN,
@@ -469,5 +473,6 @@ module.exports = {
   timingClauseChecksEnabled,
   timingClauseIssue,
   timingFrom,
-  timingRecoveryBlocked
+  timingRecoveryBlocked,
+  TIMING_INFERENCE_POLICY_VERSION
 };
