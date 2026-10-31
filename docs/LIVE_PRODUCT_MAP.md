@@ -1020,7 +1020,7 @@ new-orphan review is separate from a general historical cleanup.
 Four bounded existing-file cases cover canonical inventory identity/order,
 shared diagnostic events and actual disabled/enabled/file-failure tracing.
 Existing cases and assertions remain; one Python source assertion follows its
-actual action-recovery owner. The two database browser fixtures serve relative
+actual action-recovery owner. The five database browser fixtures serve relative
 view paths from an explicit trusted test root, preserving their assertions while
 supporting hidden checkout directories. Production file-serving policy stays
 unchanged. All 26 prompts, frontend assets, public routes/exports, saved formats,

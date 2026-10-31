@@ -16,7 +16,7 @@ else {
   CREATE TABLE project_report_sources(id BIGSERIAL PRIMARY KEY,report_id BIGINT,source_type TEXT,file_name TEXT,transcript_text TEXT,transcript_length INTEGER,transcript_sha256 TEXT);
   INSERT INTO projects VALUES(19,'Synthetic AI project');`);
   const app=express();app.use(express.json());app.use('/static',express.static(root+'/public'));
-  app.get('/project-update-test/reports/:reportId',(_,res)=>res.sendFile(root+'/views/project-update-reports.html'));
+  app.get('/project-update-test/reports/:reportId',(_,res)=>res.sendFile('views/project-update-reports.html',{root}));
   app.get('/api/project-update-test/reports/:reportId',async(req,res)=>res.json({ok:true,report:await db.getProjectReportDetail(req.params.reportId)}));app.patch('/api/project-update-test/reports/:reportId',patch);
   server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));origin='http://127.0.0.1:'+server.address().port;browser=await chromium.launch({headless:true});
  });
