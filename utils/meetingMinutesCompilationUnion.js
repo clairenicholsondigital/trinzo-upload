@@ -1,5 +1,9 @@
 'use strict';
-const B=require('./canonicalMinutes/discussionBoundedRewrite'),V=require('./meetingMinutesAgentV2'),T=require('./meetingMinutesTiming');
+
+const { normaliseSourceUnits } = require('./meetingMinutesSource');
+const { commitmentQuoteTiesOwner } = require('./meetingMinutesActionSourceMatching');
+const { readInventory: inventory } = require('./meetingMinutesActionInventory');
+const B=require('./canonicalMinutes/discussionBoundedRewrite'),T=require('./meetingMinutesTiming');
 const {hash}=require('./meetingMinutesProofHash'),{isReviewerAuthored}=require('./canonicalMinutes/state');
 const VERSION='compilation-union-v1',clone=x=>structuredClone(x),fields=new Set(['id','occurrenceId','action','owners','evidenceIds','reviewFlagIds','timing','timingDecision']);
 const checks=['sameWorkEvent','explicitOutstandingWork','sameOwners','sameRecipient','allOperationsRetained','allScopeRetained','noNewWork'];
@@ -11,7 +15,7 @@ function eligible(row,protectedIds=[]){const t=row?.timing,d=row?.timingDecision
  &&new Set(row.evidenceIds).size===row.evidenceIds.length&&(row.reviewFlagIds===undefined||Array.isArray(row.reviewFlagIds)&&row.reviewFlagIds.every(id=>typeof id==='string'&&id.length>0&&id.length<=80))&&(row.reviewFlagIds||[]).length<=24
  &&t&&!t.exactDate&&((t.kind==='not_stated'&&!t.wording)||t.kind==='dependency'&&typeof t.wording==='string'&&t.wording.trim()&&d?.status==='unresolved')
  &&!['rejected','needs_rebind'].includes(d?.status)&&!d?.rejectedExactDates?.length&&!d?.rejectedWordings?.length;}
-function prepare(actions,units,meetingDate='',protectedIds=[]){units=V.normaliseSourceUnits(units);const count=id=>actions.filter(r=>r.id===id).length;
+function prepare(actions,units,meetingDate='',protectedIds=[]){units=normaliseSourceUnits(units);const count=id=>actions.filter(r=>r.id===id).length;
  for(let i=0;i<actions.length;i++)for(let j=i+1;j<actions.length;j++){
   const x=actions[i],y=actions[j];if(!eligible(x,protectedIds)||!eligible(y,protectedIds)||count(x.id)!==1||count(y.id)!==1
    ||canon(x.owners[0])!==canon(y.owners[0])||x.action===y.action)continue;
@@ -32,18 +36,18 @@ function prepare(actions,units,meetingDate='',protectedIds=[]){units=V.normalise
   const candidate={id:'compilation-'+hash(originalActions).slice(0,24),rows,sourceUnits,metadata:{evidenceIds:[...new Set(originalActions.flatMap(r=>r.evidenceIds))],reviewFlagIds:[...new Set(originalActions.flatMap(r=>r.reviewFlagIds||[]))]},nominationKind:'partial_overlap'};
   const body={version:B.VERSION,inputHash:hash(actions),sourceHash:hash(units),meetingDate,originalActions,candidates:[candidate]};return {...body,packetHash:hash(body)};
  }return null;}
-function inventory(packet,response){return require('./meetingMinutesActionUnionRewrite').readInventory(packet,response);}
+
 function vocabulary(packet,text){const words=s=>canon(s).match(/[\p{L}\p{N}]+/gu)||[],original=new Set(words(packet.originalActions.map(r=>r.action).join(' ')));return /^Compile\b/.test(text)&&words(text).every(w=>original.has(w));}
 function workPrompt(packet,candidate){return 'ACTION_CRITIC_COMPILATION_UNION_VERIFICATION\nIndependently assess whether BOTH original instructions and the proposed rewrite describe ONE source-supported outstanding compilation deliverable for the SAME assignee, recipient, material and work occurrence. Same wording/owner/citations is never proof. Decline separate reports, review execution, submissions or versions. Preserve all quantities, scope and relationships; no invented work. Timing metadata is deliberately UNCHANGED and may be unresolved: do not verify it, infer it, remove it or treat its absence on one paraphrase as a separate work event. Quote the actual assignment/acceptance tying this work to its owner. Return only {results:[{version:"'+VERSION+'",packetHash:"'+packet.packetHash+'",checks:{'+checks.map(k=>k+':boolean').join(',')+'},assignmentWitnesses:[{sourceId,quote}]}]}.\nDATA\n'+JSON.stringify({packetHash:packet.packetHash,originalActions:packet.originalActions,text:candidate.text,sourceUnits:candidate.sourceUnits});}
 function workValid(packet,response){if(response?.version!==VERSION||response.packetHash!==packet.packetHash||!checks.every(k=>response.checks?.[k]===true)||!response.assignmentWitnesses?.length||response.assignmentWitnesses.length>12)return false;
  const owner=packet.originalActions[0].owners[0],sources=packet.candidates[0].sourceUnits,first=owner.split(/\s+/)[0].toLowerCase(),names=[...new Set(sources.map(u=>u.speaker).filter(s=>s?.split(/\s+/)[0].toLowerCase()===first))];
  if(names.length!==1||names[0]!==owner)return false;
- return response.assignmentWitnesses.every(w=>{const rows=sources.filter(u=>u.id===w?.sourceId);return rows.length===1&&typeof w.quote==='string'&&w.quote.trim()&&rows[0].text.includes(w.quote)&&V.commitmentQuoteTiesOwner(w.quote,[owner],rows[0].speaker+': '+rows[0].text);});}
+ return response.assignmentWitnesses.every(w=>{const rows=sources.filter(u=>u.id===w?.sourceId);return rows.length===1&&typeof w.quote==='string'&&w.quote.trim()&&rows[0].text.includes(w.quote)&&commitmentQuoteTiesOwner(w.quote,[owner],rows[0].speaker+': '+rows[0].text);});}
 function assessment(packet,responses){const inv=inventory(packet,responses.inventory);if(inv?.length!==1)return null;const proposal=B.proposals(packet,inv,responses.proposal);if(proposal?.length!==1||!vocabulary(packet,proposal[0].text))return null;const verified=B.verified(packet,proposal,responses.verification);return verified?.accepted?.length===1&&workValid(packet,responses.work)?verified.accepted[0]:null;}
 function expected(packet,candidate,units){const a=packet.originalActions[0],row={...clone(a),action:candidate.text,evidenceIds:clone(candidate.metadata.evidenceIds),reviewFlagIds:clone(candidate.metadata.reviewFlagIds)};
  if(a.timingDecision)row.timingDecision={...clone(a.timingDecision),...T.timingAssessmentKey(row,units,packet.meetingDate)};return row;}
 const frame=row=>{const {id,occurrenceId,...rest}=row;return rest;};
-function valid(receipt,original,survivor,units,date=receipt?.packet?.meetingDate){try{const p=receipt.packet;if(receipt.version!==VERSION||p.sourceHash!==hash(V.normaliseSourceUnits(units))||p.meetingDate!==date)return false;const {packetHash,...body}=p;if(hash(body)!==packetHash)return false;
+function valid(receipt,original,survivor,units,date=receipt?.packet?.meetingDate){try{const p=receipt.packet;if(receipt.version!==VERSION||p.sourceHash!==hash(normaliseSourceUnits(units))||p.meetingDate!==date)return false;const {packetHash,...body}=p;if(hash(body)!==packetHash)return false;
  const reconstructed=prepare(p.originalActions,units,p.meetingDate);if(!reconstructed||hash(reconstructed.originalActions)!==hash(p.originalActions)||hash(reconstructed.candidates)!==hash(p.candidates))return false;
  const accepted=assessment(p,receipt.responses);return !!accepted&&p.originalActions.some(r=>hash(r)===hash(original))&&hash(frame(survivor))===hash(frame(expected(p,accepted,units)))&&hash(survivor)===hash(receipt.final);
  }catch{return false;}}
@@ -54,7 +58,7 @@ async function rewrite(actions,units,options={}){const original=clone(actions),p
   const proposed=B.proposals(packet,inv,await ask('proposal',intro+B.proposalPrompt(packet,inv)));if(proposed?.length!==1||!vocabulary(packet,proposed[0].text))return {actions:original,audit:{...audit,reason:'no_safe_proposal',responses}};
   const review=B.verified(packet,proposed,await ask('verification',intro+B.verificationPrompt(packet,proposed)));if(review?.accepted?.length!==1)return {actions:original,audit:{...audit,reason:'coverage_rejected',responses}};
   await ask('work',workPrompt(packet,review.accepted[0]));const accepted=assessment(packet,responses);if(!accepted)return {actions:original,audit:{...audit,reason:'work_event_not_proved',responses}};
-  if(hash(actions)!==packet.inputHash||hash(V.normaliseSourceUnits(units))!==packet.sourceHash)throw Error('stale_input');
+  if(hash(actions)!==packet.inputHash||hash(normaliseSourceUnits(units))!==packet.sourceHash)throw Error('stale_input');
   const final=expected(packet,accepted,units),receipt={version:VERSION,packet,responses,final:clone(final)};
   if(!valid(receipt,packet.originalActions[0],final,units,packet.meetingDate))throw Error('invalid_receipt');
   const [a,b]=packet.originalActions,output=original.filter(r=>r.id!==b.id).map(r=>r.id===a.id?final:r);

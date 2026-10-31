@@ -1,6 +1,6 @@
 'use strict';
 // Source and retention diagnostics; returns unchanged originals, never edits.
-const R={prepareActionReconciliation:(...args)=>require('./canonicalMinutes/actionSemanticReconciliation').prepareActionReconciliation(...args),mechanicalCoverage:(...args)=>require('./canonicalMinutes/actionSemanticReconciliation').mechanicalCoverage(...args)};
+const R = require('./canonicalMinutes/actionReconciliationPreparation');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
 const { sourceOwnerWitnessScope } = require('./meetingMinutesSemanticSourceVerification');
 const { hash } = require('./meetingMinutesProofHash');

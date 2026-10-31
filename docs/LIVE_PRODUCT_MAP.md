@@ -802,6 +802,53 @@ Existing mixed save/reload, database, browser, project-handoff and export checks
 remain; source-reading fixtures follow their real owners. Frontend assets,
 stored formats, renderer implementations and provider configuration are unchanged.
 
+## Reviewer transactions and restoration boundary
+
+The next complete area owns all eight reviewer mutation routes in
+`routes/meetingMinutesReviewer.js`, registered at their existing positions in
+`routes/api.js`. Reviewer state/history, draft persistence, proposal decisions
+and proposal timing now live in `meetingMinutesReviewerState.js`,
+`meetingMinutesDraftPersistence.js`, `meetingMinutesProposalReview.js` and
+`meetingMinutesProposalTiming.js`. The save registration receives the existing
+optional stage scheduler directly; DB/authentication and shared policies are
+actual imports. No second draft store, history stack or process cache is created.
+
+The Library restoration limitation described above is resolved by moving the
+actual preparation and shape policies into `actionReconciliationPreparation.js`,
+`containedRequirementShape.js`, `qualifiedDependencyShape.js` and
+`contactParaphraseShape.js`. Register/facet consumers import preparation directly,
+and directional coverage imports the existing consolidation state owner. Action
+inventory and commitment-owner source witnesses have direct owners. Pure timing
+recovery state is separated from provider review in
+`meetingMinutesTimingRecoveryState.js`. The full Library/reviewer graph, including
+lazy requires, reaches 139 files with no cycles and no imports back into API/V2.
+Compatibility exports retain the canonical function and state identities.
+
+This batch moves 111 existing declarations (1,160 declaration lines) and eight
+route statements. The complete preparation output, ordered diagnostics and
+receipt replay comparisons retain source authority and independent vetoes.
+API falls from 13,364 to 12,473 lines and V2 from 4,306 to 4,128. These figures
+measure smaller entrypoints; most code has moved to owners rather than been
+deleted. All 94 effective routes, 223 API exports, 158 V2 exports, 27 prompt
+definitions and 10 Original runtime bodies remain.
+
+Existing source-reading save tests follow the actual save registration. Three
+existing transaction files join the compact core: discussion save/history,
+review staleness and reviewer timing authority. The original cases and assertions
+remain, and the database-sensitive selector recognizes every new owner. Product
+checks use controlled handlers/storage or the isolated test database; live smoke
+checks read saved drafts and compare desktop/mobile pages and ordinary/evidence
+exports. No frontend assets, renderers, storage formats, schemas, dependencies,
+Python processing or provider configuration change.
+
+This completes the implementation of the reviewer transaction/history area;
+Stage 5 acceptance also requires the frozen release and deployment evidence.
+The former Library restoration graph gap is closed. Stage 3/4 final acceptance
+still needs its explicit criteria review, and Stage 6 generation lifecycle is
+unfinished. Background generation, summary timing, speculative scheduling and
+the genuine injected process save operation remain generation boundaries.
+Verified deletion and retirement of compatibility exports remain later work.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

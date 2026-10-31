@@ -1,7 +1,7 @@
 'use strict';
 // Immutable pair inventory for source reviews; never edits action records.
 const { createHash } = require('node:crypto');
-const mechanicalCoverage=(...args)=>require('./canonicalMinutes/actionSemanticReconciliation').mechanicalCoverage(...args);
+const { mechanicalCoverage } = require('./canonicalMinutes/actionReconciliationPreparation');
 const clone = value => structuredClone(value);
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;

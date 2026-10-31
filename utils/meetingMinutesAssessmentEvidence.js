@@ -1,5 +1,9 @@
 'use strict';
 
+const { LEAVING_REMARK_PATTERN, DELIVERABLE_CONTEXT_PATTERN } = require('./meetingMinutesActionEvidence');
+const { salientExcerpt } = require('./meetingMinutesText');
+
+
 const { text } = require('./meetingMinutesText');
 const { normaliseSourceUnits } = require('./meetingMinutesSource');
 const {
@@ -92,8 +96,51 @@ function requiresDocumentReferenceReview(action = {}) {
   return (Array.isArray(action?.reviewFlagIds) ? action.reviewFlagIds : []).some(id => String(id).startsWith('flag-document-reference-'));
 }
 
+const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute)|meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
+
+function salientDetailInventory(units = []) {
+  const patterns = [
+    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:additional|extra|more|not[- ]started|outstanding|remaining|completed?)\s+)?(?:languages?|alarms?|bands?|levels?|categories|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?|units?|batches|sites?)\b/i],
+    ['progress_change', /\b(?:mov(?:e|ed|ing)|progress(?:ed|ion)?|reduc(?:e|ed|tion)|increas(?:e|ed)|fell|rose|down|up|from)\b[^.!?]{0,100}\b(?:to|by|from)\s+(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b/i],
+    // A number is a standards reference because something says so in front of it.
+    // The prefix used to be optional, which made this "any bare 3-5 digit number"
+    // and turned "a hard stop at 1130" into a reference for the reviewer to check.
+    ['standard_reference', /\b(?:BS\s+EN|EN|IEC|ISO|ASTM|standards?)\s+\d{3,5}(?:[-–]\d+)*(?::\d{4})?\b/i],
+    ['alarm_behaviour', /\b(?:alarm|audible|mute|silenc|beep)\b/i],
+    ['approval_status', /\b(?:approved?|accepted?|signed?\s*off|pending approval|not approved|rejected?)\b/i],
+    ['blocker_dependency', /\b(?:block(?:ed|er|ing)?|depend(?:s|ent|ency)?|waiting for|held up|holding (?:it|this|that|them) up|stalled|delayed by|subject to|before .* can|once .* (?:is|has been)|cannot .* until|pending)\b/i]
+  ];
+  const result = [];
+  for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
+    if (MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) continue;
+    for (const [kind, pattern] of patterns) {
+      if (!pattern.test(unit.text)) continue;
+      if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
+      if (kind === 'blocker_dependency' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      if (kind === 'progress_change' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      if (kind === 'quantity' && /\b(?:weeks?|days?|sites?)\b/i.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
+      result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: salientExcerpt(unit.text, pattern), evidenceIds: [unit.id] });
+    }
+  }
+  // Avoid allowing a long run of quantities near the beginning to crowd every
+  // standard, dependency or approval out of the prompt. Round-robin by kind,
+  // retaining transcript order inside each category.
+  const byKind = new Map(patterns.map(([kind]) => [kind, result.filter((item) => item.kind === kind)]));
+  const balanced = [];
+  while (balanced.length < 80 && [...byKind.values()].some((items) => items.length)) {
+    for (const [kind] of patterns) {
+      const item = byKind.get(kind).shift();
+      if (item) balanced.push(item);
+      if (balanced.length >= 80) break;
+    }
+  }
+  return balanced;
+}
+
 module.exports = {
   assessmentOwnershipReviewNotice,
   documentReferenceContextEvidence,
-  requiresDocumentReferenceReview
+  requiresDocumentReferenceReview,
+  salientDetailInventory,
+  MEETING_ADMIN_PATTERN
 };

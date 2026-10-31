@@ -1,16 +1,17 @@
 'use strict';
 
+const { normaliseSourceUnits } = require('./meetingMinutesSource');
+const { commitmentQuoteTiesOwner } = require('./meetingMinutesActionSourceMatching');
+const { readInventory, clone, hash, stable } = require('./meetingMinutesActionInventory');
+
 const { normaliseActions } = require('./meetingMinutesActionNormalization');
-const crypto = require('node:crypto');
 const B = require('./canonicalMinutes/discussionBoundedRewrite');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
 const { commitmentScopeConflict, conflictingRecipients, conflictingDestinations } = require('./canonicalMinutes/commitmentDuplicates');
-const V = require('./meetingMinutesAgentV2');
 const VERSION = 'action-workflow-union-v1';
-const clone = v => structuredClone(v);
-const stable = v => Array.isArray(v) ? v.map(stable) : v && typeof v === 'object'
- ? Object.fromEntries(Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>[k,stable(v[k])])) : v;
-const hash = v => crypto.createHash('sha256').update(JSON.stringify(stable(v))).digest('hex');
+
+
+
 const frame = a => Object.fromEntries(Object.entries(a).filter(([k]) => !['id', 'occurrenceId'].includes(k)));
 const checks = ['sameWorkEvent','explicitOutstandingWork','sameOwners','sameRecipient','sameConditions','sameTiming','allOperationsRetained','allScopeRetained','noNewWork'];
 const FIELDS = new Set(['id','action','owners','evidenceIds','timing','timingDecision','reviewFlagIds','occurrenceId']);
@@ -26,7 +27,7 @@ function eligible(a, protectedIds = []) {
   && Array.isArray(a.evidenceIds) && a.evidenceIds.length>0 && a.evidenceIds.length<=8;
 }
 function prepare(actions, units, meetingDate, protectedIds=[]) {
- units=V.normaliseSourceUnits(units);
+ units=normaliseSourceUnits(units);
  const counts = new Map(); for(const a of actions)counts.set(a.id,(counts.get(a.id)||0)+1);
  for(let i=0;i<actions.length;i++)for(let j=i+1;j<actions.length;j++) {
   const a=actions[i],b=actions[j];
@@ -62,23 +63,13 @@ function workValid(packet, response) {
  if(names.length!==1||names[0]!==owner)return false;
  return response.assignmentWitnesses.every(w=>{
   const matching=sources.filter(u=>u.id===w?.sourceId);return matching.length===1&&typeof w.quote==='string'&&w.quote.trim()
-   && matching[0].text.includes(w.quote)&&V.commitmentQuoteTiesOwner(w.quote,[owner],matching[0].speaker+': '+matching[0].text);
+   && matching[0].text.includes(w.quote)&&commitmentQuoteTiesOwner(w.quote,[owner],matching[0].speaker+': '+matching[0].text);
  });
 }
 // Inventory claim identity is record-scoped. Namespacing changes no claim or
 // verdict. Duplicate labels within one record remain ambiguous and invalid.
 // Original raw responses remain in the immutable receipt.
-function readInventory(packet, raw) {
- if(!raw||!Array.isArray(raw.results))return null;
- const normalized=clone(raw);
- for(const result of normalized.results)for(const record of result.records||[]) {
-  if(!Array.isArray(record.claims))return null;
-  const ids=record.claims.map(c=>c?.id);
-  if(ids.some(id=>typeof id!=='string'||!id.trim())||new Set(ids).size!==ids.length)return null;
-  for(const claim of record.claims)claim.id='claim-'+hash([record.recordId,claim.id]).slice(0,24);
- }
- return B.inventories(packet,normalized);
-}
+
 function originalVocabularyRetained(packet, text) {
  if(/\b(?:or|either|neither|unless|if|not|only|never|after|before|once|when|until)\b|[\/|]/i.test(text))return false;
  const stop=new Set('the and but are was were been being for from this that these those they their them his her our also have has had does did some there with into onto only'.split(' '));
@@ -95,9 +86,9 @@ function assessment(packet, responses) {
 function valid(receipt, original, survivor, units, date=receipt?.packet?.meetingDate) {
  if(receipt?.version==='compilation-union-v1')return require('./meetingMinutesCompilationUnion').valid(receipt,original,survivor,units,date);
  try {
-  if(receipt?.version!==VERSION||receipt.packet.sourceHash!==hash(V.normaliseSourceUnits(units))||receipt.packet.meetingDate!==date)return false;
+  if(receipt?.version!==VERSION||receipt.packet.sourceHash!==hash(normaliseSourceUnits(units))||receipt.packet.meetingDate!==date)return false;
   const {packetHash,...body}=receipt.packet;if(hash(body)!==packetHash)return false;
-  const source=V.normaliseSourceUnits(units);
+  const source=normaliseSourceUnits(units);
   if(receipt.packet.originalActions.length!==2||receipt.packet.originalActions.some(a=>!eligible(a)))return false;
   if(receipt.packet.candidates.some(c=>c.sourceUnits.some(u=>source.filter(s=>s.id===u.id&&hash(s)===hash(u)).length!==1)))return false;
   const accepted=assessment(receipt.packet,receipt.responses);if(!accepted)return false;
@@ -128,7 +119,7 @@ async function rewrite(actions, units, options={}) {
   const verified=B.verified(packet,proposed,await ask('verification',intro+B.verificationPrompt(packet,proposed)));if(verified?.accepted?.length!==1){audit.reason='coverage_rejected';return {actions:original,audit:{...audit,responses}};}
   await ask('work',workPrompt(packet,verified.accepted[0]));
   const c=assessment(packet,responses);if(!c){audit.reason='work_event_not_proved';return {actions:original,audit:{...audit,responses}};}
-  if(hash(actions)!==packet.inputHash||hash(V.normaliseSourceUnits(units))!==packet.sourceHash){audit.reason='stale_input';return {actions:original,audit};}
+  if(hash(actions)!==packet.inputHash||hash(normaliseSourceUnits(units))!==packet.sourceHash){audit.reason='stale_input';return {actions:original,audit};}
   const [a,b]=packet.originalActions;
   if(!/^Review\b/.test(c.text)||c.outputSentences.length!==1||!originalVocabularyRetained(packet,c.text))throw Error('not_one_work_instruction');
   const normalized=normaliseActions({actions:[{...a,action:c.text,evidenceIds:c.metadata.evidenceIds}]},units,{meetingDate:options.meetingDate||''})[0];

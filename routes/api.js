@@ -1,3 +1,9 @@
+const { registerMeetingMinutesReviewerParallelProposals, registerMeetingMinutesReviewerSave, registerMeetingMinutesReviewerSource, registerMeetingMinutesReviewerDecisionsHistory } = require('./meetingMinutesReviewer');
+const { meetingAgentDraftPayload, meetingAgentWithoutDanglingFlagRefs, meetingAgentObjectiveRecords, normaliseMeetingAgentQualityState, normaliseMeetingAgentGeneration, meetingAgentReviewSnapshot, MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS, meetingAgentRestoreReviewSnapshot, meetingAgentReviewHistoryEntry, meetingAgentDerivedStaleStages, meetingAgentDiscussionUsesDateAnchor, meetingAgentStaleStagesAfterGeneration, assertMeetingAgentDateInput, reopenFlagsOfReAddedItems } = require('../utils/meetingMinutesReviewerState');
+const { saveMeetingAgentDraft, normaliseMeetingAgentDraftChanges } = require('../utils/meetingMinutesDraftPersistence');
+const { rebaseMeetingAgentProposal, automaticMeetingAgentProposalReview, destructiveActionEdit, proposalOwnersOf, proposalTimingStated, duplicateMeetingAgentActionModification, meetingAgentEditableActionSignature, retainedDocumentReferenceReviewFlags, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
+const { finaliseMeetingAgentTimingProposal, finaliseActionTimings, reconcileSiblingTimingDecisions } = require('../utils/meetingMinutesProposalTiming');
+const { salientDetailInventory } = require('../utils/meetingMinutesAssessmentEvidence');
 const {
   candidatePromptPack
 } = require('../utils/meetingMinutesCandidatePack');
@@ -113,7 +119,6 @@ const {
 const { normaliseMeetingAgentGeneration: normaliseGeneration, meetingAgentPassTimingPolicy, meetingAgentFailureClass, meetingAgentResultCounts, meetingAgentMaterialPassImpact, annotateMeetingAgentPassImpact, meetingAgentCallPerformance, meetingAgentExecutionTelemetry } = require('../utils/meetingMinutesAgentGeneration');
 const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
-const timingRecovery = require('../utils/meetingMinutesTimingRecovery');
 const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
 const discussionClaims = require('../utils/canonicalMinutes/discussionClaimConsolidation');
@@ -300,7 +305,6 @@ const {
   query
 } = require('../utils/db');
 const {
-  salientDetailInventory,
   actionCandidateInventory,
   actionCommitmentThreadInventory,
   actionCommitmentChainInventory,
@@ -316,8 +320,6 @@ const {
   timingCheckItems,
   timingCheckPrompt,
   applyTimingCheckResults,
-  finaliseActionTimings,
-  reconcileSiblingTimingDecisions,
   decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
   decisionCheckItems,
   decisionCheckPrompt,
@@ -397,22 +399,9 @@ const router = express.Router();
 const PRIVATE_STAGED_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
-function meetingAgentObjectiveRecords(value) {
-  return (Array.isArray(value) ? value : []).map((item, index) => {
-    const objective = meetingMinutesAgentText(typeof item === 'string' ? item : item?.text, 400);
-    if (!objective) return null;
-    return {
-      id: meetingMinutesAgentText(item?.id, 80) || `objective-${index + 1}`,
-      text: objective,
-      ...(isReviewerAuthored(item) ? { reviewerAuthored: true } : {}),
-      evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean)
-    };
-  }).filter(Boolean).slice(0, 20);
-}
 
-function normaliseMeetingAgentGeneration(generation) {
-  return normaliseGeneration(generation, MEETING_AGENT_STAGE_STEP);
-}
+
+
 const upload = multer({ storage: multer.memoryStorage() });
 const testUpload = multer({
   storage: multer.memoryStorage(),
@@ -7855,17 +7844,7 @@ function hybridCandidateLedgerFromResult(result = {}, sourcePass = 'unknown') {
 // Context warnings are durable review records even if a later lifecycle or
 // proposal filter withholds the candidate. Keeping the question is not adding
 // its instruction to the minutes.
-function retainedDocumentReferenceReviewFlags(records = [], flags = []) {
-  const rows = records.filter(requiresDocumentReferenceReview);
-  return reconcileRecordFlags({ actions: rows }, flags).flags.filter(flag =>
-    flag.documentReferenceContext && rows.some(row => (row.reviewFlagIds || []).includes(flag.id)))
-    .map(flag => {
-      const row = rows.find(record => (record.reviewFlagIds || []).includes(flag.id));
-      return normaliseMeetingAgentFlag({ ...flag, kind: 'possible_missed_follow_up', reviewDisposition: 'not_applied_addition',
-        message: flag.message.startsWith('Possible assessment to review:') ? flag.message
-          : `Possible assessment to review: ${flag.message} Proposed wording: ${meetingMinutesAgentText(row.action, 160)}` });
-    });
-}
+
 
 function deterministicHybridLedger(draft, stage) {
   if (stage === 'actions') {
@@ -9094,213 +9073,27 @@ function scheduleStageSpeculation(draftId, userId, options = {}) {
 
 // A row must never point at a flag the draft does not hold (the reviewer would
 // see a flag count or link that leads nowhere). Applied on every save.
-function meetingAgentWithoutDanglingFlagRefs(records = [], flagIds = new Set()) {
-  const clean = (value) => {
-    if (Array.isArray(value)) return value.map(clean);
-    if (!value || typeof value !== 'object') return value;
-    const next = { ...value };
-    if (Array.isArray(next.reviewFlagIds)) next.reviewFlagIds = [...new Set(next.reviewFlagIds)].filter((id) => flagIds.has(String(id)));
-    for (const key of ['points', 'decisions', 'openQuestions', 'supportingDetails']) if (Array.isArray(next[key])) next[key] = next[key].map(clean);
-    return next;
-  };
-  return (Array.isArray(records) ? records : []).map(clean);
-}
 
-function normaliseMeetingAgentQualityState(qualityState = {}) {
-  // Source witnesses, hashes, cache packets and receipt originals are immutable
-  // evidence. They must never pass through prose/glossary correction walkers.
-  const source = qualityState && typeof qualityState === 'object' ? qualityState : {};
-  const prose = { ...source };
-  const protectedStates = new Map();
-  for (const stage of ['discussion', 'actions', 'summary']) {
-    if (!source[stage]) continue;
-    const rest = { ...source[stage] }, protectedFields = {};
-    for (const key of ['semanticReconciliation', 'claimConsolidation', 'discussionSourceCoverage', 'refereeFailureAudit', 'minimalFidelityRepair', 'timingRecovery', 'actionUnionRewrite', 'actionPhaseCorrection', 'filingAliasReconciliation', 'citedFilingAliasReconciliation', 'actionDiagnostics']) {
-      if (Object.hasOwn(rest, key)) { protectedFields[key] = rest[key]; delete rest[key]; }
-    }
-    prose[stage] = rest;
-    protectedStates.set(stage, protectedFields);
-  }
-  const normalised = normaliseMeetingAgentKnownTermsDeep(prose);
-  for (const [stage, protectedFields] of protectedStates) {
-    normalised[stage] = { ...normalised[stage], ...protectedFields };
-  }
-  return normalised;
-}
 
-function meetingAgentDraftPayload(draft = {}) {
-  if (parallelMinutes.isParallel(draft)) return parallelMinutes.payload(draft);
-  draft = meetingAgentWithLegacyDateReview(normaliseMeetingAgentMinuteNumbers(draft));
-  const payloadFlags = reconcileMeetingAgentOrphanFlags(
-    filingReviewFlags(draft).filter(isUsefulMeetingAgentReviewFlag),
-    [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), ...optionalReview.entries(draft).map(entry=>entry.record)],
-    draft.pendingProposal
-  );
-  const payloadFlagIds = new Set(payloadFlags.map((flag) => String(flag.id)));
-  return {
-    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
-    payloadVersion: MEETING_AGENT_PAYLOAD_VERSION,
-    transcriptSha256: draft.transcriptSha256 || '',
-    // Kept so a later upload of the same file can be recognised as a duplicate.
-    uploadSizeBytes: Math.max(0, Number(draft.uploadSizeBytes) || 0),
-    denoise: draft.denoise || {},
-    sourceUnits: normaliseSourceUnits(draft.sourceUnits),
-    preparedTranscript: normaliseMeetingAgentKnownTerms(draft.preparedTranscript || ''),
-    salientDetails: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.salientDetails) ? draft.salientDetails : []),
-    details: sanitiseMeetingAgentDetails(draft.details),
-    discussion: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.discussion, payloadFlagIds)),
-    ...(Array.isArray(draft.unassignedSupportingDetails) ? {
-      unassignedSupportingDetails: optionalReview.active(normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails), draft)
-    } : {}),
-    actions: normaliseMeetingAgentKnownTermsDeep(meetingAgentWithoutDanglingFlagRefs(draft.actions, payloadFlagIds)),
-    reviewFlags: normaliseMeetingAgentKnownTermsDeep(payloadFlags),
-    pendingProposal: normaliseMeetingAgentKnownTermsDeep(draft.pendingProposal || null),
-    changeHistory: Array.isArray(draft.changeHistory) ? draft.changeHistory.slice(-30) : [],
-    redoHistory: Array.isArray(draft.redoHistory) ? draft.redoHistory.slice(-30) : [],
-    staleStages: Array.isArray(draft.staleStages) ? [...new Set(draft.staleStages)] : [],
-    steer: meetingAgentSteerText(draft.steer),
-    executiveSummary: normaliseMeetingAgentKnownTerms(normaliseExecutiveSummary(draft.executiveSummary)),
-    meetingObjectives: normaliseMeetingAgentKnownTermsDeep(meetingAgentObjectiveRecords(draft.meetingObjectives)),
-    candidateLedger: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.candidateLedger) ? draft.candidateLedger.slice(0, 1200) : []),
-    passProvenance: normaliseMeetingAgentKnownTermsDeep(Array.isArray(draft.passProvenance) ? draft.passProvenance.slice(-40) : []),
-    passCache: normaliseMeetingAgentPassCache(draft.passCache),
-    qualityState: normaliseMeetingAgentQualityState(draft.qualityState),
-    generation: normaliseMeetingAgentGeneration(draft.generation),
-    currentStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(draft.currentStep || 0))),
-    selectedStep: Math.max(0, Math.min(MEETING_AGENT_MAX_STEP,
-      Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0)),
-    // The reviewer's own decisions about the register: which rows they have
-    // checked off, and which they rejected and could still put back.
-    includeSections: includedSections(draft),
-    keptActionIds: normaliseKeptActionIds(draft.keptActionIds, draft.actions),
-    keptActionOccurrenceIds: normaliseKeptActionOccurrenceIds(draft.keptActionOccurrenceIds,
-      [...(draft.actions || []), ...(draft.removedActions || [])]),
-    ...(optionalReview.entries(draft).length ? { excludedSupportingDetails:optionalReview.entries(draft) } : {}),
-    removedActions: normaliseMeetingAgentKnownTermsDeep(normaliseRemovedActions(draft.removedActions))
-  };
-}
 
-function resolveMeetingAgentProposalFlags(flags = [], proposal = {}, acceptedIds = [], rejectedIds) {
-  const changes = Array.isArray(proposal?.changes) ? proposal.changes : [];
-  const accepted = new Set(acceptedIds || []);
-  // Preserve the original three-argument helper contract for internal callers
-  // and older tests. The review endpoint passes an explicit fourth argument so
-  // unchecked changes can remain pending rather than being treated as rejected.
-  const rejected = new Set(arguments.length < 4
-    ? changes.map((change) => change.id).filter((id) => !accepted.has(id))
-    : (rejectedIds || []));
-  return (Array.isArray(flags) ? flags : []).map((flag) => {
-    const change = changes.find((candidate) => meetingAgentProposalFlagMatchesChange(flag, candidate));
-    if (!change || flag.status !== 'open' || (!accepted.has(change.id) && !rejected.has(change.id))) return flag;
-    return {
-      ...flag,
-      status: accepted.has(change.id) ? 'confirmed' : 'dismissed',
-      correctionNote: flag.correctionNote || (accepted.has(change.id)
-        ? 'Resolved when the proposed change was accepted.'
-        : 'Resolved when the proposed change was rejected.')
-    };
-  });
-}
+
+
+
+
 
 // After applying only some suggestions, keep the unchecked suggestions
 // pending. Their indexes are rebased against the newly updated list so a later
 // review still edits the intended record rather than whichever row moved into
 // its former position.
-function rebaseMeetingAgentProposal(proposal = {}, originalRows = [], currentRows = [], completedIds = [], options = {}) {
-  const completed = new Set(completedIds || []);
-  const original = Array.isArray(originalRows) ? originalRows : [];
-  const current = Array.isArray(currentRows) ? currentRows : [];
-  const rowIndex = (row) => {
-    if (row?.action != null) {
-      const exactReferences = current.map((candidate, index) => candidate === row ? index : -1).filter(index => index >= 0);
-      if (!validOccurrenceId(row.occurrenceId) && exactReferences.length === 1) return exactReferences[0];
-      // Identical legacy occurrences cannot be distinguished after one has
-      // disappeared. A surviving ordinal ID must not inherit its suggestion.
-      if (!validOccurrenceId(row.occurrenceId)) {
-        const same = candidate => String(candidate?.id || '') === String(row.id || '')
-          && actionProvenanceSignature(candidate) === actionProvenanceSignature(row);
-        if (original.filter(same).length > 1 && current.filter(same).length < original.filter(same).length) return -1;
-      }
-      return findActionOccurrenceIndex(current, row);
-    }
-    const id = meetingMinutesAgentText(row?.id, 80);
-    if (id) {
-      const candidates = current.map((candidate, index) => meetingMinutesAgentText(candidate?.id, 80) === id ? index : -1)
-        .filter((index) => index >= 0);
-      return candidates.length === 1 ? candidates[0] : -1;
-    }
-    const serialised = JSON.stringify(row || null);
-    return current.findIndex((candidate) => JSON.stringify(candidate || null) === serialised);
-  };
-  const changes = (Array.isArray(proposal.changes) ? proposal.changes : []).filter((change) => !completed.has(change.id)).flatMap((change) => {
-    let beforeIndex;
-    if (change.type === 'add') {
-      const originalIndex = Number.isInteger(change.beforeIndex) ? change.beforeIndex : Number(change.index) || 0;
-      beforeIndex = originalIndex >= original.length ? current.length : rowIndex(original[originalIndex]);
-      if (beforeIndex < 0) beforeIndex = Math.min(originalIndex, current.length);
-    } else {
-      beforeIndex = rowIndex(change.before, change);
-      // A destructive/edit suggestion whose named target no longer exists is
-      // obsolete. Keeping it with a fallback numeric index lets it point at a
-      // completely unrelated action after an autosave or earlier review.
-      if (beforeIndex < 0) return [];
-    }
-    // These are precisely the suggestions the reviewer left unchecked when
-    // applying a subset. Persist that choice so a refresh cannot silently
-    // select them again.
-    return [{
-      ...change,
-      beforeIndex,
-      index: beforeIndex,
-      selected: options.preserveSelection === true ? change.selected : false
-    }];
-  });
-  return changes.length ? { ...proposal, changes } : null;
-}
 
-const MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS = [
-  'details', 'steer', 'discussion', 'unassignedSupportingDetails', 'excludedSupportingDetails', 'actions', 'executiveSummary',
-  'meetingObjectives', 'reviewFlags', 'pendingProposal', 'staleStages',
-  'currentStep', 'selectedStep', 'status',
-  // Undoing a change has to restore what it did to the reviewer's own state
-  // too: which sections they included, what they checked off, what they
-  // rejected. Without these, undo puts the text back and loses the rest.
-  'includeSections', 'keptActionIds', 'keptActionOccurrenceIds', 'removedActions', 'parallelActionProposals'
-];
 
-function meetingAgentReviewSnapshot(draft = {}) {
-  return { ...Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS.map((key) => [
-    key, JSON.parse(JSON.stringify(draft[key] == null ? null : draft[key]))
-  ])), meetingDateContext: JSON.parse(JSON.stringify(draft.qualityState?.preparation?.dateContext || null)),
-    reviewerSummaryHash: draft.qualityState?.summary?.reviewerSummaryHash || '' };
-}
 
-function meetingAgentRestoreReviewSnapshot(snapshot = {}, draft = {}) {
-  const restored = Object.fromEntries(MEETING_AGENT_REVIEW_SNAPSHOT_FIELDS
-    .filter(key => Object.prototype.hasOwnProperty.call(snapshot, key))
-    .map(key => [key, snapshot[key]]));
-  if (Object.prototype.hasOwnProperty.call(snapshot, 'meetingDateContext')) {
-    restored.qualityState = { ...(draft.qualityState || {}), preparation: {
-      ...(draft.qualityState?.preparation || {}), dateContext: snapshot.meetingDateContext
-    } };
-  }
-  if (Object.prototype.hasOwnProperty.call(snapshot, 'reviewerSummaryHash')) {
-    restored.qualityState = { ...(restored.qualityState || draft.qualityState || {}), summary: {
-      ...(draft.qualityState?.summary || {}), reviewerSummaryHash: snapshot.reviewerSummaryHash || ''
-    } };
-  }
-  return restored;
-}
 
-function meetingAgentReviewHistoryEntry(draft = {}, label = 'Review decision') {
-  return {
-    id: crypto.randomUUID(),
-    type: 'review_decision',
-    label: meetingMinutesAgentText(label, 160) || 'Review decision',
-    createdAt: new Date().toISOString(),
-    beforeState: meetingAgentReviewSnapshot(draft)
-  };
-}
+
+
+
+
+
 
 function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false, recheck = {}) {
   const fields = new Set();
@@ -9337,41 +9130,13 @@ function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCove
   return merged.filter(flag => !ids.has(flag.id));
 }
 
-async function saveMeetingAgentDraft(draft, req, changes = {}) {
-  const persistedChanges = parallelMinutes.isParallel(draft) ? changes : normaliseMeetingAgentDraftChanges(changes);
-  const merged = { ...draft, ...persistedChanges };
-  // A transaction that removes one ambiguous occurrence must not turn its old
-  // shared checked token into approval of the surviving sibling.
-  if (Object.prototype.hasOwnProperty.call(persistedChanges, 'actions')
-    || Object.prototype.hasOwnProperty.call(persistedChanges, 'removedActions')) {
-    merged.keptActionOccurrenceIds = normaliseKeptActionOccurrenceIds(merged.keptActionOccurrenceIds,
-      [...(merged.actions || []), ...(merged.removedActions || [])],
-      [...(draft.actions || []), ...(draft.removedActions || [])]);
-  }
-  return updateMeetingMinutesAgentDraft(draft.draftId, req.authUser?.userId, draft.revision, {
-    title: sanitiseMeetingAgentDetails(merged.details).meetingTitle || draft.title,
-    status: persistedChanges.status || draft.status,
-    payload: meetingAgentDraftPayload(merged)
-  });
-}
+
 
 // The hybrid background pipeline writes these fields directly to the Library;
 // it does not pass through clientReadyPresentation(). Keep the persisted,
 // reviewer-visible fields consistent without rewriting transcript evidence or
 // internal model/provenance data.
-function normaliseMeetingAgentDraftChanges(changes = {}) {
-  const visibleFields = [
-    'discussion', 'actions', 'executiveSummary', 'meetingObjectives',
-    'pendingProposal', 'reviewFlags'
-  ];
-  const normalised = { ...changes };
-  for (const field of visibleFields) {
-    if (Object.prototype.hasOwnProperty.call(normalised, field)) {
-      normalised[field] = normalisePresentationCurrency(normalised[field]);
-    }
-  }
-  return normalised;
-}
+
 
 function hybridActionsEquivalent(left = '', right = '') {
   const leftTypes = hybridActionTypes(left);
@@ -11039,7 +10804,6 @@ const originalMinutesStageServices = Object.freeze({
   discussionRefereeFallbackPlan,
   discussionRefereeSufficiency,
   enrichDiscussionEvidenceFromDispositions,
-  finaliseMeetingAgentTimingProposal,
   foldUnownedNearCopies,
   gateTranscriptShapedActionChanges,
   gateTranscriptShapedActions,
@@ -11089,7 +10853,6 @@ const originalMinutesStageServices = Object.freeze({
   reconstructRefereeActions,
   refereeClusterSupportingCandidates,
   removePublishedActionProposalDuplicates,
-  retainedDocumentReferenceReviewFlags,
   safeAgentProposalPromotion,
   semanticReceiptCoversActionProposal,
   splitCompoundActionList,
@@ -11276,33 +11039,7 @@ router.post('/meeting-minutes-agent/prepare', requireAuth, withTestUpload(async 
 
 registerMeetingMinutesLibraryList(router);
 
-router.post('/meeting-minutes-agent/drafts/:draftId/parallel-proposals/:proposalId', requireAuth, async (req,res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (!parallelMinutes.isParallel(draft)) return res.status(404).json({ok:false,error:'Suggestion not found.'});
-    if (Number(req.body?.revision)!==draft.revision) return res.status(409).json({ok:false,error:'Reload the saved draft before deciding.'});
-    const proposal = (draft.parallelActionProposals || []).find(a=>a.id===req.params.proposalId);
-    if (!proposal || proposal.status!=='open') return res.status(409).json({ok:false,error:'This suggestion has already been reviewed.'});
-    if (!['accept','dismiss'].includes(req.body?.decision)) return res.status(400).json({ok:false,error:'Choose Add action or Dismiss.'});
-    const accepted = req.body.decision==='accept';
-    const id = 'reviewed-'+proposal.id;
-    const action = {...proposal,id,reviewerAuthored:true};
-    delete action.reason; delete action.status;
-    const changes = {
-      parallelActionProposals:draft.parallelActionProposals.map(a=>a.id===proposal.id?{...a,status:accepted?'accepted':'dismissed'}:a),
-      actions:accepted?[...(draft.actions || []),action]:draft.actions,
-      changeHistory:[...(draft.changeHistory || []),meetingAgentReviewHistoryEntry(draft,accepted?'Add suggested action':'Dismiss suggested action')].slice(-30),
-      redoHistory:[]
-    };
-    // Acceptance records a reviewer choice; it does not claim source certainty.
-    if (accepted) changes.reviewFlags = [...(draft.reviewFlags || []),{
-      id:'review-'+id,kind:'possible_missed_follow_up',status:'open',stage:'actions',
-      message:'This suggested action was added by a reviewer. '+proposal.reason,evidenceIds:proposal.evidenceIds,note:''
-    }];
-    const saved = await saveMeetingAgentDraft(draft,req,changes);
-    return res.json({ok:true,draft:publicMeetingAgentDraft(saved)});
-  } catch (error) { return sendMeetingAgentFailure(res,error); }
-});
+registerMeetingMinutesReviewerParallelProposals(router);
 
 router.use('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req,res,next) => {
   if (!((req.method === 'POST' && ['/audit-actions','/proposal'].includes(req.path))
@@ -11322,68 +11059,16 @@ registerMeetingMinutesLibraryDetail(router);
 // send staleStages, and it only ever marked Actions while a run was in
 // flight, so the ordinary "edit the discussion, look at the actions" flow
 // produced no warning at all.
-function meetingAgentDerivedStaleStages(previous = {}, next = {}) {
-  const stale = ['actions', 'summary'].filter((stage) => meetingAgentStageHasContent(previous, stage)
-    && meetingAgentStageInputFingerprint(previous, stage) !== meetingAgentStageInputFingerprint(next, stage));
-  if (meetingAgentTimingAnchor(previous) !== meetingAgentTimingAnchor(next)
-    && meetingAgentStageHasContent(previous, 'discussion') && meetingAgentDiscussionUsesDateAnchor(previous)) stale.unshift('discussion');
-  return stale;
-}
 
-function meetingAgentDiscussionUsesDateAnchor(draft = {}) {
-  const byId = new Map((draft.sourceUnits || []).map(unit => [unit.id, unit]));
-  const relative = /\b(?:today|tomorrow|tonight|this (?:week|month|year)|next (?:week|month|year)|in \w+ (?:days?|weeks?))\b/i;
-  const months = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-  const weekdays = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
-  const day = '\\d{1,2}(?:st|nd|rd|th)?';
-  const named = `(?:${day}\\s+(?:of\\s+)?${months}|${months}\\s+${day})`;
-  const calendar = new RegExp(`\\b(?:\\d{4}-\\d{2}-\\d{2}|${named}|${weekdays})\\b`, 'i');
-  const absolute = new RegExp(`(?:\\b${weekdays}\\b[\\s,()]*)?\\b(?:\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}|${named},?\\s+\\d{4})\\b(?:\\s*\\(\\s*${weekdays}\\s*\\))?`, 'gi');
-  const sourceUsesAnchor = value => {
-    // Fully stated calendar dates (including their weekday label) do not
-    // depend on the meeting date. Other expressions in the same cited turn
-    // still can; inspect them after removing only those complete dates.
-    const remaining = String(value || '').replace(absolute, ' ');
-    return relative.test(remaining) || new RegExp(`\\b(?:${weekdays}|${named})\\b`, 'i').test(remaining);
-  };
-  const bound = record => calendar.test(record?.text || '')
-    && (record.evidenceIds || []).some(id => sourceUsesAnchor(byId.get(id)?.text || ''));
-  const contains = record => bound(record) || (record?.supportingDetails || []).some(contains);
-  return (draft.discussion || []).some(topic => ['points', 'decisions', 'openQuestions']
-    .some(kind => (topic[kind] || []).some(contains)));
-}
+
+
 
 // A completed run clears its own stage, unless the content that stage is
 // derived from changed while it was running: those edits are newer than the
 // output, so the output is already outdated.
-function meetingAgentStaleStagesAfterGeneration(fresh = {}, sourceDraft = {}, stage = '', changes = {}) {
-  const current = [...new Set([
-    ...(Array.isArray(fresh.staleStages) ? fresh.staleStages : []),
-    ...meetingAgentDerivedStaleStages(fresh, { ...fresh, ...changes })
-  ])];
-  const upstreamChangedDuringRun = ['actions', 'summary'].includes(stage)
-    && meetingAgentStageInputFingerprint(fresh, stage) !== meetingAgentStageInputFingerprint(sourceDraft, stage);
-  if (upstreamChangedDuringRun) return [...new Set([...current, stage])];
-  if (stage === 'discussion' && meetingAgentTimingAnchor(fresh) !== meetingAgentTimingAnchor(sourceDraft)
-    && meetingAgentDiscussionUsesDateAnchor({ ...fresh, ...changes })) return [...new Set([...current, stage])];
-  return current.filter((value) => value !== stage);
-}
 
-function assertMeetingAgentDateInput(details = {}, actions = [], previous = {}) {
-  const meetingDate = String(details?.meetingDate || '').trim();
-  const badAction = (Array.isArray(actions) ? actions : []).find(action => action?.timing?.exactDate
-    && !isValidCalendarDate(String(action.timing.exactDate))
-    && !(previous.actions || []).some(old => old.id === action.id && old.action === action.action
-      && old.timing?.exactDate === action.timing.exactDate));
-  if ((meetingDate && !isValidCalendarDate(meetingDate)) || badAction) {
-    const error = new Error(badAction
-      ? 'Enter a valid calendar date for the action timing, or clear the exact date.'
-      : 'Enter a valid meeting date, or leave the meeting date empty.');
-    error.statusCode = 400;
-    error.code = 'invalid_meeting_agent_date';
-    throw error;
-  }
-}
+
+
 
 function meetingAgentDateContext(transcript = '', fileName = '', extracted = {}) {
   const lines = String(transcript || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 30);
@@ -11405,220 +11090,11 @@ function meetingAgentDateContext(transcript = '', fileName = '', extracted = {})
   };
 }
 
-router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before saving again.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    assertMeetingAgentDateInput(req.body?.details || {}, req.body?.actions || [], draft);
-    if (parallelMinutes.isParallel(draft)) {
-      const changes = parallelMinutes.reviewChanges(draft, req.body || {}, {
-        sanitiseDetails: sanitiseMeetingAgentDetails, historyEntry: meetingAgentReviewHistoryEntry
-      });
-      const saved = await saveMeetingAgentDraft(draft, req, changes);
-      return res.json({ok:true,draft:publicMeetingAgentDraft(saved)});
-    }
-    const details = sanitiseMeetingAgentDetails(req.body?.details || draft.details);
-    const dateChanged = details.meetingDate !== sanitiseMeetingAgentDetails(draft.details).meetingDate;
-    const dateConfirmedByReviewer = (req.body?.reviewFlags || []).some(flag =>
-      flag?.id === 'meeting-date-source-check' && flag.status === 'confirmed'
-      && (draft.reviewFlags || []).some(old => old.id === flag.id && old.status === 'open'));
-    let qualityState = dateChanged || dateConfirmedByReviewer ? { ...(draft.qualityState || {}), preparation: {
-      ...(draft.qualityState?.preparation || {}), dateContext: {
-        meetingDate: details.meetingDate, source: 'reviewer', timingPolicyVersion: TIMING_POLICY_VERSION
-      }
-    } } : draft.qualityState;
-    const publishedBeforeSave = publicMeetingAgentDraft(draft);
-    if (typeof req.body?.executiveSummary === 'string'
-      && meetingAgentSummaryTextHash(req.body.executiveSummary) !== meetingAgentSummaryTextHash(publishedBeforeSave.executiveSummary)) {
-      qualityState = { ...(qualityState || {}), summary: { ...(qualityState?.summary || {}),
-        reviewerSummaryHash: meetingAgentSummaryTextHash(req.body.executiveSummary)
-      } };
-    }
-    // A save carries the reviewer's edits: flag what the evidence does not
-    // support, but never strip it back out from under them.
-    const reviewerContent = markMeetingAgentReviewerEdits(publishedBeforeSave, {
-      ...(Array.isArray(req.body?.discussion) ? { discussion: req.body.discussion } : {}),
-      ...(Array.isArray(req.body?.actions) ? { actions: req.body.actions } : {}),
-      ...(Array.isArray(req.body?.meetingObjectives) ? { meetingObjectives: req.body.meetingObjectives } : {})
-    });
-    const normalised = normaliseAgentResult({
-      discussion: reviewerContent.discussion ?? draft.discussion,
-      actions: reviewerContent.actions ?? draft.actions,
-      reviewFlags: req.body?.reviewFlags ?? draft.reviewFlags
-    }, draft.sourceUnits, '', { enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true,
-      meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) });
-    // An unchanged save is not a fresh source judgement. Keep the sealed
-    // register and its proof intact; actual action/date edits take the usual
-    // normalisation path and invalidate whole-register recovery.
-    if (!dateChanged && originalEnquiryActions(draft)
-      && (!Array.isArray(req.body?.actions)
-        || sameEnquiryActionSnapshot(req.body.actions, publishedBeforeSave.actions))) {
-      normalised.actions = structuredClone(draft.actions);
-    }
-    // This proof is owned server state. Keep independently verified paired
-    // action witnesses on an unchanged save instead of repicking citations.
-    const pairedProof = draft.qualityState?.discussion?.claimConsolidation;
-    if (!dateChanged && !dateConfirmedByReviewer
-      && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, pairedProof)) {
-      normalised.actions = discussionActionSeparation.preserveUnchangedPairedActions(normalised.actions,
-        draft.actions, req.body?.actions, publishedBeforeSave.actions, pairedProof);
-    }
-    // Reuse only server-owned nominal proofs on an unchanged action/date save.
-    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = timingRecovery.preserveUnchangedActions(
-      normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.timingRecovery?.proofs,
-      draft.sourceUnits, meetingAgentTimingAnchor(draft));
-    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = actionUnion.preserveUnchanged(
-      normalised.actions, draft.actions || [], req.body?.actions, draft.qualityState?.actions?.actionUnionRewrite,
-      draft.sourceUnits, meetingAgentTimingAnchor(draft));
-    if (!dateChanged && !dateConfirmedByReviewer) normalised.actions = actionPhase.preserveUnchanged(
-      normalised.actions,draft.actions||[],req.body?.actions,draft.qualityState?.actions?.actionPhaseCorrection,
-      draft.sourceUnits,meetingAgentTimingAnchor(draft));
-    // Save normalisation must not undo a generated multi-clause source repair.
-    normalised.discussion = reconcileDiscussionClauseSources(normalised.discussion, draft.sourceUnits,
-      { resolve: resolveEvidence, meetingDate: meetingAgentTimingAnchor({ ...draft, details, qualityState }) }).discussion;
-    const discussionProof = draft.qualityState?.discussion?.claimConsolidation;
-    const unchangedDiscussionSubmission = !Array.isArray(req.body?.discussion)
-      || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion);
-    const actionSubmissionChanged = Array.isArray(req.body?.actions)
-      && discussionClaims.hash(req.body.actions) !== discussionClaims.hash(publishedBeforeSave.actions);
-    const restoredActionCoverage = !dateChanged && unchangedDiscussionSubmission && actionSubmissionChanged
-      ? discussionActionSeparation.restoreChangedActionCoverage(draft.discussion, normalised.actions, draft.sourceUnits, discussionProof)
-      : { restored: false };
-    if (restoredActionCoverage.restored) {
-      normalised.discussion = restoredActionCoverage.discussion;
-      qualityState = { ...(qualityState || {}), discussion: { ...(qualityState?.discussion || {}),
-        claimConsolidation: restoredActionCoverage.audit } };
-    }
-    if (!restoredActionCoverage.restored && !dateChanged && !dateConfirmedByReviewer
-      && discussionClaims.canRestore(draft.discussion, draft.sourceUnits, discussionProof)
-      && (!Array.isArray(req.body?.discussion)
-        || discussionClaims.hash(req.body.discussion) === discussionClaims.hash(publishedBeforeSave.discussion))) {
-      // The proof comes only from the owned server draft, never the request.
-      // An unchanged save is not another source judgement. Keep the verified
-      // existing survivor/rewrite and restoration hash together, including paragraphs
-      // whose complete proof needs more than the lexical picker's eight refs.
-      normalised.discussion = structuredClone(draft.discussion);
-    }
-    const pendingProposal = draft.pendingProposal?.stage === 'actions'
-      ? rebaseMeetingAgentProposal(draft.pendingProposal, draft.actions || [], normalised.actions, [], { preserveSelection: true })
-      : draft.pendingProposal;
-    // A tab loaded before the six-step deploy sends a currentStep that means a
-    // different screen than it does now. Ignore it rather than storing the wrong
-    // one; the client stamps payloadVersion to say it speaks the new numbering.
-    const clientSpeaksCurrentSteps = Number(req.body?.payloadVersion || 0) >= MEETING_AGENT_PAYLOAD_VERSION;
-    const requestedStep = clientSpeaksCurrentSteps
-      ? Math.max(0, Math.min(MEETING_AGENT_MAX_STEP, Number(req.body?.currentStep ?? draft.currentStep) || 0))
-      : Number(draft.currentStep || 0);
-    const furthestStep = Math.max(Number(draft.currentStep || 0), requestedStep);
-    const requestedSelectedStep = clientSpeaksCurrentSteps
-      ? Math.max(0, Math.min(furthestStep,
-        Number(req.body?.selectedStep ?? req.body?.currentStep ?? draft.selectedStep ?? draft.currentStep) || 0))
-      : Math.max(0, Math.min(furthestStep, Number(draft.selectedStep ?? draft.currentStep) || 0));
-    const excludedSupportingDetails = req.body?.excludedSupportingDetails === undefined ? optionalReview.entries(draft)
-      : optionalReview.selection(publishedBeforeSave, req.body.excludedSupportingDetails);
-    const optionalState = { ...draft, excludedSupportingDetails };
-    const unassignedSupportingDetails = optionalReview.active(withoutRepresentedUnassignedDetails(
-      Array.isArray(req.body?.unassignedSupportingDetails)
-        ? req.body.unassignedSupportingDetails : draft.unassignedSupportingDetails,
-      normalised.discussion
-    ), optionalState);
-    const mergedReviewFlags = reopenFlagsOfReAddedItems(
-      mergeMeetingAgentFlags(req.body?.reviewFlags ?? draft.reviewFlags, normalised.reviewFlags),
-      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails, ...excludedSupportingDetails.map(entry=>entry.record)]
-    );
-    const reconciledReviewFlags = reconcileMeetingAgentOrphanFlags(
-      mergedReviewFlags,
-      [...normalised.discussion, ...normalised.actions, ...unassignedSupportingDetails, ...excludedSupportingDetails.map(entry=>entry.record)],
-      pendingProposal,
-      [...(draft.discussion || []), ...(draft.actions || []), ...normalizeUnassignedSupportingDetails(draft.unassignedSupportingDetails)]
-    );
-    const reviewDecisionLabel = meetingMinutesAgentText(req.body?.reviewDecisionLabel, 160);
-    const changeHistory = reviewDecisionLabel
-      ? [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, reviewDecisionLabel)].slice(-30)
-      : draft.changeHistory;
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      details,
-      qualityState,
-      steer: req.body?.steer ?? draft.steer,
-      discussion: normalised.discussion,
-      excludedSupportingDetails,
-      ...(Array.isArray(req.body?.unassignedSupportingDetails) || Array.isArray(draft.unassignedSupportingDetails)
-        ? { unassignedSupportingDetails } : {}),
-      actions: normalised.actions,
-      executiveSummary: req.body?.executiveSummary ?? draft.executiveSummary,
-      meetingObjectives: reviewerContent.meetingObjectives ?? draft.meetingObjectives,
-      reviewFlags: reconciledReviewFlags,
-      pendingProposal,
-      staleStages: [...new Set([
-        ...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, {
-          ...draft, discussion: normalised.discussion, actions: normalised.actions,
-          steer: req.body?.steer ?? draft.steer, details, qualityState
-        })
-      ])],
-      currentStep: furthestStep,
-      selectedStep: requestedSelectedStep,
-      changeHistory,
-      // Kept ids are filtered against the actions being saved, so a row the
-      // reviewer ticked and then removed in the same save does not linger.
-      redoHistory: reviewDecisionLabel ? [] : draft.redoHistory,
-      includeSections: includedSections({ includeSections: req.body?.includeSections ?? draft.includeSections }),
-      keptActionIds: normaliseKeptActionIds(req.body?.keptActionIds ?? draft.keptActionIds, normalised.actions),
-      keptActionOccurrenceIds: normaliseKeptActionOccurrenceIds(
-        req.body?.keptActionOccurrenceIds ?? draft.keptActionOccurrenceIds,
-        [...normalised.actions, ...normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions)],
-        [...(draft.actions || []), ...(draft.removedActions || [])]),
-      removedActions: normaliseRemovedActions(req.body?.removedActions ?? draft.removedActions),
-      status: req.body?.status
-    });
-    // Edits settle for a while before the next stage is run ahead of the
-    // reviewer, so a burst of typing costs one speculative run, not many.
-    scheduleStageSpeculation(saved.draftId, req.authUser?.userId);
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
+registerMeetingMinutesReviewerSave(router, scheduleStageSpeculation);
 
 registerMeetingMinutesLibraryDelete(router);
 
-router.patch('/meeting-minutes-agent/drafts/:draftId/source/:unitId', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before changing the prepared transcript.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    let found = false;
-    const sourceUnits = normaliseSourceUnits(draft.sourceUnits).map((unit) => {
-      if (unit.id !== req.params.unitId) return unit;
-      found = true;
-      return { ...unit, restored: req.body?.restored === true };
-    });
-    if (!found) return res.status(404).json({ ok: false, error: 'Transcript passage not found.' });
-    const staleStages = [...new Set([...(draft.staleStages || []), ...(draft.discussion?.length ? ['discussion'] : []), ...(draft.actions?.length ? ['actions'] : []), ...(draft.executiveSummary ? ['summary'] : [])])];
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      sourceUnits,
-      preparedTranscript: preparedTranscriptFromUnits(sourceUnits),
-      salientDetails: salientDetailInventory(sourceUnits),
-      candidateLedger: [],
-      passProvenance: [],
-      passCache: [],
-      qualityState: {},
-      staleStages
-    });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
+registerMeetingMinutesReviewerSource(router);
 
 // One stage, prompt to normalised changes. Deliberately free of `req` so the
 // background worker runs the identical path. The steer is always read from the
@@ -11784,14 +11260,9 @@ function proposalEvidenceText(sourceUnits = [], evidenceIds = []) {
     .map((unit) => `${unit.speaker || ''}: ${unit.text || ''}`).join(' ');
 }
 
-function proposalOwnersOf(record = {}) {
-  return (Array.isArray(record?.owners) ? record.owners : [])
-    .map((owner) => String(owner || '').trim().toLowerCase()).filter(Boolean);
-}
 
-function proposalTimingStated(timing = {}) {
-  return Boolean(timing && timing.kind && timing.kind !== 'not_stated');
-}
+
+
 
 function withSelection(change, selected, context = null) {
   const next = { ...change, selected };
@@ -11801,19 +11272,7 @@ function withSelection(change, selected, context = null) {
 
 // Returns the reason an action edit would lose information the reviewer
 // already has, or '' when it only adds or rewords.
-function destructiveActionEdit(before = {}, after = {}, sourceUnits = []) {
-  const beforeOwners = proposalOwnersOf(before);
-  const afterOwners = proposalOwnersOf(after);
-  if (beforeOwners.some((owner) => !afterOwners.includes(owner))) return 'it removes an owner';
-  if (proposalTimingStated(before.timing) && !proposalTimingStated(after.timing)) return 'it removes the timing';
-  if (before.timing?.exactDate && !after.timing?.exactDate) return 'it removes the date';
-  if (before.timing?.exactDate && after.timing?.exactDate
-    && before.timing.exactDate !== after.timing.exactDate) return 'it changes the date';
-  const numericIssue = numericActionEditIssue(before, after);
-  if (numericIssue) return numericIssue;
-  if (transcriptTextGateEnabled() && transcriptTextIssue(after.action, sourceUnits)) return 'the new wording reads as a line of the conversation';
-  return '';
-}
+
 
 // Actions: `resulting` is the list the proposal applies to (after this
 // generation's own clean-up), used to find the survivor a removal duplicates.
@@ -11840,15 +11299,7 @@ function echoesPublishedAction(published = {}, proposal = {}) {
 // A generated edit can introduce a literal duplicate even when no detail is
 // lost. Defer it for review; neither this check nor automatic adoption deletes
 // an existing occurrence or changes explicit manual acceptance.
-function duplicateMeetingAgentActionModification(change = {}, currentRows = []) {
-  if (change.type !== 'modify' || !change.before || !change.after) return null;
-  const rows = Array.isArray(currentRows) ? currentRows : [];
-  const targetIndex = findActionOccurrenceIndex(rows, change.before);
-  if (targetIndex < 0) return null;
-  const signature = meetingAgentEditableActionSignature(change.after);
-  return rows.find((row, index) => index !== targetIndex
-    && meetingAgentEditableActionSignature(row) === signature) || null;
-}
+
 
 function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
   proposal = filterIncompleteProposalChanges(proposal, sourceUnits);
@@ -11991,144 +11442,26 @@ function preselectRequestedProposal(proposal) {
 // Automatic adoption can encounter a proposal saved by an older version.
 // Validate its generated timing against the current source and final approved
 // rows as well; explicit manual acceptance remains a literal review decision.
-function finaliseMeetingAgentTimingProposal(proposal = {}, draft = {}) {
-  if (proposal.stage !== 'actions') return { proposal, flags: [], assessments: [] };
-  const changes = Array.isArray(proposal.changes) ? proposal.changes : [];
-  const current = Array.isArray(draft.actions) ? draft.actions : [];
-  const rows = changes.filter(change => change.after).map(change => change.after);
-  const options = { meetingDate: meetingAgentTimingAnchor(draft),
-    assessments: draft.qualityState?.actions?.timingAssessments || [] };
-  const siblings = reconcileSiblingTimingDecisions([...current, ...rows], draft.sourceUnits || [], options);
-  const checked = finaliseActionTimings(siblings.actions.slice(current.length), draft.sourceUnits || [], options);
-  let index = 0;
-  return { proposal: { ...proposal, changes: changes.map(change => change.after
-    ? { ...change, after: checked.actions[index++] } : change) },
-    flags: [...siblings.flags, ...checked.flags], assessments: checked.assessments };
-}
+
 
 // Automatic adoption must respect the same positive checks as proposal review.
 // Consuming uncertain suggestions exposes their source-linked checks instead of
 // quietly applying them or leaving a hidden proposal that runs on every reload.
-function automaticMeetingAgentProposalReview(proposal = {}, flags = [], currentRows = [], sourceUnits = []) {
-  // Saved selections can predate current proposal checks. Recheck the actual
-  // uniquely matched row before a rejected edit can claim its transaction
-  // target and suppress a separate safe suggestion for the same occurrence.
-  const destructiveModifications = new Map(proposal.stage === 'actions'
-    ? (proposal.changes || []).flatMap(change => {
-      if (change.type !== 'modify' || !change.before || !change.after) return [];
-      const index = findActionOccurrenceIndex(currentRows, change.before);
-      if (index < 0) return [];
-      const reason = destructiveActionEdit(currentRows[index], change.after, sourceUnits);
-      return reason ? [[change.id, reason]] : [];
-    }) : []);
-  const duplicateModifications = new Set(proposal.stage === 'actions'
-    ? (proposal.changes || []).filter(change => duplicateMeetingAgentActionModification(change, currentRows)).map(change => change.id)
-    : []);
-  const noOpModifications = new Set(proposal.stage === 'actions'
-    ? (proposal.changes || []).filter(change => {
-      if (change.type !== 'modify' || !change.before || !change.after) return false;
-      const index = findActionOccurrenceIndex(currentRows, change.before);
-      return index >= 0 && actionProvenanceSignature(currentRows[index])
-        === actionProvenanceSignature(preserveActionIdentity(currentRows[index], change.after));
-    }).map(change => change.id) : []);
-  const referenceReviewChanges = new Set(proposal.stage === 'actions'
-    ? (proposal.changes || []).filter(change => requiresDocumentReferenceReview(change.after)).map(change => change.id) : []);
-  const proposed = (proposal.changes || []).filter(change => change.selected === true
-    && !referenceReviewChanges.has(change.id)
-    && !duplicateModifications.has(change.id) && !noOpModifications.has(change.id)
-    && !destructiveModifications.has(change.id));
-  const unsafeRemovals = new Set();
-  let acceptedIds = proposed.map(change => change.id);
-  const unapplied = new Set();
-  if (proposal.stage === 'actions') {
-    // Use the transaction's own occurrence/legacy ambiguity checks and target
-    // claims. A covered sentence is not proof that its named occurrence was
-    // actually removed, and a second edit of one target cannot both apply.
-    // Re-run after refusing an unsafe removal: it must not consume the target
-    // of an otherwise valid edit. Each retry removes at least one candidate.
-    let candidates = proposed;
-    for (;;) {
-      const applied = new Set();
-      const retained = applyProposal(currentRows, proposal, candidates.map(change => change.id), {
-        onAppliedChange: change => applied.add(change.id)
-      });
-      const rejectedRemovals = candidates.filter(change => change.type === 'remove' && applied.has(change.id)
-        && !retained.some(row => actionIsLosslesslyCovered(change.before, row)));
-      if (rejectedRemovals.length) {
-        rejectedRemovals.forEach(change => unsafeRemovals.add(change.id));
-        candidates = candidates.filter(change => !unsafeRemovals.has(change.id));
-        continue;
-      }
-      acceptedIds = candidates.filter(change => applied.has(change.id)).map(change => change.id);
-      candidates.filter(change => !applied.has(change.id)).forEach(change => unapplied.add(change.id));
-      break;
-    }
-  }
-  const accepted = new Set(acceptedIds);
-  const uncertain = (proposal.changes || []).filter(change => !accepted.has(change.id));
-  const replacedIds = new Set(uncertain.map(meetingAgentProposalReviewFlagId));
-  const checks = uncertain.flatMap((change, index) => {
-    const record = change.after || change.before || {};
-    const wording = meetingMinutesAgentText(record.action || record.text || record.topic, 1600);
-    if (referenceReviewChanges.has(change.id)) {
-      const linked = retainedDocumentReferenceReviewFlags([record], flags);
-      if (linked.length) return linked;
-    }
-    const reason = String(referenceReviewChanges.has(change.id)
-      ? 'The document reference requires explicit human review.' : duplicateModifications.has(change.id)
-      ? 'This edit would copy the wording, owners and timing of another current action.'
-      : noOpModifications.has(change.id) ? 'This edit would not change the current action.'
-        : destructiveModifications.has(change.id) ? `This edit was left for review because ${destructiveModifications.get(change.id)}.`
-          : unsafeRemovals.has(change.id) ? 'The current list does not prove that all of this action survives elsewhere.'
-          : unapplied.has(change.id) ? (change.type === 'add'
-            ? 'This suggestion did not insert a new action because that occurrence was already present.'
-            : 'The proposed occurrence could not be changed uniquely in the current list; it may be stale, ambiguous or already handled by another suggestion.')
-            : change.reviewContext?.reason || 'Check the source before changing the minutes.')
-      .replace(/\b(?:Tick it[^.]*|It stays unless you tick this)\./gi, '').trim();
-    return [normaliseMeetingAgentFlag({
-      // This is now a source check, not a link to a consumed proposal. Keep it
-      // open even when there is deliberately no corresponding published item.
-      id: meetingMinutesAgentText(`automatic-review-${change.id || ''}`, 80),
-      kind: change.type === 'add' ? 'possible_missed_follow_up' : 'uncertain_fact',
-      ...(noOpModifications.has(change.id) ? {reviewDisposition:'not_applied_noop'}
-        : duplicateModifications.has(change.id) ? {reviewDisposition:'not_applied_duplicate'}
-          : change.reviewContext?.disposition === 'not_outstanding' ? {reviewDisposition:'not_outstanding'}
-            : change.type === 'add' ? {reviewDisposition:'not_applied_addition'} : {}),
-      message: `Cannot verify that this AI suggestion should change the minutes; it was not applied. ${wording} ${reason}`,
-      evidenceIds: record.evidenceIds || change.reviewContext?.evidenceIds || []
-    }, index)];
-  });
-  return { acceptedIds, reviewFlags: mergeMeetingAgentFlags(
-    resolveMeetingAgentProposalFlags(flags, proposal, acceptedIds, []).filter(flag => !replacedIds.has(flag.id)), checks
-  ) };
-}
+
 
 function meetingAgentProposalChangeIsVisible(change = {}) {
   if (change?.type !== 'modify') return true;
   return meetingAgentEditableActionSignature(change.before) !== meetingAgentEditableActionSignature(change.after);
 }
 
-function meetingAgentEditableActionSignature(action = {}) {
-  return JSON.stringify([
-    meetingMinutesAgentText(action?.action || action?.text, 1600),
-    (Array.isArray(action?.owners) ? action.owners : []).map((owner) => meetingMinutesAgentText(owner, 180)),
-    meetingMinutesAgentText(action?.timing?.kind, 40),
-    meetingMinutesAgentText(action?.timing?.wording, 220),
-    meetingMinutesAgentText(action?.timing?.exactDate, 20)
-  ]);
-}
+
 
 // What the reviewer sees of an Actions list: wording, owners and timing, in order.
 function meetingAgentActionsFingerprint(actions = []) {
   const rows = (Array.isArray(actions) ? actions : []).map(meetingAgentEditableActionSignature);
   return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
 }
-function reopenFlagsOfReAddedItems(flags = [], records = []) {
-  const referenced = meetingAgentReferencedFlagIds(records);
-  return (Array.isArray(flags) ? flags : []).map((flag) => (referenced.has(String(flag.id))
-    && flag.status === 'dismissed' && meetingMinutesAgentText(flag.correctionNote, 500) === MEETING_AGENT_ITEM_REMOVED_NOTE
-    ? { ...flag, status: 'open', correctionNote: '' } : flag));
-}
+
 
 // Decides what a finished Discussion or Actions run writes.
 // - Actions a reviewer has edited since they were generated are never
@@ -12860,239 +12193,15 @@ router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth,
   }
 });
 
-router.post('/meeting-minutes-agent/drafts/:draftId/proposal', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before reviewing the proposal.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    let proposal = draft.pendingProposal;
-    if (!proposal) return res.status(409).json({ ok: false, error: 'There is no pending AI proposal.' });
-    const decision = String(req.body?.decision || '').toLowerCase();
-    if (!['accept', 'reject'].includes(decision)) return res.status(400).json({ ok: false, error: 'Choose accept or reject.' });
-    const timingReview = decision === 'accept' && req.body?.automatic === true
-      ? finaliseMeetingAgentTimingProposal(proposal, draft) : null;
-    if (timingReview) proposal = timingReview.proposal;
-    const allIds = (proposal.changes || []).map((change) => change.id);
-    const automaticReview = decision === 'accept' && req.body?.automatic === true
-      ? automaticMeetingAgentProposalReview(proposal, mergeMeetingAgentFlags(draft.reviewFlags, timingReview?.flags || []),
-        proposal.stage === 'discussion' ? draft.discussion : draft.actions, draft.sourceUnits) : null;
-    const acceptedIds = decision === 'reject' ? []
-      : automaticReview ? automaticReview.acceptedIds
-      : req.body?.acceptAll === true ? allIds
-        : (Array.isArray(req.body?.changeIds) ? req.body.changeIds : []);
-    const acceptedIdSet = new Set(acceptedIds.filter((id) => allIds.includes(id)));
-    if (decision === 'reject') {
-      const history = [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(
-        draft, `${allIds.length} suggestion${allIds.length === 1 ? '' : 's'} dismissed`
-      )].slice(-30);
-      const saved = await saveMeetingAgentDraft(draft, req, {
-        pendingProposal: null,
-        changeHistory: history,
-        redoHistory: [],
-        reviewFlags: resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [], allIds)
-      });
-      return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-    }
-    const before = proposal.stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-    // Applying suggestions is a literal review transaction. Do not run the
-    // complete editable register through generation-time deduplication here:
-    // it can remove an untouched action or even the addition just selected.
-    const after = applyProposal(before, proposal, [...acceptedIdSet], { reservedActions: draft.removedActions || [] });
-    const remainingProposal = automaticReview ? null
-      : rebaseMeetingAgentProposal(proposal, before, after, [...acceptedIdSet]);
-    const unacceptedChanges = automaticReview ? []
-      : (proposal.changes || []).filter((change) => !acceptedIdSet.has(change.id));
-    const history = [...(draft.changeHistory || []), {
-      id: crypto.randomUUID(), type: 'ai_proposal', stage: proposal.stage,
-      label: `${acceptedIdSet.size} suggestion${acceptedIdSet.size === 1 ? '' : 's'} applied`,
-      acceptedChangeIds: [...acceptedIdSet], before, after, acceptedAt: new Date().toISOString(),
-      // Undo restores the old content without queueing the consumed changes
-      // for automatic application again. Redo retains the applied snapshot.
-      beforeState: {
-        ...meetingAgentReviewSnapshot(draft),
-        pendingProposal: unacceptedChanges.length ? { ...proposal, changes: unacceptedChanges } : null
-      }
-    }].slice(-30);
-    const contentChanges = proposal.stage === 'discussion' ? { discussion: after } : { actions: after };
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      ...contentChanges,
-      ...(timingReview ? { qualityState: { ...(draft.qualityState || {}), actions: {
-        ...(draft.qualityState?.actions || {}), timingPolicyVersion: TIMING_POLICY_VERSION,
-        timingAssessments: [...(draft.qualityState?.actions?.timingAssessments || []), ...timingReview.assessments]
-      } } } : {}),
-      staleStages: [...new Set([
-        ...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, { ...draft, ...contentChanges })
-      ])],
-      pendingProposal: remainingProposal,
-      changeHistory: history,
-      redoHistory: [],
-      reviewFlags: automaticReview ? automaticReview.reviewFlags
-        : resolveMeetingAgentProposalFlags(draft.reviewFlags, proposal, [...acceptedIdSet], [])
-    });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
+registerMeetingMinutesReviewerDecisionsHistory(router);
 
-router.post('/meeting-minutes-agent/drafts/:draftId/redo', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before redoing.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    const redoHistory = [...(draft.redoHistory || [])];
-    const latest = redoHistory.pop();
-    if (!latest || !latest.beforeState) return res.status(409).json({ ok: false, error: 'There is nothing to redo.' });
-    const restored = meetingAgentRestoreReviewSnapshot(latest.beforeState, draft);
-    // Redoing is itself undoable: the state it replaces goes back on the undo
-    // stack, so the reviewer can step either way rather than into a dead end.
-    const changeHistory = [...(draft.changeHistory || []), {
-      id: crypto.randomUUID(),
-      type: latest.type || 'review_decision',
-      label: latest.label,
-      createdAt: new Date().toISOString(),
-      beforeState: meetingAgentReviewSnapshot(draft)
-    }].slice(-30);
-    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory, redoHistory });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
 
-router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-actions', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    let actions = originalEnquiryActions(draft);
-    if (Number(req.body?.revision) !== draft.revision || draft.generation?.status === 'running' || !actions) {
-      const error = new Error('These actions changed or are still generating. Your edits have been preserved.');
-      error.statusCode = 409; throw error;
-    }
-    const actionState=draft.qualityState.actions, union=actionState.actionUnionRewrite;
-    const phase=actionState.actionPhaseCorrection;
-    const restoringPhase=phase?.applied && actionPhase.restore(draft.actions,phase,draft.sourceUnits,meetingAgentTimingAnchor(draft));
-    const restoringCompilation=!restoringPhase && union?.version==='compilation-union-v1'&&union.applied;
-    const audit=actionState.semanticReconciliation;
-    if(restoringCompilation || restoringPhase) {
-      // Restore the compiled originals, retaining the admitted identity of
-      // every unique unchanged row. Raw generated snapshots can predate ID
-      // allocation; restoring those IDs would strand an earlier merge proof.
-      actions=actions.map(action=>{
-        const matches=(draft.actions||[]).filter(current=>actionProvenanceSignature(current)===actionProvenanceSignature(action));
-        return matches.length===1?preserveActionIdentity(matches[0],action):action;
-      });
-    }
-    // Restoring the compilation snapshot can restore an earlier identity on
-    // an otherwise unchanged contact survivor. Rebind its existing proof;
-    // never strand the preceding independently recoverable reconciliation.
-    const restoredContactReceipts = (restoringCompilation || restoringPhase) && audit?.applied
-      ? (audit.receipts||[]).map(receipt=>{
-        const matches=actions.map(action=>rebindReconciliationReceipt(receipt,receipt.survivor,action,normaliseSourceUnits(draft.sourceUnits))).filter(Boolean);
-        return matches.length===1?matches[0]:null;
-      }) : [];
-    if(restoredContactReceipts.some(receipt=>!receipt)) {
-      const error=new Error('The earlier action proof cannot be safely rebound. Your current actions were preserved.');error.statusCode=409;throw error;
-    }
-    const qualityState = { ...draft.qualityState, actions: { ...actionState,
-      ...(restoringPhase ? {actionPhaseCorrection:{...phase,applied:false,restored:true},
-        ...(union?.applied ? {actionUnionRewrite:{...union,finalHash:actionUnion.hash(actions)}} : {}),
-        ...(audit?.applied?{semanticReconciliation:{...audit,receipts:restoredContactReceipts,restoreSnapshot:structuredClone(actions)}}:{})}
-        : restoringCompilation ? {actionUnionRewrite:{...union,applied:false,restored:true},
-        ...(audit?.applied?{semanticReconciliation:{...audit,receipts:restoredContactReceipts,restoreSnapshot:structuredClone(actions)}}:{})}
-        : {semanticReconciliation:{...audit,applied:false,restored:true}})
-    } };
-    const saved = await saveMeetingAgentDraft(draft, req, { actions, qualityState,
-      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, restoringPhase ? 'Restore original action wording' : 'Restore separate actions')].slice(-30),
-      redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, { ...draft, actions })])] });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) { return sendMeetingAgentFailure(res, error); }
-});
 
-router.post('/meeting-minutes-agent/drafts/:draftId/restore-combined-discussion', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision || draft.generation?.status === 'running') {
-      const error = new Error('This draft changed or is still generating. Reload it before restoring paragraphs.');
-      error.statusCode = 409;
-      throw error;
-    }
-    const audit = draft.qualityState?.discussion?.claimConsolidation;
-    const discussion = discussionClaims.restore(draft.discussion, draft.sourceUnits, audit);
-    if (!discussion) {
-      const error = new Error('These paragraphs have changed since they were combined. Your edits have been preserved.');
-      error.statusCode = 409;
-      throw error;
-    }
-    const qualityState = { ...draft.qualityState, discussion: { ...draft.qualityState.discussion,
-      claimConsolidation: { ...audit, applied: false, restored: true } } };
-    const actions = req.body?.restorePairedActions === true
-      ? discussionActionSeparation.restorePairedActions(draft.actions, audit) : draft.actions;
-    const saved = await saveMeetingAgentDraft(draft, req, { discussion, actions, qualityState,
-      changeHistory: [...(draft.changeHistory || []), meetingAgentReviewHistoryEntry(draft, actions !== draft.actions ? 'Restore original discussion and action wording' : 'Restore combined paragraphs')].slice(-30),
-      redoHistory: [], staleStages: [...new Set([...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, { ...draft, discussion, actions })])] });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) { return sendMeetingAgentFailure(res, error); }
-});
 
-router.post('/meeting-minutes-agent/drafts/:draftId/undo', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before undoing.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    const history = [...(draft.changeHistory || [])];
-    const latest = history.pop();
-    if (!latest) return res.status(409).json({ ok: false, error: 'There is nothing to undo.' });
-    // What undo is about to replace becomes the redo entry.
-    const redoHistory = [...(draft.redoHistory || []), {
-      id: crypto.randomUUID(),
-      type: latest.type || 'review_decision',
-      label: latest.label,
-      createdAt: new Date().toISOString(),
-      beforeState: meetingAgentReviewSnapshot(draft)
-    }].slice(-30);
-    const restored = latest.beforeState && typeof latest.beforeState === 'object'
-      ? meetingAgentRestoreReviewSnapshot(latest.beforeState, draft)
-      : {
-          ...(latest.stage === 'discussion' ? { discussion: latest.before || [] } : { actions: latest.before || [] }),
-          pendingProposal: null
-        };
-    // Old history entries restore only one content stage. Their downstream
-    // output remains in place, so it must be reviewed against the restored text.
-    // Full snapshots already include the matching content and stale markers.
-    if (!latest.beforeState || typeof latest.beforeState !== 'object') {
-      restored.staleStages = [...new Set([
-        ...(draft.staleStages || []),
-        ...meetingAgentDerivedStaleStages(draft, { ...draft, ...restored })
-      ])];
-    }
-    // Older proposal history snapshots still carry the accepted changes.
-    // Filter those too, while keeping any suggestions the reviewer left open.
-    if (latest.type === 'ai_proposal' && restored.pendingProposal) {
-      const consumed = new Set(latest.acceptedChangeIds || []);
-      const changes = (restored.pendingProposal.changes || []).filter((change) => !consumed.has(change.id));
-      restored.pendingProposal = changes.length ? { ...restored.pendingProposal, changes } : null;
-    }
-    const saved = await saveMeetingAgentDraft(draft, req, { ...restored, changeHistory: history, redoHistory });
-    return res.json({ ok: true, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
+
+
+
+
 
 registerMeetingMinutesLibraryExports(router);
 

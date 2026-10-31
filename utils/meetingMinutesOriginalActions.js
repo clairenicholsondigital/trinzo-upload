@@ -1,5 +1,8 @@
 'use strict';
 
+const { finaliseMeetingAgentTimingProposal, finaliseActionTimings, reconcileSiblingTimingDecisions } = require('./meetingMinutesProposalTiming');
+const { retainedDocumentReferenceReviewFlags } = require('./meetingMinutesProposalReview');
+
 const { isVagueReconstructedAction } = require('./meetingMinutesDraftView');
 
 const { stripMinorCommunicationCourtesy } = require('./meetingMinutesPublication');
@@ -28,12 +31,12 @@ const {
   applyTimingCheckResults, applyTimingClauseChecks, attachNearbyDependencyConditions,
   backfillActionCommitmentEvidence, commitmentCheckItems, commitmentCheckPrompt,
   completedInMeetingCheckItems, completedInMeetingCheckPrompt, describesUsualPractice,
-  finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt, finaliseActionTimings,
+  finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt,
   isAobPersonalAside, isFarewellAction, isMinuteInstruction, isNotAnAction, isSocialAside,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
   timingCheckEnabled: meetingMinutesTimingCheckEnabled, mergeDuplicateCommitments,
-  reconcileSiblingTimingDecisions, softenBestEffortCompletion, splitExplicitMultiOwnerActions,
+  softenBestEffortCompletion, splitExplicitMultiOwnerActions,
   timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
 } = require('./meetingMinutesAgentV2');
 const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
@@ -66,7 +69,6 @@ function createOriginalActionsStage(services) {
     corroboratedOmittedActionProposals,
     criticConfirmedActionPromotions,
     dedupeCommitmentsSemantically,
-    finaliseMeetingAgentTimingProposal,
     foldUnownedNearCopies,
     gateTranscriptShapedActionChanges,
     gateTranscriptShapedActions,
@@ -89,7 +91,6 @@ function createOriginalActionsStage(services) {
     reconcileAcceptedRefereeActions,
     reconcileFinalApprovedActions,
     removePublishedActionProposalDuplicates,
-    retainedDocumentReferenceReviewFlags,
     safeAgentProposalPromotion,
     splitCompoundActionList,
     strongOmittedDiscoveryProposals,

@@ -54,9 +54,10 @@ function draftFixture() {
 // reviewer-marking/normalization/save flow without importing the application,
 // authentication, database, scheduler or any model/provider module.
 function patchHarness(initial) {
-  const source = fs.readFileSync(path.join(__dirname, '../routes/api.js'), 'utf8');
-  const start = source.indexOf("router.patch('/meeting-minutes-agent/drafts/:draftId',");
-  const end = source.indexOf("\nregisterMeetingMinutesLibraryDelete(router)", start);
+  const source = fs.readFileSync(path.join(__dirname, '../routes/meetingMinutesReviewer.js'), 'utf8');
+  const start = source.indexOf('function registerMeetingMinutesReviewerSave(');
+  const closing = source.indexOf('\n}\n', start);
+  const end = closing < 0 ? -1 : closing + 2;
   assert.ok(start >= 0 && end > start, 'the production draft PATCH route must be present');
   let stored = structuredClone(initial);
   let handler;
@@ -109,6 +110,7 @@ function patchHarness(initial) {
     sendMeetingAgentFailure(res, error) { throw error; }
   };
   vm.runInNewContext(source.slice(start, end), context, { filename: 'draft-patch-history-harness.js' });
+  context.registerMeetingMinutesReviewerSave(context.router, context.scheduleStageSpeculation);
   return {
     get stored() { return structuredClone(stored); },
     get saveCount() { return saveCount; },
