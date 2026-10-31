@@ -1,5 +1,13 @@
 'use strict';
 
+const {
+  meetingAgentEmptyDiscoveryError,
+  normaliseAgentDeclaredProposals,
+  normaliseAnchoredActionDiscovery,
+  normaliseAnchoredDiscussionDiscovery,
+  normaliseRefereeDeclaredProposals
+} = require('./meetingMinutesDiscoveryValidation');
+
 const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatchedMeetingAgentRefereeResults } = require('./meetingMinutesResultAggregation');
 const { dedupeHybridActionProposals, dedupeHybridActionRecords } = require('./meetingMinutesActionDuplicatePolicy');
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
@@ -22,7 +30,7 @@ const { groundedObjectiveRecords } = require("./meetingMinutesAgentV2");
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag } = require("./meetingMinutesReviewFlags");
 const { meetingMinutesAgentText } = require("./meetingMinutesPlainText");
 const { mergeTimedStepRecovery } = require("./meetingMinutesTimedStepCoverage");
-const { normaliseAgentResult } = require("./meetingMinutesAgentV2");
+const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const { normaliseMeetingAgentPassCache } = require("./meetingMinutesPassCache");
 const { normaliseRefereeOutput } = require("./refereeNormaliser");
 const { normaliseReferenceArrays } = require("./refereeNormaliser");
@@ -45,7 +53,6 @@ function createOriginalDiscovery(services) {
     enrichDiscussionEvidenceFromDispositions,
     hybridCandidateLedgerFromResult,
     meetingAgentActionPrimaryPromptForDraft,
-    meetingAgentEmptyDiscoveryError,
     meetingAgentEmptyDiscoveryRepairPrompt,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
@@ -63,10 +70,6 @@ function createOriginalDiscovery(services) {
     meetingMinutesAgentRefereeRepairPrompt,
     meetingMinutesAgentTopicNamingPrompt,
     meetingMinutesDiscussionActionCandidatesEnabled,
-    normaliseAgentDeclaredProposals,
-    normaliseAnchoredActionDiscovery,
-    normaliseAnchoredDiscussionDiscovery,
-    normaliseRefereeDeclaredProposals,
     peekReadyPrivateStagedCandidateLedger,
     reconstructRefereeActions,
   } = services;

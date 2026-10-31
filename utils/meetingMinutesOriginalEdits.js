@@ -5,13 +5,10 @@ const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFla
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 
 const {
-  actionCandidateInventory,
-  discussionCandidateInventory,
-  groundedExecutiveSummary,
-  groundedObjectiveRecords,
-  coverageFlags,
-  normaliseAgentResult,
+  actionCandidateInventory, discussionCandidateInventory, groundedExecutiveSummary,
+  groundedObjectiveRecords, coverageFlags
 } = require('./meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { safeLogError } = require('./apiErrors');
 const { reconcileDiscussionClauseSources } = require('./meetingMinutesDiscussionSources');

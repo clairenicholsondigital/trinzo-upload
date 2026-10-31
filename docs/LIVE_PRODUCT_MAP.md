@@ -510,14 +510,62 @@ or assertions. Mixed generation, repair-prompt, feature-switch, publication and
 persistence integrations remain. New owners retain persistence-sensitive test
 selection; updating compact coverage selects the full required release profile.
 
-Stage 3 remains in progress. Its next substantive dependency is actual V2 result
-normalization and its document-reference context helper; source-backed proposal
-and empty-discovery validation still need those policies. The remaining
-response/discovery contracts must be accounted for explicitly before calling
-this stage complete. Publication/Library/exports, reviewer save/history and
-preparation/generation lifecycle remain later stages. This batch reduces the
-large entrypoints and supplied policy dependencies; it does not claim that the
-whole repository or regression bank has fewer lines/cases.
+Those actual duplicate and aggregation owners make the following full
+normalization and source-backed discovery-validation batch possible. The moves
+reduce the large entrypoints and supplied policy dependencies; they do not
+claim fewer lines/cases across the whole repository or regression bank.
+
+### Result normalization and source-backed discovery validation
+
+The complete result-normalization dependency set now has actual owners: 96
+existing declarations (71 functions and 25 constants), including the adjacent
+document-reference evidence helper. Discussion, actions, source matching,
+field grounding, timing inference, evidence checks and assessment evidence have
+cohesive modules; Text, PeopleEvidence and ReviewerEdits receive their existing
+wording, identity and reviewer-metadata helpers. ResultNormalization coordinates
+these actual policies. All moved declarations remain byte-exact. This is the
+real normalizer, retaining its existing grounding and reviewer protections with
+direct imports of the shared policies.
+
+Production consumers import the actual owners. V2 retains its compatibility
+exports as the same functions. TemporalReview replaces its seven V2 namespace
+reads with the same Text, RecordMatching and ActionSourceMatching bindings,
+removing the lazy timing-review back-reference. The complete graph, including
+lazy paths and Text/spoken-number/reviewer dependencies, is checked for API/V2
+back-imports and cycles. The existing lazy Text/Settings database path remains;
+these modules are not described as fully database-independent.
+
+Evidence source-array context, cache/reset limits, diagnostics, timing policy
+and the durable warning registry remain shared. Reviewer edits, filing/merge
+history, occurrence identity, exact text and evidence limits, source-bound
+ownership/timing, uncertainty and live switch semantics remain. Normalization's
+coverage merge remains distinct from the cross-pass duplicate policy.
+
+DiscoveryValidation also owns six unchanged API functions (265 declaration
+lines). It normalizes actual source-backed output and proposals before deciding
+whether a response is genuinely empty; reasoned candidate settlement and the
+original error codes, status, retryability, order and previews remain. Referee
+and anchored adapters retain their exact schema/accounting/evidence rules.
+The candidate-settlement helper stays private. Original stages import the five
+public policies directly, reducing supplied service entries from 113 to 108.
+
+API falls from 16,221 to 15,911 lines and V2 from 6,153 to 4,456. The public
+API/V2 export shapes, all 94 effective route registrations and all 27 provider
+prompt definitions remain. Seventeen existing cases move unchanged into compact
+normalization/discovery checks. Existing assertion expressions and regression
+cases remain, including mixed generation, repair, reviewer-save, publication and
+persistence tests. The transport failure-audit fixture ends at its unchanged
+transport function instead of a helper that now has its own owner; its extracted
+transport bytes and all original assertions remain. Compact coverage and
+persistence-sensitive selection updates require the full release profile.
+
+Stage 3 remains in progress. Referee-candidate projection/contract ownership,
+effective discussion disposition accounting and the generation repair prompt
+still need explicit implementation or a named later-stage assignment. The
+broader remaining service inventory must also be checked against the stage's
+actual ownership criteria. Publication/Library/exports, reviewer save/history
+and preparation/generation lifecycle remain later stages. Completing this
+normalization/validation batch does not complete those stages.
 
 ## Evidence and limits
 

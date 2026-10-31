@@ -1,9 +1,12 @@
 'use strict';
 
+const { decisionQuoteValidation } = require('./meetingMinutesActionSourceMatching');
+
 const { indexReviewResults, finishReviewAccounting } = require('./meetingMinutesReviewAccounting');
 const { formatTimingLabel, isValidCalendarDate } = require('./meetingMinutesTiming');
 const { normaliseFlag } = require('./meetingMinutesReviewFlags');
-const V = require('./meetingMinutesAgentV2');
+const { contentTokens } = require('./meetingMinutesRecordMatching');
+const { text } = require('./meetingMinutesText');
 const Binding = require('./meetingMinutesTemporalBinding');
 const { convertSpokenNumbers } = require('./spokenNumbers');
 
@@ -300,7 +303,7 @@ function sameTemporalWork(claim, source) {
       ? sourceOperations.some(other => group.includes(other))
       : group.some(other => new RegExp(`\\b${other}\\b`, 'i').test(source)))))) return false;
   const stop = new Set([...TEMPORAL_WORDS, ...OP_GROUPS.flat(), 'will', 'would', 'shall', 'can', 'could', 'must', 'should', 'been', 'being']);
-  const objects = value => new Set(V.contentTokens(normaliseDurationQuantities(value)).filter(word => !stop.has(word) && !/^\d/.test(word)));
+  const objects = value => new Set(contentTokens(normaliseDurationQuantities(value)).filter(word => !stop.has(word) && !/^\d/.test(word)));
   const wanted = objects(claim), present = objects(source);
   const shared = [...wanted].filter(word => present.has(word)).length;
   if (!wanted.size || shared < Math.min(2, wanted.size) || shared / wanted.size < 0.7) return false;
@@ -421,7 +424,7 @@ function summaryTemporalCheckItems(values = {}, current = {}, _sourceUnits = [],
     ...list(current.details?.internalAttendees), ...list(current.details?.clientAttendees),
     ...list(current.actions).flatMap(action => list(action?.owners))
   ].filter(person => typeof person === 'string' && person.trim()))];
-  const words = value => new Set(V.contentTokens(value));
+  const words = value => new Set(contentTokens(value));
   const items = [];
   const append = (row, locator, reviewerAuthored = false) => {
     const target = words(row);
@@ -476,7 +479,7 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
       : typeof objectives[item.objectiveIndex] === 'string' ? objectives[item.objectiveIndex] : objectives[item.objectiveIndex]?.text;
     if (current !== item.row) state = { id: item.id, status: 'stale', reason: 'stale_summary_snapshot' };
     else if (row?.verdict === 'supported') {
-      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
+      const evidence = decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
       const carrying = evidence.valid ? item.authorityRecords.filter(record => canon(record.text).includes(canon(row.evidenceQuote))) : [];
       const structured = Object.prototype.hasOwnProperty.call(row, 'temporalEvidence');
       const binding = structured ? validateTemporalEvidence(item.row, carrying, row.temporalEvidence,
@@ -488,9 +491,9 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
     }
     else if (row?.verdict === 'uncertain') state = { id: item.id, status: 'uncertain', reason: String(row.reason || 'temporal_claim_uncertain').slice(0, 300) };
     else if (row?.verdict === 'corrected') {
-      const problem = V.decisionQuoteValidation(row.problemQuote, item.row, 25, { allowClockPrefix: true });
-      const evidence = V.decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
-      const corrected = V.text(row.correctedText, 1500);
+      const problem = decisionQuoteValidation(row.problemQuote, item.row, 25, { allowClockPrefix: true });
+      const evidence = decisionQuoteValidation(row.evidenceQuote, item.passage, 25, { allowClockPrefix: true });
+      const corrected = text(row.correctedText, 1500);
       const carrying = item.authorityRecords.filter(record => canon(record.text).includes(canon(row.evidenceQuote)));
       const structured = Object.prototype.hasOwnProperty.call(row, 'temporalEvidence');
       const binding = structured ? validateTemporalEvidence(corrected, carrying, row.temporalEvidence,
@@ -515,7 +518,7 @@ function applySummaryTemporalCheckResults(values = {}, items = [], results = [],
     if (!['supported', 'corrected'].includes(state.status)) {
       rejected.push({ id: item.id, reason: state.reason });
       const flag = normaliseFlag({ kind: 'timing',
-        message: `Cannot verify the timing in the ${item.field === 'executiveSummary' ? 'executive summary' : 'meeting objective'}: "${V.text(item.row, 260)}". ${state.reason.replace(/_/g, ' ')}. Confirm it against the current Discussion and Actions.`, evidenceIds: item.evidenceIds }, flags.length);
+        message: `Cannot verify the timing in the ${item.field === 'executiveSummary' ? 'executive summary' : 'meeting objective'}: "${text(item.row, 260)}". ${state.reason.replace(/_/g, ' ')}. Confirm it against the current Discussion and Actions.`, evidenceIds: item.evidenceIds }, flags.length);
       flags.push({ ...flag, temporalField: item.field });
     }
   }

@@ -1,3 +1,10 @@
+const {
+  normaliseAgentDeclaredProposals,
+  meetingAgentEmptyDiscoveryError,
+  normaliseRefereeDeclaredProposals,
+  normaliseAnchoredActionDiscovery,
+  normaliseAnchoredDiscussionDiscovery
+} = require('../utils/meetingMinutesDiscoveryValidation');
 const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatchedMeetingAgentRefereeResults } = require('../utils/meetingMinutesResultAggregation');
 const {
   ACTION_DEPENDENCY_CLAUSE,
@@ -271,18 +278,13 @@ const {
 const {
   PAYLOAD_VERSION: MEETING_AGENT_PAYLOAD_VERSION,
   TIMING_INFERENCE_POLICY_VERSION,
-  normaliseExecutiveSummary,
   salientDetailInventory,
-  normaliseAgentResult,
-  cleanActionWording,
-  documentReferenceContextEvidence,
   requiresDocumentReferenceReview,
   coverageFlags,
   surroundingEvidence,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
   normaliseKnownTermsDeep: normaliseMeetingAgentKnownTermsDeep,
   timingForPublication: meetingAgentTimingForPublication,
-  isIdeaOnlyContemplation,
   isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag,
   actionCandidateInventory,
   actionCommitmentThreadInventory,
@@ -296,9 +298,7 @@ const {
   groundedObjectives,
   groundedObjectiveRecords,
   mergeGroundedObjectiveRecords,
-  evidenceClauses,
   groundedExecutiveSummary,
-  timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled,
   applyTimingClauseChecks,
   backfillActionCommitmentEvidence,
   attachNearbyDependencyConditions,
@@ -355,8 +355,15 @@ const {
   discussionActionCandidates,
   supersededCheckItems,
   supersededVerdicts,
-  correctnessChecksEnabled,
 } = require('../utils/meetingMinutesAgentV2');
+const {
+  normaliseExecutiveSummary, isIdeaOnlyContemplation
+} = require('../utils/meetingMinutesText');
+const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
+const {
+  evidenceClauses, timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled
+} = require('../utils/meetingMinutesActionTimingInference');
+const { correctnessChecksEnabled } = require('../utils/meetingMinutesEvidenceChecks');
 const {
   shapeDiscussion,
   dedupeDiscussionBody,
@@ -397,8 +404,6 @@ const PRIVATE_STAGED_CACHE_MAX_ENTRIES = 60;
 const privateActionPrimaryCache = new Map();
 const PRIVATE_ACTION_PRIMARY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const PRIVATE_ACTION_PRIMARY_CACHE_MAX_ENTRIES = 60;
-
-
 
 // The reviewer's steer is prose they may have laid out in lines or bullets.
 // Deliberately NOT meetingMinutesAgentText() or the v2 text() helper - both
@@ -512,8 +517,6 @@ const STAGED_EVIDENCE_CLASSIFIER_TIMEOUT_MS = Number(process.env.STAGED_EVIDENCE
 const TROOPER_STAGE_URL_DEFAULT = 'https://eu.router.trooper.ai/v1/chat/completions';
 const TROOPER_STAGE_MODEL_DEFAULT = 'eu_liv_000099';
 
-
-
 const REVIEW_TEMPLATE = {
   meetingTitle: '',
   meetingDate: '',
@@ -577,8 +580,6 @@ async function readTestTranscript(req) {
 
   return { text: extraction.text || '', source: 'file', fileName: extraction.fileName };
 }
-
-
 
 function buildProjectKnowledgeQuery(transcriptText, projectContext = {}) {
   const milestoneNames = Array.isArray(projectContext.activeMilestones)
@@ -4086,7 +4087,6 @@ function attachActionCandidateSourceSnippets(payload = {}) {
   return payload;
 }
 
-
 // Topic headings the model named, merged onto the ones the pipeline derived.
 //
 // A heading is not just a line on the summary screen: the discussion stage allocates
@@ -4129,7 +4129,6 @@ function mergeNamedTopics(summary, namedTopics, confirmedTopics) {
   return { overallTopics: refs.map((ref) => ref.text).filter(Boolean), topicRefs: refs };
 }
 
-
 // Objectives topped up from the topics the model named and the validators accepted.
 //
 // Deterministic objectives derive from workstreams, and workstreams on informal meetings
@@ -4163,7 +4162,6 @@ function topUpObjectivesFromNamedTopics(objectives, namedTopics, limit = 8) {
   }
   return existing;
 }
-
 
 // The health record: one judgement per generation, built from signals that already exist.
 //
@@ -6075,7 +6073,6 @@ async function runPythonJsonScript(scriptName, payload, scriptArgs = []) {
   }
 }
 
-
 function withTestUpload(handler) {
   return async (req, res) => {
     try {
@@ -7362,7 +7359,6 @@ router.post('/project-update-test', requireAuth, withTestUpload(async (req, res)
   }
 }));
 
-
 require('./projectKnowledge')(router);
 
 require('./projectRecords')(router);
@@ -7825,8 +7821,6 @@ function meetingMinutesDiscussionRestatementsEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_DISCUSSION_RESTATEMENTS_V1 || '1'));
 }
 
-
-
 function meetingMinutesMinuteInstructionRuleEnabled() {
   return !/^(?:0|false|no|off)$/i.test(String(process.env.MEETING_MINUTES_AGENT_MINUTE_INSTRUCTION_V1 || '1'));
 }
@@ -7868,7 +7862,6 @@ function meetingAgentCandidateContextChars() {
 // candidate it was given has already judged the whole inventory. The critic
 // and salvage passes exist to catch what an incomplete referee missed; on a
 // complete one they have returned nothing material in every measured run.
-
 
 // The discovery inventory lists one commitment up to three times: as a chain,
 // as the thread inside it, and as each raw candidate the chain was built
@@ -8056,72 +8049,6 @@ function meetingMinutesAgentAnchoredDiscussionPrompt({ transcript, details, anch
   return `[DISCUSSION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
 }
 
-function normaliseAnchoredDiscussionDiscovery(result = {}, anchors = [], sourceUnits = []) {
-  const expected = (Array.isArray(anchors) ? anchors : []).filter((anchor) => anchor?.anchorId);
-  const expectedIds = expected.map((anchor) => String(anchor.anchorId));
-  const rows = Array.isArray(result?.anchorResults) ? result.anchorResults : [];
-  const returnedIds = rows.map((row) => meetingMinutesAgentText(row?.anchorId, 180));
-  const counts = new Map(returnedIds.map((id) => [id, Number(returnedIds.filter((value) => value === id).length)]));
-  const invalidIds = expectedIds.filter((id) => counts.get(id) !== 1)
-    .concat(returnedIds.filter((id) => !expectedIds.includes(id)));
-  // The candidate IDs are the authoritative accounting contract. AI Builder
-  // occasionally serialises a correct set in a different order or misstates a
-  // redundant count field. Reorder the complete set here; only a genuinely
-  // missing, duplicate or unexpected ID warrants another model request.
-  const accountingValid = rows.length === expectedIds.length && invalidIds.length === 0;
-  if (!accountingValid) {
-    const error = new Error('Anchored discussion discovery returned incomplete candidate accounting.');
-    error.statusCode = 502;
-    error.code = 'invalid_anchored_discussion_accounting';
-    error.retryable = true;
-    error.invalidCandidateIds = [...new Set(invalidIds)];
-    throw error;
-  }
-  const validEvidence = new Set((Array.isArray(sourceUnits) ? sourceUnits : []).map((unit) => unit?.id).filter(Boolean));
-  const anchorById = new Map(expected.map((anchor) => [String(anchor.anchorId), anchor]));
-  const resultById = new Map(rows.map((row) => [String(row.anchorId), row]));
-  const topics = new Map();
-  for (const expectedId of expectedIds) {
-    const row = resultById.get(expectedId);
-    const recordType = meetingMinutesAgentText(row?.recordType, 60).toLowerCase();
-    const rawDisposition = meetingMinutesAgentText(row?.disposition, 40).toLowerCase();
-    const disposition = ({
-      keep: 'core', context: 'supporting', merge: 'supporting', discard: 'reject',
-      // AI Builder occasionally copies its recordType enum into disposition.
-      // A decision or material unresolved question is intrinsically core;
-      // ordinary discussion remains collapsed. This is a typed-field repair,
-      // not a content-specific inference.
-      decision: recordType === 'decision' ? 'core' : 'supporting',
-      open_question: recordType === 'open_question' ? 'core' : 'supporting',
-      discussion_point: 'supporting'
-    })[rawDisposition]
-      || (['core', 'supporting', 'reject'].includes(rawDisposition) ? rawDisposition : 'supporting');
-    if (disposition === 'reject') continue;
-    const anchor = anchorById.get(String(row.anchorId));
-    const allowedEvidence = new Set((anchor?.evidenceIds || []).filter((id) => validEvidence.has(id)));
-    const returnedEvidence = meetingMinutesAgentText(row?.evidenceCsv, 800)
-      .split(',').map((id) => id.trim()).filter((id) => allowedEvidence.has(id));
-    const evidenceIds = [...new Set(returnedEvidence.length ? returnedEvidence : [...allowedEvidence])];
-    const recordText = meetingMinutesAgentText(row?.text, 1200);
-    if (!recordText || !evidenceIds.length) continue;
-    const topicName = meetingMinutesAgentText(row?.topic, 240) || 'Discussion';
-    if (!topics.has(topicName)) topics.set(topicName, {
-      id: `topic-${topics.size + 1}`, topic: topicName, points: [], decisions: [], openQuestions: []
-    });
-    const record = {
-      id: String(row.anchorId), text: recordText, evidenceIds,
-      supportingDetails: [], reviewFlagIds: [], discoveryDisposition: disposition
-    };
-    if (recordType === 'decision') topics.get(topicName).decisions.push(record);
-    else if (recordType === 'open_question') topics.get(topicName).openQuestions.push(record);
-    else topics.get(topicName).points.push(record);
-  }
-  return {
-    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
-    meetingObjectives: [], discussion: [...topics.values()], actions: [], reviewFlags: []
-  };
-}
-
 function meetingMinutesAgentAnchoredActionPrompt({
   transcript, details, candidates = [], currentActions = [], steer, mode = 'discovery', phaseClarifications = false
 }) {
@@ -8149,63 +8076,6 @@ function meetingMinutesAgentAnchoredActionPrompt({
   };
   return `[ACTION_ANCHORED_DISCOVERY]\n${JSON.stringify(payload)}`;
 }
-
-function normaliseAnchoredActionDiscovery(result = {}, sourceUnits = [], options = {}) {
-  const units = normaliseSourceUnits(sourceUnits);
-  const validEvidence = new Set(units.map((unit) => unit.id));
-  const splitScalarList = (value) => [...new Set(meetingMinutesAgentText(value, 1600)
-    .split(/\s*[|;]\s*/).map((item) => item.trim()).filter(Boolean))];
-  const rows = Array.isArray(result?.actionResults) ? result.actionResults : [];
-  const actions = [];
-  const actionProposals = [];
-  for (const row of rows) {
-    const action = meetingMinutesAgentText(row?.action, 1200);
-    // Refusals can contain the same future/intent tokens as commitments. They
-    // are never publishable work, so enforce that invariant independently of
-    // the model's disposition.
-    if (/^(?:i|we|you|he|she|they)(?:\s+(?:am|are|is))?\s+(?:not|never)\b|^(?:i|we|you|he|she|they)(?:'m|'re|'s)\s+(?:not|never)\b|^(?:i|we|you|he|she|they)\s+(?:won't|wouldn't|can't|cannot|don't|do not)\b/i.test(action)) continue;
-    const evidenceIds = splitScalarList(row?.evidenceCsv)
-      .flatMap((item) => item.split(/\s*,\s*/))
-      .map((item) => item.trim()).filter((item) => validEvidence.has(item));
-    if (!action || !evidenceIds.length) continue;
-    const disposition = ({
-      core: 'publish', keep: 'publish', uncertain: 'proposal', supporting: 'proposal',
-      complete: 'completed', done: 'completed', idea: 'suggestion', discard: 'reject'
-    })[meetingMinutesAgentText(row?.disposition, 60).toLowerCase()]
-      || meetingMinutesAgentText(row?.disposition, 60).toLowerCase();
-    if (!['publish', 'proposal'].includes(disposition)) continue;
-    const timingKind = meetingMinutesAgentText(row?.timingKind, 40).toLowerCase();
-    const record = {
-      id: meetingMinutesAgentText(row?.resultId, 160)
-        || `action-discovery-${crypto.createHash('sha256').update(`${action}|${evidenceIds.join('|')}`).digest('hex').slice(0, 12)}`,
-      action,
-      owners: splitScalarList(row?.ownersCsv),
-      timing: {
-        kind: ['deadline', 'target', 'dependency', 'not_stated'].includes(timingKind)
-          ? timingKind : 'not_stated',
-        wording: meetingMinutesAgentText(row?.timingWording, 220),
-        exactDate: meetingMinutesAgentText(row?.exactDate, 20)
-      },
-      evidenceIds: [...new Set(evidenceIds)].slice(0, 12),
-      reviewFlagIds: []
-    };
-    (disposition === 'publish' ? actions : actionProposals).push(record);
-  }
-  const normalisedActions = normaliseAgentResult(
-    { actions }, sourceUnits, 'actions', { meetingDate: options.meetingDate }
-  ).actions;
-  const normalisedProposals = normaliseAgentDeclaredProposals(
-    { actionProposals }, sourceUnits, { meetingDate: options.meetingDate }
-  );
-  return {
-    schemaVersion: MEETING_AGENT_SCHEMA_VERSION,
-    discussion: [], actions: normalisedActions,
-    actionProposals: normalisedProposals,
-    candidateDispositions: [], reviewFlags: []
-  };
-}
-
-
 
 function meetingAgentCandidateTimingSignature(candidate = {}, includeKind = true) {
   const timing = (candidate.record || candidate).timing || {};
@@ -8262,82 +8132,6 @@ function retainedDocumentReferenceReviewFlags(records = [], flags = []) {
         message: flag.message.startsWith('Possible assessment to review:') ? flag.message
           : `Possible assessment to review: ${flag.message} Proposed wording: ${meetingMinutesAgentText(row.action, 160)}` });
     });
-}
-
-function normaliseAgentDeclaredProposals(result = {}, sourceUnits = [], options = {}) {
-  const direct = Array.isArray(result?.actionProposals) ? result.actionProposals : [];
-  const dispositions = Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : [];
-  const fromDispositions = dispositions.filter((item) => item?.disposition === 'proposal' && item?.action)
-    .map((item) => ({
-      id: item.id || item.candidateId,
-      action: item.action,
-      owners: Array.isArray(item.owners) ? item.owners : [],
-      timing: item.timing,
-      evidenceIds: item.evidenceIds,
-      reviewFlagIds: []
-    }));
-  const raw = [...direct, ...fromDispositions].map((item) => item?.record || item).filter((item) => item?.action);
-  const units = normaliseSourceUnits(sourceUnits);
-  const validIds = new Set(units.map((unit) => unit.id));
-  const unitById = new Map(units.map((unit) => [unit.id, unit]));
-  const normalised = normaliseAgentResult({ actions: raw }, sourceUnits, 'actions', {
-    // A proposal is allowed to describe an unaccepted offer or ambiguous
-    // follow-up, so the automatic-action lifecycle gate is intentionally not
-    // used here. The explicit evidence validation below remains mandatory.
-    enforceEvidence: false, meetingDate: options.meetingDate
-  }).actions;
-  return dedupeHybridActionRecords(normalised.map((action) => {
-    const sameLabel = raw.filter(item => item.id && item.id === action.id);
-    // Discovery labels are ordinal within a response. When two replies reuse
-    // one, require a unique wording match rather than borrowing the first
-    // proposal's citations for a different document or assessment.
-    const sameWording = sameLabel.filter(item => cleanActionWording(item.action) === action.action);
-    const supplied = sameLabel.length === 1 ? sameLabel[0]
-      : sameLabel.length > 1 ? (sameWording.length === 1 ? sameWording[0] : null)
-        : raw.find(item => hybridTokenOverlap(item.action, action.action) >= 0.55);
-    let evidenceIds = [...new Set((supplied?.evidenceIds || []).filter((id) => validIds.has(id)))].slice(0, 8);
-    let evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
-    let documentContext = null;
-    if (evidenceIds.length && evidenceSupportScore(action.action, evidence) < 0.22) {
-      documentContext = documentReferenceContextEvidence(action.action, evidenceIds, sourceUnits);
-      if (!documentContext) {
-        const prefix = action.action.match(/\b(ISO|IEC|ASTM|EN|BS)\s+(\d{3,5}(?:[-–]\d{1,4})*(?::\d{4})?)\b/i);
-        if (prefix) {
-          const withoutPrefix = action.action.replace(prefix[0], `standard ${prefix[2]}`);
-          const uncertain = documentReferenceContextEvidence(withoutPrefix, evidenceIds, sourceUnits);
-          if (uncertain && !uncertain.evidenceIds.some(id =>
-            String(unitById.get(id)?.text || '').toLowerCase().includes(prefix[0].toLowerCase()))) {
-            documentContext = { ...uncertain, unstatedPrefix: prefix[1].toUpperCase() };
-          }
-        }
-      }
-      if (documentContext) {
-        evidenceIds = documentContext.evidenceIds;
-        evidence = evidenceIds.map((id) => `${unitById.get(id)?.speaker || ''}: ${unitById.get(id)?.text || ''}`).join(' ');
-      }
-    }
-    if (!evidenceIds.length || evidenceSupportScore(action.action, evidence) < 0.22) return null;
-    // Still screened for what is never an action at all: running the meeting
-    // ("No bother Dermot, we'll come to you in a minute") and wording that is
-    // a line of the conversation rather than a written instruction.
-    if (isMeetingAdminAction(action.action) || actionEvidenceDisposition(action.action, evidence) === 'meeting_admin') return null;
-    if (transcriptTextGateEnabled() && transcriptTextIssue(action.action, sourceUnits)) return null;
-    if (documentContext) {
-      const flag = normaliseMeetingAgentFlag({
-        id: 'flag-document-reference-' + crypto.createHash('sha256').update(JSON.stringify([
-          action.id, action.action, documentContext.originalEvidenceIds, documentContext.addedEvidenceIds
-        ])).digest('hex').slice(0, 16),
-        kind: 'unclear_reference',
-        message: documentContext.unstatedPrefix
-          ? `Document reference to correct: the proposed ${documentContext.unstatedPrefix} identifier prefix is not stated in the linked source. Confirm or correct the document name before including this assessment. Added context does not verify ownership or acceptance.`
-          : 'Document reference to check: the action names a document identified in the preceding source passage. Confirm that this assessment concerns that document. The connection, ownership and acceptance have not been verified by adding this context.',
-        evidenceIds, actionWordingAtCheck: action.action,
-        documentReferenceContext: { kind: 'adjacent_identity_context', ...documentContext }
-      });
-      return { ...action, evidenceIds, reviewFlagIds: [...new Set([...(action.reviewFlagIds || []), flag.id])] };
-    }
-    return { ...action, evidenceIds };
-  }).filter(Boolean));
 }
 
 function deterministicHybridLedger(draft, stage) {
@@ -9024,8 +8818,6 @@ function meetingMinutesAgentSalvagePrompt({ transcript, details, actions, candid
   ].join('\n\n');
 }
 
-
-
 const meetingAgentCallQueue = [];
 let meetingAgentActiveCalls = 0;
 let meetingAgentLastCallStartedAt = 0;
@@ -9278,74 +9070,6 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   return parsedResult;
 }
 
-
-
-function agentUnaccountedCandidates(result = {}, candidates = [], sourceUnits = []) {
-  const supplied = (Array.isArray(candidates) ? candidates : [])
-    .map((candidate) => meetingMinutesAgentText(candidate?.candidateId, 120)).filter(Boolean);
-  const dispositions = Array.isArray(sourceUnits) && sourceUnits.length
-    ? normaliseAgentCandidateDispositions(result, sourceUnits)
-    : (Array.isArray(result?.candidateDispositions) ? result.candidateDispositions : []);
-  const settled = new Set(dispositions
-    .filter((item) => ['reject', 'completed', 'suggestion'].includes(item?.disposition)
-      && meetingMinutesAgentText(item?.reason, 500))
-    .map((item) => meetingMinutesAgentText(item?.candidateId, 120)));
-  return supplied.filter((candidateId) => !settled.has(candidateId));
-}
-
-function meetingAgentEmptyDiscoveryError(result, stage, candidates = [], sourceUnits = [], options = {}) {
-  const isDiscussion = stage === 'discussion';
-  const isActions = stage === 'actions';
-  if (!isDiscussion && !isActions) return null;
-  const normalised = Array.isArray(sourceUnits) && sourceUnits.length
-    ? normaliseAgentResult(result, sourceUnits, stage, { meetingDate: options.meetingDate })
-    : null;
-  const hasOutput = isDiscussion
-    ? normalised
-      ? flattenHybridDiscussion(normalised.discussion).some((item) =>
-        Array.isArray(item?.record?.evidenceIds) && item.record.evidenceIds.length > 0)
-      : Array.isArray(result?.discussion) && result.discussion.length > 0
-    : normalised
-      ? normalised.actions.some((item) => Array.isArray(item?.evidenceIds) && item.evidenceIds.length > 0)
-        || normaliseAgentDeclaredProposals(result, sourceUnits, { meetingDate: options.meetingDate })
-          .some((item) => Array.isArray(item?.evidenceIds) && item.evidenceIds.length > 0)
-      : (Array.isArray(result?.actions) && result.actions.length > 0)
-        || (Array.isArray(result?.actionProposals) && result.actionProposals.length > 0);
-  if (hasOutput) return null;
-  const isSubstantiveCandidate = (candidate) => {
-    const recordType = String(candidate?.recordType || candidate?.kind || '');
-    if (isDiscussion) {
-      return ['decision', 'open_question', 'objective'].includes(recordType)
-        || Number(candidate?.priority || 0) >= 7;
-    }
-    const owners = candidate?.owners || candidate?.record?.owners || candidate?.ownerHints || [];
-    const signals = candidate?.signals || {};
-    return ['action_chain', 'action_thread'].includes(recordType)
-      ? ['committed', 'accepted_request', 'conditional_commitment'].includes(candidate?.dispositionHint)
-        && Boolean(signals.commitment || signals.acceptance || signals.assignment || signals.scheduled)
-      : recordType === 'action' && Number(candidate?.priority || 0) >= 8
-        && (Array.isArray(owners) ? owners.length > 0 : Boolean(owners));
-  };
-  const substantive = (Array.isArray(candidates) ? candidates : []).filter(isSubstantiveCandidate);
-  if (!substantive.length) return null;
-  // An empty actions draft is not a failed call when the agent has explicitly
-  // disposed of every substantive candidate as already covered, completed or a
-  // mere suggestion. Retrying that answer only re-sends the same prompt and
-  // costs a minute of the reviewer's wait; the Power Automate run itself
-  // succeeded. Only the substantive candidates need accounting for: the
-  // error exists because of them, not the low-priority windows around them.
-  const unaccounted = isActions ? agentUnaccountedCandidates(result, substantive, sourceUnits) : substantive;
-  if (isActions && !unaccounted.length) return null;
-  const error = new Error(`The ${isDiscussion ? 'discussion' : 'action'} agent returned an empty draft despite substantive evidence candidates`
-    + (isActions ? ` (${unaccounted.length} of ${substantive.length} without a reasoned disposition: ${unaccounted.slice(0, 4).join(', ')}).` : '.'));
-  error.code = `empty_${isDiscussion ? 'discussion' : 'action'}_with_substantive_candidates`;
-  error.statusCode = 502;
-  error.retryable = true;
-  return error;
-}
-
-
-
 function effectiveDiscussionRefereeDispositions(dispositions = [], candidates = []) {
   const rows = (Array.isArray(dispositions) ? dispositions : []).map((item) => ({ ...item }));
   const candidatesById = new Map((Array.isArray(candidates) ? candidates : [])
@@ -9493,8 +9217,6 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
     candidates: ensemble.filter(candidate => isReviewerAuthored(candidate) || hasMeetingAgentReviewerContent(candidate.record)
       || !settled.has(candidate.candidateId) && !records.has(key(candidate.recordType, candidate.record))) };
 }
-
-
 
 async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}) {
   const timings = [];
@@ -11961,8 +11683,6 @@ function mayDiscardSupportingDetail(detail, existing) {
     && (!temporalClaim(detail?.text) || !supportingDetailAddsInformation(detail, [], existing));
 }
 
-
-
 function exactDiscussionTwinEvidence(candidate = {}, candidates = [], sourceUnits = [], options = {}, rejectedIds = new Set()) {
   const hasEvidence = (row) => (Array.isArray(row?.evidenceIds) && row.evidenceIds.length)
     || (Array.isArray(row?.record?.evidenceIds) && row.record.evidenceIds.length);
@@ -12284,21 +12004,6 @@ function reconstructRefereeActions(dispositions = [], candidates = [], sourceUni
     ).actions),
     ...(unresolvedMaterializations.length ? { unresolvedMaterializations } : {})
   };
-}
-
-// The structured Referee normally returns dispositions rather than repeating
-// complete action objects. reconstructRefereeActions turns those dispositions
-// back into records; proposal rows must then enter the same proposal pipeline
-// as proposals written directly by an Agent response. Reading only the raw
-// response here silently discarded every disposition-only proposal.
-function normaliseRefereeDeclaredProposals(result = {}, reconstructed = {}, sourceUnits = [], options = {}) {
-  return normaliseAgentDeclaredProposals({
-    ...result,
-    actionProposals: dedupeHybridActionProposals([
-      ...(Array.isArray(result?.actionProposals) ? result.actionProposals : []),
-      ...(Array.isArray(reconstructed?.actionProposals) ? reconstructed.actionProposals : [])
-    ])
-  }, sourceUnits, options);
 }
 
 function meetingMinutesAgentSupportingSemanticThreshold() {
@@ -13464,10 +13169,6 @@ const verifyMeetingAgentSummaryTiming = createSummaryTimingVerifier({
   meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash
 });
 
-
-
-
-
 async function generateHybridMeetingAgentStage(draft, stage, options = {}) {
   if (parallelMinutes.isParallel(draft)) throw Object.assign(new Error('Use the parallel minutes generator for this draft.'), {statusCode:422});
   return actionDiagnostics.generate(draft, stage, options, async () => {
@@ -13519,7 +13220,6 @@ const originalMinutesStageServices = Object.freeze({
   meetingAgentActionAuditCandidates,
   meetingAgentActionPrimaryPromptForDraft,
   meetingAgentCommitmentRecheckNeeded,
-  meetingAgentEmptyDiscoveryError,
   meetingAgentEmptyDiscoveryRepairPrompt,
   meetingAgentFlagUntouched,
   meetingAgentPeopleNames,
@@ -13559,11 +13259,7 @@ const originalMinutesStageServices = Object.freeze({
   meetingMinutesProposalRecheckEnabled,
   mergeHybridDiscussionTopics,
   mergePublishedActionEvidence,
-  normaliseAgentDeclaredProposals,
-  normaliseAnchoredActionDiscovery,
-  normaliseAnchoredDiscussionDiscovery,
   normaliseMeetingAgentMinuteNumbers,
-  normaliseRefereeDeclaredProposals,
   peekReadyPrivateStagedCandidateLedger,
   preselectActionProposal,
   promoteAllDiscussionDetails,
@@ -14017,8 +13713,6 @@ function meetingAgentDateContext(transcript = '', fileName = '', extracted = {})
   };
 }
 
-
-
 // Historic metadata must not disappear silently when calendar validation
 // blanks an impossible date. Surface it without rewriting the stored draft
 // on a read; its original value is retained in private preparation context.
@@ -14035,8 +13729,6 @@ function meetingAgentWithLegacyDateReview(draft = {}) {
     message: 'The saved meeting date is not a valid calendar date. Check the meeting details before using it to calculate dates.'
   }]) };
 }
-
-
 
 router.patch('/meeting-minutes-agent/drafts/:draftId', requireAuth, async (req, res) => {
   try {
@@ -14272,8 +13964,6 @@ async function generateMeetingAgentStage(draft, stage, instruction) {
   return instruction ? cleanGeneratedMeetingAgentResult(result, stage)
     : finishMeetingAgentGeneratedStage(result, draft, stage);
 }
-
-
 
 const MEETING_AGENT_RETRY_MS = [5000, 15000, 30000];
 

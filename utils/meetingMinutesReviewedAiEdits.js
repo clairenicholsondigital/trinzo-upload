@@ -1,7 +1,7 @@
 'use strict';
 
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
-const { normaliseAgentResult } = require('./meetingMinutesAgentV2');
+const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 
 const KINDS = ['points', 'decisions', 'openQuestions'];
 const rows = (value) => Array.isArray(value) ? value : [];
