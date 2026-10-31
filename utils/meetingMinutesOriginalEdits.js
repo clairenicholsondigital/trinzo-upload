@@ -1,12 +1,14 @@
 'use strict';
 
 const { meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('./meetingMinutesDraftContext');
-const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
+const {
+  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags, coverageFlags
+} = require('./meetingMinutesReviewFlags');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 
 const {
   actionCandidateInventory, discussionCandidateInventory, groundedExecutiveSummary,
-  groundedObjectiveRecords, coverageFlags
+  groundedObjectiveRecords
 } = require('./meetingMinutesAgentV2');
 const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');

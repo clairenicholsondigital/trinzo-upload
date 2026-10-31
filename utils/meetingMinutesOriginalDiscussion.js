@@ -1,11 +1,15 @@
 'use strict';
 
+const { effectiveDiscussionRefereeDispositions } = require('./meetingMinutesRefereeCandidates');
+
 const { sanitiseDetails: sanitiseMeetingAgentDetails } = require('./meetingMinutesDraftContext');
 const { refereeDiscussionTargetId, refereeDiscussionContractDiagnostics, discussionRefereeHasCompleteCandidateAccounting } = require('./meetingMinutesResponseContracts');
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags } = require('./meetingMinutesReviewFlags');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
-const { flagConflictingDiscussionRoles, groundRowAttributions } = require('./meetingMinutesPeopleEvidence');
+const {
+  flagConflictingDiscussionRoles, groundRowAttributions, meetingAgentPeopleNames
+} = require('./meetingMinutesPeopleEvidence');
 
 const {
   annotateMeetingAgentPassImpact,
@@ -79,12 +83,10 @@ function createOriginalDiscussionStage(services) {
     discussionRefereeFallbackPlan,
     discussionRefereeSufficiency,
     discussionStructureDiagnostics,
-    effectiveDiscussionRefereeDispositions,
     finalisePromotedDiscussion,
     hybridCandidateDispositions,
     includeAllDiscussionDetailsExperiment,
     limitSupportingDetails,
-    meetingAgentPeopleNames,
     meetingMinutesAgentCompactDiscussionEnabled,
     meetingMinutesAgentCompactDiscussionShadowEnabled,
     meetingMinutesAgentDiscussionOrganiseEnabled,

@@ -4,7 +4,6 @@ const { text } = require('./meetingMinutesText');
 const { contentTokens, tokenOverlap } = require('./meetingMinutesRecordMatching');
 const { normaliseSourceUnits } = require('./meetingMinutesSource');
 
-
 function includedUnit(unit) {
   return unit.classification !== 'remove' || unit.restored === true;
 }
@@ -187,6 +186,14 @@ function evidenceSupportScore(claim, evidence) {
   return Math.max(0, (lexical * 0.55) + (materialCoverage * 0.45) - polarityPenalty);
 }
 
+function surroundingEvidence(units = [], ids = []) {
+  const rows = normaliseSourceUnits(units);
+  const wanted = new Set(ids);
+  const indexes = rows.map((unit, index) => wanted.has(unit.id) ? index : -1).filter((index) => index >= 0);
+  const include = new Set(indexes.flatMap((index) => [index - 1, index, index + 1]).filter((index) => index >= 0 && index < rows.length));
+  return [...include].sort((a, b) => a - b).map((index) => ({ ...rows[index], cited: wanted.has(rows[index].id) }));
+}
+
 module.exports = {
   includedUnit,
   clearMeetingMinutesAgentV2MemoryCaches,
@@ -202,5 +209,6 @@ module.exports = {
   explicitValues,
   explicitValuePresent,
   polarity,
-  evidenceSupportScore
+  evidenceSupportScore,
+  surroundingEvidence
 };

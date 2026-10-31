@@ -88,4 +88,12 @@ function documentReferenceContextEvidence(action, suppliedIds = [], units = []) 
   return connections.length === 1 ? connections[0] : null;
 }
 
-module.exports = { assessmentOwnershipReviewNotice, documentReferenceContextEvidence };
+function requiresDocumentReferenceReview(action = {}) {
+  return (Array.isArray(action?.reviewFlagIds) ? action.reviewFlagIds : []).some(id => String(id).startsWith('flag-document-reference-'));
+}
+
+module.exports = {
+  assessmentOwnershipReviewNotice,
+  documentReferenceContextEvidence,
+  requiresDocumentReferenceReview
+};

@@ -1,10 +1,12 @@
 'use strict';
 
+const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
+const { evidenceSupportScore } = require('./meetingMinutesEvidenceContext');
+
 const { text, isAutomaticTerminologyFlag } = require('./meetingMinutesText');
-const { stableId } = require('./meetingMinutesRecordMatching');
+const { stableId, tokenOverlap } = require('./meetingMinutesRecordMatching');
 const { normaliseSystemTimingIssue } = require('./meetingMinutesTimingFlags');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
-
 
 const FLAG_KINDS = new Set([
   'uncertain_fact', 'unclear_reference', 'ownership', 'attribution', 'timing',
@@ -238,6 +240,29 @@ function mergeMeetingAgentFlags(existing = [], added = []) {
   return [...byId.values()].slice(0, 250);
 }
 
+function meetingAgentFlagUntouched(flag = {}) {
+  return (flag.status || 'open') === 'open' && !meetingMinutesAgentText(flag.correctionNote, 500);
+}
+
+function meetingAgentProposalReviewFlagId(change = {}) {
+  return meetingMinutesAgentText(`proposal-review-${change.id || ''}`, 80);
+}
+
+function coverageFlags(inventory = [], result = {}) {
+  const output = JSON.stringify({
+    discussion: result.discussion || [],
+    actions: result.actions || [],
+    executiveSummary: result.executiveSummary || '',
+    meetingObjectives: result.meetingObjectives || result.objectives || []
+  });
+  return inventory.filter((item) => Math.max(tokenOverlap(item.text, output), evidenceSupportScore(item.text, output)) < 0.28).slice(0, 12).map((item, index) => normaliseFlag({
+    id: `coverage-${item.id}`,
+    kind: item.kind === 'standard_reference' ? 'unclear_reference' : 'uncertain_fact',
+    message: `${COVERAGE_FLAG_MESSAGE} “${item.text.slice(0, 220)}”`,
+    evidenceIds: item.evidenceIds
+  }, index));
+}
+
 module.exports = {
   mergeMeetingAgentFlags,
   normaliseFlag,
@@ -247,5 +272,8 @@ module.exports = {
   isUsefulReviewFlag,
   flagRecordsIn,
   uniqueFlags,
-  COVERAGE_FLAG_MESSAGE
+  COVERAGE_FLAG_MESSAGE,
+  coverageFlags,
+  meetingAgentFlagUntouched,
+  meetingAgentProposalReviewFlagId
 };

@@ -1,5 +1,7 @@
 'use strict';
 
+const { normaliseSourceUnits } = require('./meetingMinutesSource');
+
 const { text } = require('./meetingMinutesText');
 const { contentTokens } = require('./meetingMinutesRecordMatching');
 const { evidenceContextFor } = require('./meetingMinutesEvidenceContext');
@@ -659,6 +661,16 @@ function ownerSupportedByEvidence(owner, evidenceText, units = []) {
   return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
 }
 
+const meetingAgentMentionedPeople = mentionedPeople;
+
+// Combine source speakers and independently mentioned people in encounter order.
+function meetingAgentPeopleNames(sourceUnits = []) {
+  const speakers = normaliseSourceUnits(sourceUnits).map((unit) => String(unit.speaker || '').trim()).filter(Boolean);
+  let mentioned = [];
+  try { mentioned = meetingAgentMentionedPeople(sourceUnits) || []; } catch (error) { mentioned = []; }
+  return [...new Set([...speakers, ...mentioned].map((name) => String(name).trim()).filter(Boolean))];
+}
+
 module.exports = {
   OWNER_FIRST_PERSON,
   MEETING_WORK_WORDS,
@@ -683,5 +695,6 @@ module.exports = {
   ownerIdentityKey,
   ownerIdentityTokens,
   ownerSupportedByEvidence,
-  splitOwners
+  splitOwners,
+  meetingAgentPeopleNames
 };
