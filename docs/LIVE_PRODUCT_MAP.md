@@ -924,6 +924,44 @@ required. Speculation/adoption, background writes/progress, generation dispatch,
 summary timing and the remaining Original policies are unfinished. Frontend,
 storage/schema, prompts, provider configuration and Python processing are unchanged.
 
+## Generation lifecycle ownership and further obsolete backend retirement
+
+`meetingMinutesGenerationLifecycle` now owns actual speculative scheduling,
+adoption, serialized draft writes, progress and final persistence, aggregate
+memory status/reset, initial processing, Parallel copy coordination, and the
+three existing generation handlers. Its single factory receives the two real
+full-generation runners. One module authority retains timers, write queues,
+completion observations, the active counter and Parallel runner/copy state;
+GenerationRuntime and Transport keep their existing shared Maps and boot/context.
+
+Actual proposal selection, generated admission and action acceptance live in
+`meetingMinutesProposalSelection`, `meetingMinutesGenerationAdmission` and
+`meetingMinutesActionAcceptance`. The 47 original declarations (1,018 declaration
+lines) and three handler registrations (166 lines) keep their algorithms. The
+Original services map falls from 73 to 71; OriginalActions directly imports the
+two owned selection policies. Existing API/V2 compatibility exports remain.
+
+Ten private unused helpers (215 declaration lines) are removed after caller,
+entrypoint, dynamic-reader and source-contract review. This explicitly retires
+the unused historical `buildStagedTrooperPrompt` definition; all 26 surviving
+prompt definitions and live provider instructions remain byte exact. Exactly
+56 obsolete Python source-presence assertions retire with that old backend;
+all test methods and remaining live assertions stay. Forty-three original import
+bindings are removed and five unnecessary new composition bindings are omitted,
+while every existing require initializer/order remains. Further source-pinned
+helper candidates are deferred for their own explicit review.
+
+Four bounded existing-file cases exercise actual enabled speculation, in-flight
+adoption, failure-safe reset/write queues and Original dispatch/repeated polls.
+The existing speculation file also joins compact checks. Existing persistence
+cases retain reviewer-edit protection and bounded optimistic-conflict coverage.
+API falls from 11,347 to 9,760 lines; V2 from 3,686 to 3,615. Entrypoint reduction
+includes relocation and verified deletion. Frozen release/deployment acceptance
+is required. Summary timing, the remaining Original policies and full canonical
+staged evaluation/ingestion ownership remain unfinished. Frontend assets, saved
+formats/schema, renderer implementations, provider configuration, dependencies
+and Python processing are unchanged.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

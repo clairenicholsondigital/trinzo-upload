@@ -1,21 +1,24 @@
-const { createMeetingMinutesCandidatePrewarm, privateStagedCandidateQueueState } = require('../utils/meetingMinutesCandidatePrewarm');
+const { createMeetingMinutesGenerationLifecycle } = require('../utils/meetingMinutesGenerationLifecycle');
+const { hybridActionsEquivalent, actionDispositionWithContext, echoesPublishedAction, preselectActionProposal, preselectDiscussionProposal, preselectRequestedProposal, meetingAgentProposalChangeIsVisible } = require('../utils/meetingMinutesProposalSelection');
+const { meetingAgentActionsFingerprint, admitMeetingAgentGeneratedActionChanges, meetingAgentRegenerationChanges, applyStageResultVirtually, meetingAgentUntouchedSpeculationChanges, meetingAgentPreviewSavedActions } = require('../utils/meetingMinutesGenerationAdmission');
+const { createMeetingMinutesCandidatePrewarm } = require('../utils/meetingMinutesCandidatePrewarm');
 const { hybridCandidateLedgerFromResult, stagedCandidateLedgerFromResult, cachedStagedCandidatesForStage, peekReadyPrivateStagedCandidateLedger } = require('../utils/meetingMinutesCandidateLedger');
 const { stagedGenerationMeetingType } = require('../utils/meetingMinutesStageMeetingType');
 const { actionCandidateInventory, actionCommitmentChainInventory, actionCommitmentThreadInventory } = require('../utils/meetingMinutesActionCandidateInventory');
-const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry, meetingAgentFlowUrlFor, meetingAgentCallContext, parseJsonLenient, MEETING_AGENT_RETRY_MS } = require('../utils/meetingMinutesAgentTransport');
+const { askPowerAutomateMeetingMinutesAgent, askPowerAutomateMeetingMinutesAgentWithRetry, meetingAgentFlowUrlFor, meetingAgentCallContext, parseJsonLenient } = require('../utils/meetingMinutesAgentTransport');
 const { registerMeetingMinutesReviewerParallelProposals, registerMeetingMinutesReviewerSave, registerMeetingMinutesReviewerSource, registerMeetingMinutesReviewerDecisionsHistory } = require('./meetingMinutesReviewer');
 const { meetingAgentDraftPayload, normaliseMeetingAgentQualityState, normaliseMeetingAgentGeneration, meetingAgentReviewSnapshot, meetingAgentReviewHistoryEntry, meetingAgentDerivedStaleStages, meetingAgentDiscussionUsesDateAnchor, meetingAgentStaleStagesAfterGeneration, assertMeetingAgentDateInput, reopenFlagsOfReAddedItems } = require('../utils/meetingMinutesReviewerState');
 const { saveMeetingAgentDraft, normaliseMeetingAgentDraftChanges } = require('../utils/meetingMinutesDraftPersistence');
-const { rebaseMeetingAgentProposal, automaticMeetingAgentProposalReview, destructiveActionEdit, proposalOwnersOf, duplicateMeetingAgentActionModification, meetingAgentEditableActionSignature, retainedDocumentReferenceReviewFlags, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
+const { rebaseMeetingAgentProposal, automaticMeetingAgentProposalReview, meetingAgentEditableActionSignature, retainedDocumentReferenceReviewFlags, resolveMeetingAgentProposalFlags } = require('../utils/meetingMinutesProposalReview');
 const { finaliseMeetingAgentTimingProposal } = require('../utils/meetingMinutesProposalTiming');
 const { salientDetailInventory } = require('../utils/meetingMinutesAssessmentEvidence');
 const {
   candidatePromptPack
 } = require('../utils/meetingMinutesCandidatePack');
 const { MEETING_AGENT_COMMITMENT_LANGUAGE, MEETING_AGENT_DISCUSSION_COVERAGE_RULE, MEETING_AGENT_SMALL_TALK_RULE, MEETING_AGENT_TIMING_RULE, MEETING_AGENT_UNSPOKEN_MONTH_RULE, meetingAgentSteerText, meetingMinutesAgentPrimaryPrompt, meetingMinutesAgentPrompt } = require('../utils/meetingMinutesAgentPrompts');
-const { MEETING_AGENT_STAGE_STEP, meetingAgentStageHasContent, meetingAgentStageInputFingerprint, meetingAgentUpstreamFingerprint, meetingMinutesAgentHybridEnabled, meetingMinutesAgentSpeculativePipelineEnabled } = require('../utils/meetingMinutesStageProtocol');
-const { MEETING_AGENT_BOOT_ID, meetingAgentActionsPrewarmState, meetingAgentGenerationState, meetingAgentNextSpeculativeStage, meetingAgentSpeculationFor, meetingAgentSpeculationState, privateActionPrimaryCache, privateStageSpeculations, privateStagedCandidateCache, privateStagedCandidateCacheKey, pruneStageSpeculations, publicMeetingAgentGeneration, speculationKey, meetingAgentActionPrimaryPromptForDraft } = require('../utils/meetingMinutesGenerationRuntime');
-const { buildMeetingInsights, completeActionSuggestionText, filterIncompleteProposalChanges, isVagueReconstructedAction, meetingAgentProposalFlagMatchesChange, meetingAgentReferencedFlagIds, publicMeetingAgentDraft, reconcileMeetingAgentOrphanFlags } = require('../utils/meetingMinutesDraftView');
+const { meetingAgentStageHasContent, meetingAgentStageInputFingerprint, meetingAgentUpstreamFingerprint, meetingMinutesAgentHybridEnabled, meetingMinutesAgentSpeculativePipelineEnabled } = require('../utils/meetingMinutesStageProtocol');
+const { MEETING_AGENT_BOOT_ID, meetingAgentNextSpeculativeStage, meetingAgentSpeculationState, privateStageSpeculations, privateStagedCandidateCacheKey, meetingAgentActionPrimaryPromptForDraft } = require('../utils/meetingMinutesGenerationRuntime');
+const { buildMeetingInsights, completeActionSuggestionText, filterIncompleteProposalChanges, isVagueReconstructedAction, meetingAgentProposalFlagMatchesChange, publicMeetingAgentDraft, reconcileMeetingAgentOrphanFlags } = require('../utils/meetingMinutesDraftView');
 const {
   loadOwnedMeetingAgentDraft,
   sendMeetingAgentFailure
@@ -52,39 +55,11 @@ const {
   meetingAgentEmptyDiscoveryRepairPrompt
 } = require('../utils/meetingMinutesDiscoveryValidation');
 const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatchedMeetingAgentRefereeResults } = require('../utils/meetingMinutesResultAggregation');
-const {
-  ACTION_DEPENDENCY_CLAUSE,
-  NESTED_STOP,
-  WAY_TO_ACTION,
-  actionDeliveryFrame,
-  bundleSameRecipientDeliveries,
-  dedupeHybridActionProposals,
-  dedupeHybridActionRecords,
-  distinctActionDeliverables,
-  hybridActionTypes,
-  hybridCandidateMatchesRecord,
-  isClientReadyActionWording,
-  mergeDocumentDeliveryWorkflow,
-  nestedActionWork,
-  publishedActionNamesSameThing,
-  sameActionApproach,
-  sameDocumentDeliveryWorkflow,
-  sharesDistinctivePhrase,
-  strictActionDeliverableMatch,
-  sameActionPresentation,
-  mergePublishedActionEvidence,
-} = require('../utils/meetingMinutesActionDuplicatePolicy');
+const { NESTED_STOP, WAY_TO_ACTION, actionDeliveryFrame, bundleSameRecipientDeliveries, dedupeHybridActionProposals, dedupeHybridActionRecords, distinctActionDeliverables, hybridActionTypes, hybridCandidateMatchesRecord, isClientReadyActionWording, mergeDocumentDeliveryWorkflow, nestedActionWork, publishedActionNamesSameThing, sameActionApproach, sameDocumentDeliveryWorkflow, strictActionDeliverableMatch, sameActionPresentation, mergePublishedActionEvidence } = require('../utils/meetingMinutesActionDuplicatePolicy');
 const { hybridRecordText, hybridTokenOverlap, hybridContentTokenOverlap } = require('../utils/meetingMinutesRecordMatching');
 const { sanitiseDetails: sanitiseMeetingAgentDetails, meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('../utils/meetingMinutesDraftContext');
-const {
-  normaliseFlag: normaliseMeetingAgentFlag, isSalientCoverageFlag: isMeetingAgentCoverageFlag,
-  isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags,
-  mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId, meetingAgentFlagUntouched, coverageFlags
-} = require('../utils/meetingMinutesReviewFlags');
-const {
-  preparedTranscriptFromUnits, evidenceSupportScore, clearMeetingMinutesAgentV2MemoryCaches,
-  surroundingEvidence
-} = require('../utils/meetingMinutesEvidenceContext');
+const { normaliseFlag: normaliseMeetingAgentFlag, isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags, mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId, coverageFlags } = require('../utils/meetingMinutesReviewFlags');
+const { preparedTranscriptFromUnits, evidenceSupportScore, surroundingEvidence } = require('../utils/meetingMinutesEvidenceContext');
 const { resolveEvidence } = require('../utils/meetingMinutesEvidenceResolution');
 const { actionEvidenceDisposition, actionNegatedByEvidence, isMeetingAdminAction } = require('../utils/meetingMinutesActionEvidence');
 const {
@@ -123,14 +98,14 @@ const actionUnion = require('../utils/meetingMinutesActionUnionRewrite');
 const actionPhase = require('../utils/meetingMinutesActionPhaseCorrection');
 const { reconcileDetailedContacts } = require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
-const optionalReview = require('../utils/meetingMinutesOptionalReview');
+require('../utils/meetingMinutesOptionalReview');
 const citedFilingAliases = require('../utils/meetingMinutesCitedFilingAliases');
 const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
 const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
 const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
 const discussionMainPoint = require('../utils/canonicalMinutes/discussionMainPointCoverage');
 const discussionPointDecision = require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
-const discussionActionSeparation = require('../utils/canonicalMinutes/discussionActionSeparation');
+require('../utils/canonicalMinutes/discussionActionSeparation');
 const minimalFidelityRepair = require('../utils/meetingMinutesMinimalFidelityRepair');
 const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
@@ -154,11 +129,11 @@ const {
 const { extractTextFromUpload } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
-const { isActionOnlySemanticScope, captureSemanticPolicy, normaliseSemanticPolicy, semanticPolicyForRun, semanticPolicyForFingerprint } = require('../utils/meetingMinutesSemanticPolicy');
-const { normaliseDiscussionCoveragePolicy, captureDiscussionCoveragePolicy, discussionCoveragePolicyForRun, discussionCoveragePolicyForFingerprint } = require('../utils/meetingMinutesDiscussionCoveragePolicy');
+const { normaliseSemanticPolicy, semanticPolicyForRun } = require('../utils/meetingMinutesSemanticPolicy');
+const { normaliseDiscussionCoveragePolicy, discussionCoveragePolicyForRun } = require('../utils/meetingMinutesDiscussionCoveragePolicy');
 const { sameEnquiryActionSnapshot } = require('../utils/meetingMinutesEnquiryRecovery');
 const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
-const { validateReconciliationReceipt, rebindReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
+const { validateReconciliationReceipt } = require('../utils/canonicalMinutes/actionSemanticReconciliation');
 const { preserveCopiedReviewerContent } = require('../utils/meetingMinutesReviewedAiEdits');
 const {
   assertStagedSourceIdentity,
@@ -195,7 +170,7 @@ const {
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
 const { runCanonicalLiveStage } = require('../utils/canonicalMinutes/liveStages');
-const { clearMiniLMProfileMemoryCache } = require('../utils/canonicalMinutes/minilm');
+require('../utils/canonicalMinutes/minilm');
 const { suggestMeetingTypeFromEvidence } = require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
 const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
@@ -207,11 +182,7 @@ const { proposeActions, proposeMissedActions } = require('../utils/canonicalMinu
 const { meetingRecordAdminAction } = require('../utils/canonicalMinutes/semanticStages');
 const { proposeDiscussionPoints } = require('../utils/canonicalMinutes/proposedDiscussion');
 const filingAliases = require('../utils/meetingMinutesFilingAliases');
-const {
-  normalizeUnassignedSupportingDetails, collectUnassignedSupportingDetails,
-  mergeUnassignedSupportingDetails, withoutRepresentedUnassignedDetails,
-  foldLiteralParentSupportingRepeats
-} = require('../utils/meetingMinutesSupportingDetails');
+const { collectUnassignedSupportingDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
 const { discussionSelectionCoverage, discussionPublicationCoverage } = require('../utils/meetingMinutesDiscussionCoverage');
 const {
   knownPersonName,
@@ -298,67 +269,7 @@ const {
   getDatabaseConfigError,
   query
 } = require('../utils/db');
-const {
-  discussionCandidateInventory,
-  discussionAnchorInventory,
-  uncoveredCandidateInventory,
-  discussionRecoveryNeeded,
-  actionRecoveryNeeded,
-  applyTimingClauseChecks,
-  backfillActionCommitmentEvidence,
-  attachNearbyDependencyConditions,
-  timingCheckEnabled: meetingMinutesTimingCheckEnabled,
-  timingCheckItems,
-  timingCheckPrompt,
-  applyTimingCheckResults,
-  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
-  decisionCheckItems,
-  decisionCheckPrompt,
-  applyDecisionCheckResults,
-  discussionFidelityCheckItems,
-  discussionFidelityCheckPrompt,
-  applyDiscussionFidelityResults,
-  filterUnsupportedQuantifiedDiscussion,
-  promoteMaterialObjectionDetails,
-  actionCompletenessCheckItems,
-  actionCompletenessCheckPrompt,
-  applyActionCompletenessResults,
-  commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
-  commitmentCheckItems,
-  commitmentCheckPrompt,
-  applyCommitmentCheckResults,
-  finalActionLifecycleCheckItems,
-  finalActionLifecycleCheckPrompt,
-  applyFinalActionLifecycleResults,
-  answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
-  answeredCheckItems,
-  answeredCheckPrompt,
-  applyAnsweredCheckResults,
-  openQuestionCheckItems,
-  openQuestionCheckPrompt,
-  applyOpenQuestionCheckResults,
-  completedInMeetingCheckItems,
-  completedInMeetingCheckPrompt,
-  applyCompletedInMeetingCheckResults,
-  applyChainedTimingRule,
-  mergeDuplicateCommitments,
-  splitExplicitMultiOwnerActions,
-  demoteSupersededRows,
-  labelSupersededContext,
-  promoteNamedFactDetails,
-  describesUsualPractice,
-  isNotAnAction,
-  isMinuteInstruction,
-  acceptanceAroundEvidence,
-  groundUnstatedDiscussionMonths,
-  isSocialAside,
-  isAobPersonalAside,
-  isFarewellAction,
-  softenBestEffortCompletion,
-  discussionActionCandidates,
-  supersededCheckItems,
-  supersededVerdicts
-} = require('../utils/meetingMinutesAgentV2');
+const { discussionCandidateInventory, discussionAnchorInventory, uncoveredCandidateInventory, discussionRecoveryNeeded, actionRecoveryNeeded, applyTimingClauseChecks, backfillActionCommitmentEvidence, attachNearbyDependencyConditions, timingCheckEnabled: meetingMinutesTimingCheckEnabled, timingCheckItems, timingCheckPrompt, applyTimingCheckResults, decisionCheckEnabled: meetingMinutesDecisionCheckEnabled, decisionCheckItems, decisionCheckPrompt, applyDecisionCheckResults, discussionFidelityCheckItems, discussionFidelityCheckPrompt, applyDiscussionFidelityResults, filterUnsupportedQuantifiedDiscussion, promoteMaterialObjectionDetails, actionCompletenessCheckItems, actionCompletenessCheckPrompt, applyActionCompletenessResults, commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled, commitmentCheckItems, commitmentCheckPrompt, applyCommitmentCheckResults, finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt, applyFinalActionLifecycleResults, answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled, answeredCheckItems, answeredCheckPrompt, applyAnsweredCheckResults, openQuestionCheckItems, openQuestionCheckPrompt, applyOpenQuestionCheckResults, completedInMeetingCheckItems, completedInMeetingCheckPrompt, applyCompletedInMeetingCheckResults, applyChainedTimingRule, mergeDuplicateCommitments, splitExplicitMultiOwnerActions, demoteSupersededRows, labelSupersededContext, promoteNamedFactDetails, describesUsualPractice, isNotAnAction, isMinuteInstruction, groundUnstatedDiscussionMonths, isSocialAside, isAobPersonalAside, isFarewellAction, softenBestEffortCompletion, discussionActionCandidates, supersededCheckItems, supersededVerdicts } = require('../utils/meetingMinutesAgentV2');
 const {
   isIdeaOnlyContemplation,
   normaliseKnownTerms: normaliseMeetingAgentKnownTerms,
@@ -371,8 +282,8 @@ const {
 const { correctnessChecksEnabled } = require('../utils/meetingMinutesEvidenceChecks');
 const { removeDiscussionActionDuplicates } = require('../utils/discussionShape');
 const { applyPresenterAidGate } = require('../utils/presenterAidGate');
-const { normaliseKeptActionOccurrenceIds, actionReviewCounts } = require('../utils/actionReviewState');
-const { actionProvenanceSignature, findActionOccurrenceIndex, preserveActionIdentity, assignGeneratedActionIdentities } = require('../utils/meetingMinutesActionIdentity');
+const { actionReviewCounts } = require('../utils/actionReviewState');
+const { actionProvenanceSignature } = require('../utils/meetingMinutesActionIdentity');
 const { summaryStageIsEmpty } = require('../utils/includedSections');
 const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProjectReport } = require('../utils/minutesForProjectUpdate');
 const { generateMeetingMinutesAgentDocx, docxFilename } = require('../utils/meetingMinutesAgentDocx');
@@ -1993,32 +1904,6 @@ function deadlineFromActionEvidence(line) {
   return parseDeadlineEvidence(line)?.normalised || '';
 }
 
-function stagedActionKeywords(action) {
-  const stopWords = new Set([
-    'the', 'and', 'for', 'with', 'from', 'into', 'onto', 'that', 'this', 'copy',
-    'review', 'share', 'send', 'follow', 'complete', 'confirm', 'prepare', 'update',
-    'provide', 'draft', 'arrange', 'schedule', 'sign', 'off'
-  ]);
-  return cleanStagedActionText(action)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter((word) => word.length >= 4 && !stopWords.has(word))
-    .slice(0, 8);
-}
-
-function stagedDeadlineEvidenceWindows(transcriptText) {
-  const lines = String(transcriptText || '')
-    .split(/\r?\n/)
-    .map(cleanTranscriptContentLine)
-    .filter(Boolean);
-  return lines.map((line, index) => ({
-    line,
-    window: [lines[index - 1], line, lines[index + 1]].filter(Boolean).join(' ')
-  }));
-}
-
 
 function normaliseDeadlineKey(value) {
   return cleanStagedGeneratedLine(value || '')
@@ -2148,145 +2033,6 @@ function stagedTrooperSchema(stage) {
     };
   }
   return {};
-}
-
-function buildStagedTrooperPrompt(stage, transcript, req, options = {}) {
-  const details = stagedDetailsWithConfirmedContext(req, transcript);
-  const context = stagedContextFromRequest(req);
-  const confirmedUnderstanding = context.confirmedUnderstanding;
-  const discussionEvidencePack = stage === 'discussion'
-    ? (Array.isArray(options.evidencePack) && options.evidencePack.length
-      ? options.evidencePack
-      : topicEvidenceForStagedDiscussion(transcript, context.overallTopics))
-    : [];
-  const discussionWorkstreamState = stage === 'discussion' && Array.isArray(options.workstreamState)
-    ? options.workstreamState
-    : [];
-  const confirmed = {
-    meetingTitle: details.meetingTitle || context.meetingTitle,
-    meetingDate: details.meetingDate || context.meetingDate,
-    meetingLocation: details.meetingLocation || context.meetingLocation,
-    meetingType: context.meetingType || details.meetingType || 'General',
-    participants: context.participants.length ? context.participants : details.allAttendees,
-    meetingPurpose: confirmedUnderstanding.meetingPurpose,
-    keyFacts: confirmedUnderstanding.criticalFacts.map((fact) => fact.text),
-    confirmedUnderstanding,
-    overallTopics: context.overallTopics,
-    reviewerGuidance: context.additionalContext,
-    topicEvidence: discussionEvidencePack,
-    workstreamState: discussionWorkstreamState,
-    actionInventory: stage === 'actions'
-      ? polishStagedActions([
-        ...buildStagedActionInventory(transcript.text),
-        ...actionsFromEvidenceClassifier({ evidenceClassifier: options.actionEvidenceContext })
-      ])
-      : [],
-    actionEvidenceClassifier: stage === 'actions'
-      ? {
-        actions: actionsFromEvidenceClassifier({ evidenceClassifier: options.actionEvidenceContext }),
-        telemetry: stagedEvidenceClassifierTelemetry({ evidenceClassifier: options.actionEvidenceContext })
-      }
-      : null
-  };
-  const stageInstruction = {
-    summary: [
-      'Write stage 2 only: objectives, executive summary and overall topic labels.',
-      'Use the confirmed meeting title, project/meeting type, date, location and participants as the frame.',
-      'Use reviewerGuidance to improve emphasis and framing when supplied, but do not treat it as transcript evidence.',
-      'Write the executiveSummary as a project-status narrative, not a list of topics covered.',
-      'The executiveSummary must capture where the project actually stands, what changed, what was agreed, and what threatens the timeline.',
-      'Do not write phrases such as "key discussions covered", "the meeting covered", "this meeting focused on", or "the reviewer should check".',
-      'If evidence is limited, state the high-confidence status and open risk plainly rather than padding.',
-      'Return 2-4 objectives, one concise executiveSummary paragraph, and 4-8 overallTopics.'
-    ],
-    discussion: [
-      'Write stage 3 only: discussion points grouped against the confirmed topics.',
-      'Treat CONFIRMED_CONTEXT.confirmedUnderstanding.meetingPurpose and CONFIRMED_CONTEXT.confirmedUnderstanding.criticalFacts as reviewer-confirmed semantic framing when they are relevant to the transcript evidence.',
-      'Preserve relevant reviewer-confirmed critical facts in the discussion output; do not weaken them into generic topic labels.',
-      'Treat CONFIRMED_CONTEXT.overallTopics as the agenda for a methodical transcript pass.',
-      'For each confirmed overall topic, look through the transcript for evidence relevant to that topic before moving to the next topic.',
-      'Use CONFIRMED_CONTEXT.topicEvidence as the MiniLM semantic evidence pack where present, then cross-check against the transcript.',
-      'Use CONFIRMED_CONTEXT.workstreamState as the internal project-record object before writing the public discussion table.',
-      'The workstreamState object classifies evidence into current status, completed/past activity, future commitment, decision/agreement, open point, dependency, technical detail, general chatter/noise and explicit action buckets.',
-      'Render discussion rows from workstreamState first, using topicEvidence only as the supporting evidence backstop.',
-      'Each workstreamState row has already been attribution-scored against competing workstreams. Use only evidence listed under that exact workstream.',
-      'Do not borrow evidence from another workstream simply because both workstreams involve documentation, procedures, submissions, reviews or feedback.',
-      'If qualityFlags include missing_workstream_recovered, include the row when the evidence is substantive because it was recovered after the first semantic clustering pass missed it.',
-      'Preserve the current status, changes since last review, decisions, open points, dependencies, technical detail and next steps where evidenced.',
-      'For process-heavy topics, preserve the operational sequence as short concrete bullets rather than compressing it into one generic paragraph.',
-      'Human-style discussion rows should read like minutes: current position first, then process/detail, then decisions, dependencies/risks and next step if evidenced.',
-      'Do not convert completed or past activity into a future action.',
-      'Keep explicit actions for the actions stage unless they are needed as a clearly evidenced next-step sentence in the discussion row.',
-      'If a workstream has qualityFlags such as abstract_workstream_heading or low_heading_evidence_match, prefer a more operational label from the evidence, confirmed topic, document, deliverable, system, standard or process.',
-      'If workstreamState contains a substantive evidenced workstream, include it unless it is clearly redundant with another row; this is the omission-risk check.',
-      'Before finalising each row, check: does every bullet belong to this exact workstream rather than a neighbouring topic?',
-      'For every confirmed topic that has topicEvidence snippets, return one discussionTopics object unless the snippets are clearly irrelevant.',
-      'Do not collapse separate confirmed topics into one combined topic.',
-      'Also do not over-segment: if topicEvidence combines overlapping transcript evidence under one topic, keep it as one consolidated topic.',
-      'Prefer consolidation over coverage: include the distinct points a reviewer needs to understand the meeting outcome, not every detectable phrase.',
-      'Merge repeated prerequisites, repeated status statements and repeated next-step statements into one stronger bullet.',
-      'Before using labels such as risk, dependency, agreed, confirmed, will or must, check that the transcript evidence actually supports that label.',
-      'Do not describe scope control, regulatory breadth or ordinary sequencing as a risk or dependency unless the evidence frames it as a blocker, threat, required-before condition or unresolved constraint.',
-      'Return discussionTopics in the same order as the confirmed overallTopics where possible.',
-      'Use the confirmed title, meeting type, participants, summary topics and transcript evidence.',
-      'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
-      'Do not create new unrelated topics unless the confirmed overallTopics list is empty.',
-      'Only include a topic if there is substantive transcript evidence for it.',
-      'If a confirmed topic has little or no evidence, omit that topic entirely. Do not write that there was no discussion.',
-      'For each included topic, populate only evidenced fields from: whatWasDiscussed, currentPosition, decisionOrAgreement, dependencyOrRisk, nextStep.',
-      'Write each field as polished formal-minutes prose, not copied transcript text.',
-      'Never include raw speaker names, timestamps, timecodes, glued speaker/timecode prefixes, filler words, false starts, or malformed transcript phrasing in any public field.',
-      'Do not write "Name said that..." narration; write the account in neutral third-person formal minutes style.',
-      'Also return executiveSummaryFromFindings: a concise formal-minutes summary synthesised from the included findings, focused on status, changes, agreements, risks, dependencies and time-critical next steps.',
-      'Do not describe the meeting itself or list the included topics in executiveSummaryFromFindings.',
-      'Return 2-8 discussionTopics with concise evidence-backed fields and no filler.'
-    ],
-    actions: [
-      'Write stage 4 only: actions, owners and deadlines.',
-      'Use the confirmed title, meeting type, participants and transcript evidence.',
-      'Use CONFIRMED_CONTEXT.actionInventory as a transcript-wide candidate action ledger before selecting or formatting actions.',
-      'Use CONFIRMED_CONTEXT.actionEvidenceClassifier as a supporting evidence ledger: keep confirmed action candidates and respect suppression reasons such as completed history, sequence-only wording, record-location wording, hypotheticals without assignment, and low-value logistics.',
-      'Preserve every distinct commitment from actionInventory unless the transcript clearly shows it is completed, cancelled, or a true duplicate.',
-      'Do not compress actions to a target count. Separate actions must remain separate when the owner, deliverable, verb, standard/document/system, or deadline differs.',
-      'For example, "review a standard", "share the standard", "complete testing", and "identify testing gaps" are separate actions even if they sit under one workstream.',
-      'Use reviewerGuidance as non-evidence context for emphasis only when supplied.',
-      'Only include real commitments or follow-ups. If the owner or deadline is not explicit, use Not stated.',
-      'Every action must have an auditable verb and object. Reject conversational fragments such as "front-end everything", "sort things", "do prep", "look at it" or "progress this".',
-      'Rewrite catch-up commitments as concrete scheduling actions, for example "Arrange a catch-up meeting with [person]" where the transcript supports the object.',
-      'Do not turn completed work, general intentions, ongoing workstreams or open points into actions.',
-      'If the transcript clearly says the group owns an action using we/us/the team, use All as the owner.'
-    ]
-  }[stage] || ['Write only the requested staged meeting-minutes section.'];
-
-  return [
-    '[CMD: task=staged_meeting_minutes_section; format=json; evidence=transcript_grounded; style=client_ready_uk_business_english]',
-    '',
-    'CONFIRMED_CONTEXT:',
-    JSON.stringify(confirmed, null, 2),
-    '',
-    ...(options.strictTopicCoverage ? [
-      'RETRY_NOTE:',
-      'The previous stage 3 response was too thin, duplicated, omitted evidenced workstreams, or placed evidence under the wrong workstream. Re-run the stage methodically, using workstreamState and topicEvidence to produce concise topic rows for the distinct evidenced workstreams.',
-      ''
-    ] : []),
-    'STAGE_INSTRUCTIONS:',
-    stageInstruction.map((line) => `- ${line}`).join('\n'),
-    '',
-    'Return valid JSON only with this shape:',
-    JSON.stringify(stagedTrooperSchema(stage), null, 2),
-    '',
-    'Rules:',
-    '- Do not invent facts, attendees, owners, deadlines, decisions or topics.',
-    '- Prefer fewer high-confidence points over many weak points.',
-    '- Keep wording professional and concise.',
-    '- Use British English spelling.',
-    '- Do not copy raw transcript turns into public text; rewrite them into clear complete sentences without speaker labels or timestamps.',
-    '- Do not output raw "Name:" or "Name said that..." wording.',
-    '',
-    '[TRANSCRIPT]',
-    String(transcript.text || '').slice(0, Number(process.env.STAGED_TROOPER_MAX_TRANSCRIPT_CHARS || 90000)),
-    '[/TRANSCRIPT]'
-  ].join('\n');
 }
 
 
@@ -2697,14 +2443,6 @@ function stagedMiniLMEvidenceItems(minilmContext, confirmedTopics = []) {
   return items;
 }
 
-function buildStagedMiniLMEvidencePack(minilmContext, confirmedTopics = []) {
-  if (!minilmContext || !minilmContext.ok) return [];
-  return reassignStagedEvidencePackByWorkstream(
-    mergeStagedDiscussionEvidencePack(stagedMiniLMEvidenceItems(minilmContext, confirmedTopics), 8),
-    confirmedTopics
-  );
-}
-
 function stagedTextHasPastMarker(value) {
   return /\b(?:was|were|had|has been|have been|already|previously|completed|reviewed|checked|approved|submitted|sent|shared|updated|finali[sz]ed|on\s+(?:monday|tuesday|wednesday|thursday|friday)|last\s+(?:week|month|review|meeting))\b/i.test(String(value || ''));
 }
@@ -2753,29 +2491,6 @@ function stagedEvidenceTextsForWorkstream(item) {
   ]).slice(0, 12);
 }
 
-function stagedHeadingEvidenceScore(topic, texts) {
-  if (!topic || !Array.isArray(texts) || !texts.length) return 0;
-  return Math.max(...texts.map((text) => stagedTokenSimilarity(topic, text)));
-}
-
-function stagedOperationalWorkstreamLabel(item, confirmedTopics = []) {
-  const topic = cleanStagedGeneratedLine(item.topic);
-  if (isUsableStagedTopic(topic) && !stagedLooksLikeAbstractWorkstream(topic)) return topic;
-  const confirmed = bestConfirmedTopicForEvidence(item, confirmedTopics);
-  if (confirmed && isUsableStagedTopic(confirmed)) return confirmed;
-  const texts = stagedEvidenceTextsForWorkstream(item).join(' ');
-  const match = texts.match(/\b(?:[A-Z][A-Za-z0-9/&-]+(?:\s+[A-Z][A-Za-z0-9/&-]+){0,4}\s+(?:file|plan|report|protocol|testing|test|review|update|release|contract|scope|documentation|standard|process|assessment|study))\b/);
-  return cleanStagedGeneratedLine(match ? match[0] : topic || 'Project workstream');
-}
-
-function pushStagedRoleValue(target, key, value, limit = 5) {
-  const cleaned = cleanStagedDiscussionText(value);
-  if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned)) return;
-  if (target[key].some((item) => stagedTokenSimilarity(item, cleaned) >= 0.82 || item.toLowerCase() === cleaned.toLowerCase())) return;
-  target[key].push(cleaned);
-  if (target[key].length > limit) target[key].length = limit;
-}
-
 
 
 function evidenceForTopic(transcriptText, topic) {
@@ -2807,35 +2522,6 @@ function topicEvidenceForStagedDiscussion(transcript, topics) {
       source: 'keyword_topic_evidence'
     }))
     .filter((item) => item.topic && item.evidence.length);
-}
-
-
-
-function stagedDiscussionCoverageIsThin(minilmContext, req, transcript, evidencePack = [], workstreamState = []) {
-  const context = stagedContextFromRequest(req);
-  const topicEvidence = Array.isArray(evidencePack) && evidencePack.length
-    ? evidencePack
-    : topicEvidenceForStagedDiscussion(transcript, context.overallTopics);
-  const substantiveWorkstreams = Array.isArray(workstreamState)
-    ? workstreamState.filter((item) => item && (Array.isArray(item.evidence) ? item.evidence.length : 0))
-    : [];
-  const expectedWork = substantiveWorkstreams.length || topicEvidence.length;
-  if (expectedWork < 2) return false;
-  const cards = discussionFromStagedMiniLM(minilmContext);
-  const expectedMinimum = Math.min(3, expectedWork);
-  return cards.length < expectedMinimum;
-}
-
-
-
-function missingStagedWorkstreamsFromOutput(minilmContext, workstreamState = []) {
-  const cards = filterDiscussionCardsByWorkstreamEvidence(discussionFromStagedMiniLM(minilmContext), workstreamState);
-  return (Array.isArray(workstreamState) ? workstreamState : [])
-    .filter((state) => state && Array.isArray(state.evidence) && state.evidence.length)
-    .filter((state) => !findDiscussionCardForTopic(cards, state.workstream))
-    .map((state) => state.workstream)
-    .filter(Boolean)
-    .slice(0, 6);
 }
 
 function normaliseTopicKey(value) {
@@ -2968,10 +2654,6 @@ function discussionFallbackForWorkstreamState(state, topic = '') {
     points,
     source: 'workstream_state_discussion_fallback'
   };
-}
-
-function discussionFallbackForTopic(transcript, topic, meetingType, participants, workstreamState = []) {
-  return discussionFallbackForWorkstreamState(findWorkstreamStateForTopic(workstreamState, topic), topic);
 }
 
 
@@ -7733,289 +7415,6 @@ function discussionRefereeFallbackPlan(result, contract, ensemble = [], baseline
       || !settled.has(candidate.candidateId) && !records.has(key(candidate.recordType, candidate.record))) };
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const speculationTimers = new Map();
-const SPECULATION_TTL_MS = 2 * 60 * 60 * 1000;
-const SPECULATION_IDLE_LIMIT_MS = 45 * 60 * 1000;
-const SPECULATION_EDIT_DEBOUNCE_MS = Math.max(5000, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_DEBOUNCE_MS || 30000));
-const SPECULATION_MAX_RUNNING = Math.max(1, Math.min(4, Number(process.env.MEETING_MINUTES_AGENT_SPECULATION_MAX_RUNNING || 2)));
-
-// Pass results from any speculation of this stage, whatever its fingerprint.
-// Entries are keyed by prompt hash, so a real run reuses only identical calls.
-function meetingAgentSpeculationPassCacheSeed(draftId, stage) {
-  const entry = privateStageSpeculations.get(speculationKey(draftId, stage));
-  const caches = [];
-  for (let current = entry; current; current = current.previous) {
-    if (Array.isArray(current.passCache) && current.passCache.length) caches.push(current.passCache);
-  }
-  return caches.flat();
-}
-
-function applyStageResultVirtually(draft = {}, stage = '', result = {}) {
-  const changes = result?.changes || {};
-  return {
-    ...draft,
-    ...changes,
-    reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes, draft }),
-    staleStages: (Array.isArray(draft.staleStages) ? draft.staleStages : []).filter((value) => value !== stage),
-    currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage] || 0, Number(draft.currentStep || 0)),
-    generation: null
-  };
-}
-
-function runningStageSpeculationCount() {
-  let count = 0;
-  for (const entry of privateStageSpeculations.values()) if (entry.status === 'running') count += 1;
-  return count;
-}
-
-// Write a speculative result into the draft, but only into a stage that is
-// still empty and whose inputs have not moved.
-//
-// Speculation used to be held in memory until the reviewer arrived at the
-// stage, which made arriving instant but left the draft looking untouched: a
-// reviewer who uploaded and came back later saw nothing, and a restart threw
-// the work away. Filling an empty stage is safe because there is nothing of
-// theirs to overwrite; anything else still waits to be adopted.
-function meetingAgentUntouchedSpeculationChanges(fresh = {}, stage = '', input = {}) {
-  const { currentStep: _step, selectedStep: _selected, ...changes } = input;
-  // Speculative publication is still generated admission. It needs the same
-  // occurrence allocation and exact proof rebinding as a foreground run.
-  return stage === 'actions' ? admitMeetingAgentGeneratedActionChanges(fresh, changes,
-    `${fresh.draftId || ''}:${changes.qualityState?.actions?.completedAt || ''}:speculation`) : changes;
-}
-
-async function persistUntouchedSpeculation(draftId, userId, stage, result, fingerprint) {
-  if (!result || !result.changes) return false;
-  try {
-    return await meetingAgentSerialDraftWrite(draftId, async () => {
-      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
-      if (!fresh) return false;
-      const generation = meetingAgentGenerationState(fresh.generation);
-      // The reviewer has asked for this stage themselves; that run owns it.
-      if (generation && generation.status === 'running') return false;
-      if (meetingAgentStageHasContent(fresh, stage)) return false;
-      if (meetingAgentStageInputFingerprint(fresh, stage) !== fingerprint) return false;
-      // Never move the reviewer: the stage they are on is their business.
-      const changes = meetingAgentUntouchedSpeculationChanges(fresh, stage, result.changes);
-      const saved = await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
-        ...changes,
-        staleStages: meetingAgentStaleStagesAfterGeneration(fresh, fresh, stage, changes)
-      });
-      console.info(JSON.stringify({
-        event: 'meeting_agent_speculation_persisted', journeyId: draftId, stage,
-        revision: saved?.revision || null
-      }));
-      return Boolean(saved);
-    });
-  } catch (error) {
-    // A draft that cannot be filled in silently is not a failure the reviewer
-    // needs to see: the result stays in memory and is adopted on arrival.
-    safeLogError('[meeting-minutes-agent] speculation persist failed', error);
-    return false;
-  }
-}
-
-function startStageSpeculation(draft = {}, userId = '', options = {}) {
-  if (parallelMinutes.isParallel(draft)) return null;
-  if (!meetingMinutesAgentSpeculativePipelineEnabled() || !meetingMinutesAgentHybridEnabled()) return null;
-  const draftId = String(draft.draftId || '');
-  if (!draftId || !String(draft.preparedTranscript || '').trim()) return null;
-  const stage = options.stage || meetingAgentNextSpeculativeStage(draft);
-  if (!stage) return null;
-  const idleMs = Date.now() - new Date(draft.updatedAt || draft.createdAt || Date.now()).getTime();
-  if (Number.isFinite(idleMs) && idleMs > SPECULATION_IDLE_LIMIT_MS) return null;
-  pruneStageSpeculations();
-  const key = speculationKey(draftId, stage);
-  const fingerprint = meetingAgentStageInputFingerprint(draft, stage);
-  const existing = privateStageSpeculations.get(key);
-  if (existing && existing.fingerprint === fingerprint && existing.status !== 'failed') return existing;
-  if (runningStageSpeculationCount() >= SPECULATION_MAX_RUNNING) {
-    scheduleStageSpeculation(draftId, userId, { delayMs: 15000 });
-    return null;
-  }
-  if (existing && existing.status === 'running') existing.superseded = true;
-  const entry = {
-    draftId, userId, stage, fingerprint,
-    status: 'running', superseded: false, previous: existing || null,
-    startedAt: new Date().toISOString(), completedAt: '',
-    expiresAt: Date.now() + SPECULATION_TTL_MS,
-    progress: { pass: 'starting', message: 'Preparing independent quality checks…', completedPasses: [], callTimings: [], degradedSources: [] },
-    preview: null, passCache: null, result: null, error: null, promise: null
-  };
-  const speculativeDraft = { ...draft, generation: null,
-    _semanticPolicy: semanticPolicyForFingerprint(draft),
-    _discussionCoveragePolicy: discussionCoveragePolicyForFingerprint(draft) };
-  entry.promise = meetingAgentCallContext.run({ background: true, draftId, stage }, () =>
-    generateHybridMeetingAgentStage(speculativeDraft, stage, {
-      onProgress: async (progress) => { entry.progress = { ...entry.progress, ...progress }; },
-      onCheckpoint: async (passCache) => { entry.passCache = normaliseMeetingAgentPassCache(passCache); },
-      onPreview: async (preview) => { entry.preview = preview; }
-    })
-  ).then((result) => {
-    entry.status = 'ready';
-    entry.result = result;
-    entry.completedAt = new Date().toISOString();
-    entry.previous = null;
-    if (Array.isArray(result?.changes?.passCache)) entry.passCache = normaliseMeetingAgentPassCache(result.changes.passCache);
-    console.info(JSON.stringify({
-      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: true,
-      elapsedMs: Date.now() - new Date(entry.startedAt).getTime(), superseded: entry.superseded
-    }));
-    if (!entry.superseded) {
-      // Fill the stage in if it is still empty, so a reviewer who uploaded and
-      // walked away comes back to finished work rather than an untouched draft.
-      // Queued before the chain so the next stage sees this one on disk, and
-      // skipped rather than forced if it does not.
-      setImmediate(() => {
-        persistUntouchedSpeculation(draftId, userId, stage, result, fingerprint)
-          .catch((error) => safeLogError('[meeting-minutes-agent] speculation persist failed', error));
-      });
-      // Carry on down the pipeline from the result the reviewer has not yet
-      // asked for; every later adoption is protected by its own fingerprint.
-      setImmediate(() => {
-        try { startStageSpeculation(applyStageResultVirtually(speculativeDraft, stage, result), userId); } catch (error) {
-          safeLogError('[meeting-minutes-agent] speculation chain failed', error);
-        }
-      });
-    }
-    return result;
-  }).catch((error) => {
-    entry.status = 'failed';
-    entry.error = error;
-    console.warn(JSON.stringify({
-      event: 'meeting_agent_speculation', journeyId: draftId, stage, ok: false,
-      message: meetingMinutesAgentText(error.message, 300)
-    }));
-    return null;
-  });
-  privateStageSpeculations.set(key, entry);
-  console.info(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: draftId, stage, started: true }));
-  return entry;
-}
-
-function scheduleStageSpeculation(draftId, userId, options = {}) {
-  if (!meetingMinutesAgentSpeculativePipelineEnabled()) return;
-  const key = String(draftId || '');
-  if (!key) return;
-  clearTimeout(speculationTimers.get(key));
-  const delayMs = Math.max(0, Number(options.delayMs ?? SPECULATION_EDIT_DEBOUNCE_MS));
-  const timer = setTimeout(async () => {
-    speculationTimers.delete(key);
-    try {
-      const fresh = await getMeetingMinutesAgentDraft(key, userId, { includeTranscript: true });
-      if (!fresh) return;
-      if (!parallelMinutes.isParallel(fresh)) startStageSpeculation(fresh, userId);
-    } catch (error) {
-      console.warn(JSON.stringify({ event: 'meeting_agent_speculation', journeyId: key, ok: false, message: meetingMinutesAgentText(error.message, 300) }));
-    }
-  }, delayMs);
-  if (typeof timer.unref === 'function') timer.unref();
-  speculationTimers.set(key, timer);
-}
-
-// A row must never point at a flag the draft does not hold (the reviewer would
-// see a flag count or link that leads nowhere). Applied on every save.
-
-
-
-
-
-
-
-
-// After applying only some suggestions, keep the unchecked suggestions
-// pending. Their indexes are rebased against the newly updated list so a later
-// review still edits the intended record rather than whichever row moved into
-// its former position.
-
-
-
-
-
-
-
-
-
-
-function mergeMeetingAgentGenerationFlags(existing = [], added = [], replaceCoverage = false, recheck = {}) {
-  const fields = new Set();
-  const changes = recheck.changes || {};
-  if (recheck.stage === 'summary' && changes.qualityState?.summary?.temporalReview?.complete === true) {
-    for (const field of ['executiveSummary', 'meetingObjectives']) {
-      if (Object.prototype.hasOwnProperty.call(changes, field)) fields.add(field);
-    }
-  }
-  if (recheck.stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')
-    && changes.qualityState?.actions?.timedStepCoverage?.final?.complete === true) fields.add('timedStepCoverage');
-  // Retire stale generated warnings only after an authoritative successful
-  // recheck was actually applied. Reviewer decisions/notes and incomplete
-  // checks retain their previous warnings.
-  const prior = (Array.isArray(existing) ? existing : []).filter(flag =>
-    !(replaceCoverage && isMeetingAgentCoverageFlag(flag))
-    && !(fields.has(flag.temporalField) && meetingAgentFlagUntouched(flag)));
-  const merged = mergeMeetingAgentFlags(prior, added);
-  if (recheck.stage !== 'actions' || !Array.isArray(changes.actions) || !Array.isArray(recheck.draft?.sourceUnits)) return merged;
-  // A fresh final action pass has removed resolved references already. Recheck
-  // older persisted warnings against that same applied work/source; do not
-  // trust a retirement ID alone or retire a still-referenced live warning.
-  const references = meetingAgentReferencedFlagIds(changes.actions);
-  const checked = require('../utils/meetingMinutesTimingFlags').reconcileActionTimingWarnings(
-    changes.actions, merged, recheck.draft.sourceUnits,
-    { meetingDate: meetingAgentTimingAnchor(recheck.draft), proposals: [changes.pendingProposal, recheck.draft.pendingProposal],
-      otherRecords: [changes.discussion ?? recheck.draft.discussion, changes.meetingObjectives ?? recheck.draft.meetingObjectives,
-        changes.unassignedSupportingDetails ?? recheck.draft.unassignedSupportingDetails] }
-  );
-  const retired = checked.retired.filter(item => !references.has(item.id));
-  if (retired.length) console.log(JSON.stringify({ event: 'meeting_agent_persisted_timing_warning_retired',
-    journeyId: recheck.draft.draftId || '', retired }));
-  const ids = new Set(retired.map(item => item.id));
-  return merged.filter(flag => !ids.has(flag.id));
-}
-
-
-
-// The hybrid background pipeline writes these fields directly to the Library;
-// it does not pass through clientReadyPresentation(). Keep the persisted,
-// reviewer-visible fields consistent without rewriting transcript evidence or
-// internal model/provenance data.
-
-
-function hybridActionsEquivalent(left = '', right = '') {
-  const leftTypes = hybridActionTypes(left);
-  const rightTypes = hybridActionTypes(right);
-  if (leftTypes.size && rightTypes.size && ![...leftTypes].some((type) => rightTypes.has(type))) return false;
-  return hybridTokenOverlap(left, right) >= 0.55;
-}
-
 // A fully accepted, strongly grounded action must not silently disappear between
 // Referee acceptance and the editable Actions list. This is a reconciliation
 // invariant, not another extractor: it can only restore a named-owner row which
@@ -8358,22 +7757,6 @@ function hybridActionSourceInfo(action, candidates = []) {
   const discoverySources = [...new Set(matches.map((candidate) => candidate.sourcePass).filter((source) => ['staged', 'primary', 'primary-2', 'recovery', 'salvage'].includes(source)))];
   const explicitDeterministic = matches.some((candidate) => candidate.sourcePass === 'deterministic' && ['committed', 'accepted_request'].includes(candidate.dispositionHint));
   return { discoverySources, explicitDeterministic, candidateIds: matches.map((candidate) => candidate.candidateId) };
-}
-
-// A referee-approved action does not need two discovery passes when the one
-// discovery pass and the transcript itself provide strong, compatible proof.
-// This is intentionally narrower than the normal evidence gate: anything with
-// a field-level review flag, suggestion/status evidence, staged-only provenance
-// or weak lexical grounding remains in the proposal UI.
-// The keyword disposition of the cited lines, upgraded from "unclear" or an
-// unanswered request when the turn structure around those lines shows the
-// work being accepted (a timing given as the yes, the chair handing it to the
-// person who raised it, the owner answering a when-question about it). Never
-// upgrades suggestions, status, completed or rejected work.
-function actionDispositionWithContext(action = {}, sourceUnits = [], evidence = '') {
-  const disposition = actionEvidenceDisposition(action?.action || '', evidence);
-  if (!['unclear', 'unaccepted_request'].includes(disposition)) return disposition;
-  return acceptanceAroundEvidence(action, sourceUnits) || disposition;
 }
 
 function highConfidenceRefereedAction(action, candidates = [], sourceUnits = []) {
@@ -9482,166 +8865,6 @@ function commitmentThreadBackstopProposals(candidates = [], records = [], source
   return proposals;
 }
 
-// Concurrent Referee batches can finish together and all checkpoint the same
-// optimistic draft revision. Queue only the writes; model calls stay parallel.
-const meetingAgentDraftWriteQueues = new Map();
-const meetingAgentObservedGenerationCompletions = new Set();
-
-function meetingAgentMemoryCacheState() {
-  return {
-    stagedCandidates: privateStagedCandidateCache.size,
-    stagedPreparing: [...privateStagedCandidateCache.values()].filter((entry) => entry.status !== 'ready').length,
-    ...privateStagedCandidateQueueState(),
-    actionPrimary: privateActionPrimaryCache.size,
-    actionPrimaryPreparing: [...privateActionPrimaryCache.values()].filter((entry) => entry.status !== 'ready').length,
-    stageSpeculations: privateStageSpeculations.size,
-    stageSpeculationsRunning: runningStageSpeculationCount(),
-    speculationTimers: speculationTimers.size,
-    backgroundStagesActive: activeMeetingAgentBackgroundStages,
-    draftWrites: meetingAgentDraftWriteQueues.size,
-    observedGenerationCompletions: meetingAgentObservedGenerationCompletions.size
-  };
-}
-
-async function resetMinutesMiniLmWorkerMemoryCache() {
-  const base = new URL(process.env.MINUTES_MINILM_WORKER_URL || 'http://127.0.0.1:8767');
-  if (!['127.0.0.1', '::1', 'localhost'].includes(base.hostname)) {
-    const error = new Error('The configured MiniLM worker is not local, so its memory cache cannot be reset safely.');
-    error.statusCode = 503;
-    error.code = 'BASELINE_RESET_WORKER_NOT_LOCAL';
-    throw error;
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(new URL('/cache/reset', base).toString(), {
-      method: 'POST', headers: { Accept: 'application/json' }, signal: controller.signal
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.ok) {
-      const error = new Error('The MiniLM worker did not reset its memory cache.');
-      error.statusCode = 503;
-      error.code = 'BASELINE_RESET_WORKER_FAILED';
-      throw error;
-    }
-    return Number(body.cleared || 0);
-  } catch (error) {
-    if (error.code && String(error.code).startsWith('BASELINE_RESET_')) throw error;
-    const wrapped = new Error('The MiniLM worker could not be reached to reset its memory cache.');
-    wrapped.statusCode = 503;
-    wrapped.code = 'BASELINE_RESET_WORKER_UNAVAILABLE';
-    throw wrapped;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function clearMeetingAgentMemoryCaches() {
-  const before = meetingAgentMemoryCacheState();
-  const busy = before.stagedPreparing || before.stagedActive || before.stagedQueued
-    || before.actionPrimaryPreparing || before.stageSpeculationsRunning
-    || before.backgroundStagesActive || before.draftWrites;
-  if (busy) {
-    const error = new Error('Meeting-minutes work is still running. Retry the reset after it finishes.');
-    error.statusCode = 409;
-    error.code = 'BASELINE_RESET_BUSY';
-    error.state = before;
-    throw error;
-  }
-
-  // Reset the separate embedding worker first. If it is unavailable, leave the
-  // application caches untouched so a retry has an all-or-nothing contract.
-  const workerEmbeddings = await resetMinutesMiniLmWorkerMemoryCache();
-  for (const timer of speculationTimers.values()) clearTimeout(timer);
-  speculationTimers.clear();
-  privateStageSpeculations.clear();
-  privateStagedCandidateCache.clear();
-  privateActionPrimaryCache.clear();
-  meetingAgentObservedGenerationCompletions.clear();
-  const canonicalProfiles = clearMiniLMProfileMemoryCache();
-  const v2 = clearMeetingMinutesAgentV2MemoryCaches();
-  const after = meetingAgentMemoryCacheState();
-  console.info(JSON.stringify({ event: 'meeting_agent_memory_cache_reset', before, after, workerEmbeddings, canonicalProfiles }));
-  return { cleared: { workerEmbeddings, canonicalProfiles, ...v2 }, before, after };
-}
-
-function meetingAgentCompletedStagePerformance(draft = {}) {
-  const stages = ['discussion', 'actions', 'summary'].map((stage) => ({
-    stage, ...(draft.qualityState?.[stage] || {})
-  })).filter((item) => item.completedAt);
-  return stages.sort((left, right) => new Date(right.completedAt) - new Date(left.completedAt))[0] || null;
-}
-
-function meetingAgentSerialDraftWrite(draftId, task) {
-  const key = String(draftId || '');
-  const prior = meetingAgentDraftWriteQueues.get(key) || Promise.resolve();
-  const run = prior.catch(() => {}).then(task);
-  let tracked;
-  tracked = run.finally(() => {
-    if (meetingAgentDraftWriteQueues.get(key) === tracked) meetingAgentDraftWriteQueues.delete(key);
-  });
-  meetingAgentDraftWriteQueues.set(key, tracked);
-  return tracked;
-}
-
-function meetingAgentPreviewSavedActions(preview = [], saved = [], sourceUnits = []) {
-  const cloneAction = (record = {}) => ({
-    ...record,
-    owners: [...(record.owners || [])],
-    timing: record.timing ? { ...record.timing } : record.timing,
-    evidenceIds: [...(record.evidenceIds || [])],
-    reviewFlagIds: [...(record.reviewFlagIds || [])]
-  });
-  const previewActions = dedupeHybridActionRecords(
-    (Array.isArray(preview) ? preview : []).map(cloneAction), { sourceUnits }
-  );
-  const dedupedSaved = dedupeHybridActionRecords(
-    (Array.isArray(saved) ? saved : []).map(cloneAction), { sourceUnits }
-  );
-  const savedActions = dedupedSaved.filter((record) =>
-    dedupeHybridActionRecords([
-      ...previewActions.map(cloneAction), cloneAction(record)
-    ], { sourceUnits }).length > previewActions.length);
-  return { previewActions, savedActions };
-}
-
-async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}) {
-  return meetingAgentSerialDraftWrite(draftId, async () => {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
-      if (!fresh) return;
-      const { passCache, refereeFailureAudit, ...generationPatch } = patch;
-      if (stage === 'actions' && Array.isArray(generationPatch.previewActions)) {
-        const visible = meetingAgentPreviewSavedActions(
-          generationPatch.previewActions, fresh.actions, fresh.sourceUnits
-        );
-        // During regeneration the Actions screen shows the checked preview and
-        // the saved register together. Filter only the saved display copy here:
-        // otherwise the same deliverable appears twice until the final result
-        // is persisted, even though the publication boundary later merges it.
-        // Distinct reviewer-authored actions remain visible and untouched.
-        generationPatch.previewActions = visible.previewActions;
-        generationPatch.previewSavedActions = visible.savedActions;
-      }
-      const generation = normaliseMeetingAgentGeneration({
-        ...(fresh.generation || {}), stage, status: 'running', bootId: MEETING_AGENT_BOOT_ID,
-        startedAt: fresh.generation?.startedAt || new Date().toISOString(), ...generationPatch
-      });
-      try {
-        await saveMeetingAgentDraft(fresh, { authUser: { userId } }, {
-          generation,
-          ...(passCache ? { passCache: normaliseMeetingAgentPassCache(passCache) } : {}),
-          ...(refereeFailureAudit ? { qualityState: { ...(fresh.qualityState || {}),
-            [stage]: { ...(fresh.qualityState?.[stage] || {}), refereeFailureAudit } } } : {})
-        });
-        return;
-      } catch (error) {
-        if (error.statusCode !== 409 || attempt === 2) throw error;
-      }
-    }
-  });
-}
-
 const verifyMeetingAgentSummaryTiming = createSummaryTimingVerifier({
   meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash
 });
@@ -9691,7 +8914,6 @@ const originalMinutesStageServices = Object.freeze({
   isReviewableActionProposal,
   meetingAgentActionAuditCandidates,
   meetingAgentCommitmentRecheckNeeded,
-  meetingAgentProposalChangeIsVisible,
   meetingAgentTopicSegmentsEnabled,
   meetingMinutesAgentAnchoredActionEnabled,
   meetingMinutesAgentAnchoredActionPrompt,
@@ -9719,7 +8941,6 @@ const originalMinutesStageServices = Object.freeze({
   meetingMinutesMinuteInstructionRuleEnabled,
   meetingMinutesPromoteNamedFactsEnabled,
   meetingMinutesProposalRecheckEnabled,
-  preselectActionProposal,
   publishedActionCoversProposal,
   reconcileAcceptedRefereeActions,
   reconcileFinalApprovedActions,
@@ -9748,24 +8969,19 @@ async function generateHybridMeetingAgentStageRaw(draft, stage, options = {}) {
   return generateOriginalMinutesStage(draft, stage, options);
 }
 
-// The upload response is the hand-off point: once the draft is persisted,
-// start the first minutes stage on the server. This deliberately does not
-// depend on a browser request remaining open; a closed tab can only stop
-// polling, not the queued work itself.
-const parallelMinutesCopies = new Map();
-const parallelMinutesRunner = parallelMinutes.createRunner({
-  getDraft: getMeetingMinutesAgentDraft,
-  saveDraft: (draft, userId, changes) => saveMeetingAgentDraft(draft, {authUser:{userId}}, changes),
-  bootId: MEETING_AGENT_BOOT_ID
-});
-
-const { start: startInitialMeetingAgentProcessing } = require('../utils/meetingMinutesProcessing').createInitialMinutesProcessor({
-  saveDraft: saveMeetingAgentDraft,
-  runOriginalStage: runMeetingAgentBackgroundStage,
-  parallelRunner: parallelMinutesRunner,
-  hybridEnabled: meetingMinutesAgentHybridEnabled,
-  bootId: MEETING_AGENT_BOOT_ID
-});
+const {
+  startStageSpeculation,
+  adoptStageSpeculation,
+  meetingAgentSerialDraftWrite,
+  persistMeetingAgentBackgroundStage,
+  meetingAgentMemoryCacheState,
+  clearMeetingAgentMemoryCaches,
+  scheduleStageSpeculation,
+  startInitialMeetingAgentProcessing,
+  registerMeetingMinutesBackgroundGeneration,
+  registerMeetingMinutesGenerationStatus,
+  registerMeetingMinutesGeneration
+} = createMeetingMinutesGenerationLifecycle(generateHybridMeetingAgentStage, generateMeetingAgentStage);
 
 router.post('/meeting-minutes-agent/check-duplicate', requireAuth, async (req, res) => {
   try {
@@ -10121,814 +9337,11 @@ function gateTranscriptShapedActionChanges(changes = [], sourceUnits = [], journ
   return kept;
 }
 
-// Which suggested changes start ticked. The review screen used to tick every
-// change the server did not explicitly untick, so a removal that only existed
-// because two generated lists differed deleted a correct action when the
-// reviewer pressed Apply. Now a change starts ticked only when it has been
-// positively vetted, and every unticked change says why.
-const PRESELECTABLE_ADD_DISPOSITIONS = new Set(['committed', 'accepted_request', 'conditional_commitment']);
+registerMeetingMinutesBackgroundGeneration(router);
 
-function proposalEvidenceText(sourceUnits = [], evidenceIds = []) {
-  const byId = new Map(normaliseSourceUnits(sourceUnits).map((unit) => [unit.id, unit]));
-  return (Array.isArray(evidenceIds) ? evidenceIds : []).map((id) => byId.get(id)).filter(Boolean)
-    .map((unit) => `${unit.speaker || ''}: ${unit.text || ''}`).join(' ');
-}
+registerMeetingMinutesGenerationStatus(router);
 
-
-
-
-
-function withSelection(change, selected, context = null) {
-  const next = { ...change, selected };
-  if (context && !change.reviewContext) next.reviewContext = context;
-  return next;
-}
-
-// Returns the reason an action edit would lose information the reviewer
-// already has, or '' when it only adds or rewords.
-
-
-// Actions: `resulting` is the list the proposal applies to (after this
-// generation's own clean-up), used to find the survivor a removal duplicates.
-// Whether a proposed action covers work a published action already carries.
-// Owners are ignored on purpose: the same follow-up meeting can be proposed
-// under a different name, and applying it would publish it twice.
-function echoesPublishedAction(published = {}, proposal = {}) {
-  const a = meetingMinutesAgentText(published.action, 1600);
-  const b = meetingMinutesAgentText(proposal.action, 1600);
-  if (!a || !b) return false;
-  // A different wait condition does not make the underlying deliverable a
-  // different action for duplicate-suggestion review. The normal action
-  // deduper still preserves meaningful conditions; this narrower check only
-  // decides whether an optional suggestion should be pre-ticked.
-  const withoutDependency = (value) => String(value || '')
-    .replace(ACTION_DEPENDENCY_CLAUSE, '')
-    .replace(/[\s,.;:]+$/, '');
-  if (distinctActionDeliverables(published, proposal)
-    && distinctActionDeliverables({ action: withoutDependency(a) }, { action: withoutDependency(b) })) return false;
-  const unhyphen = (value) => String(value || '').replace(/(\w)-(\w)/g, '$1 $2');
-  return sharesDistinctivePhrase(a, b) || hybridContentTokenOverlap(unhyphen(a), unhyphen(b)) >= 0.45;
-}
-
-// A generated edit can introduce a literal duplicate even when no detail is
-// lost. Defer it for review; neither this check nor automatic adoption deletes
-// an existing occurrence or changes explicit manual acceptance.
-
-
-function preselectActionProposal(proposal, resulting = [], sourceUnits = []) {
-  proposal = filterIncompleteProposalChanges(proposal, sourceUnits);
-  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
-  const removedTargets = new Set(proposal.changes.filter((change) => change.type === 'remove')
-    .map((change) => change.before).filter(Boolean));
-  const removedIds = new Set([...removedTargets].map((row) => row.id).filter(Boolean));
-  const survivors = [
-    ...(Array.isArray(resulting) ? resulting : []).filter((row) => !removedTargets.has(row) && !(row?.id && removedIds.has(row.id))),
-    ...proposal.changes.filter((change) => ['add', 'modify'].includes(change.type) && change.after).map((change) => change.after)
-  ];
-  const changes = proposal.changes.map((change) => {
-    // An earlier check deliberately left this for the reviewer (answered in
-    // the meeting, completed, a social aside...). Never re-tick it.
-    if (change.selected === false) return change;
-    if (change.type === 'remove') {
-      const removed = change.before || {};
-      const removedOwners = proposalOwnersOf(removed);
-      const partner = survivors.find((row) => row && row !== removed && (!row.id || row.id !== removed.id)
-        && hybridActionsEquivalent(removed.action || '', row.action || '')
-        && (!removedOwners.length || !proposalOwnersOf(row).length || proposalOwnersOf(row).some((owner) => removedOwners.includes(owner))));
-      if (partner) {
-        return withSelection(change, true, {
-          label: 'duplicate',
-          reason: `Duplicates "${meetingMinutesAgentText(partner.action, 200)}", which stays in the list.`,
-          evidenceIds: removed.evidenceIds || []
-        });
-      }
-      return withSelection(change, false, {
-        label: 'removal not confirmed',
-        reason: 'A later check did not reproduce this action, but nothing shows it is wrong or a duplicate. It stays unless you tick this.',
-        evidenceIds: removed.evidenceIds || []
-      });
-    }
-    if (change.type === 'modify') {
-      const duplicate = duplicateMeetingAgentActionModification(change, resulting);
-      if (duplicate) {
-        return withSelection(change, false, {
-          label: 'already in the list',
-          reason: 'This edit would copy the wording, owners and timing of another action. Tick it only if both occurrences are intended.',
-          evidenceIds: change.after?.evidenceIds || change.before?.evidenceIds || []
-        });
-      }
-      const lost = destructiveActionEdit(change.before || {}, change.after || {}, sourceUnits);
-      if (lost) {
-        return withSelection(change, false, {
-          label: 'edit loses detail',
-          reason: `Left unticked because ${lost}. Tick it only if the current version is wrong.`,
-          evidenceIds: change.after?.evidenceIds || change.before?.evidenceIds || []
-        });
-      }
-      return withSelection(change, true);
-    }
-    if (change.type === 'add') {
-      const record = change.after || {};
-      if (!proposalOwnersOf(record).length) {
-        return withSelection(change, false, {
-          label: 'no owner',
-          reason: 'Nobody is shown taking this on. Tick it and add an owner if it is a real commitment.',
-          evidenceIds: record.evidenceIds || []
-        });
-      }
-      // Applying a suggestion that repeats an action already in the list
-      // creates the duplicate the deduper just avoided. The bar here is lower
-      // than the bar for dropping it: the owner may differ (the same follow-up
-      // meeting offered under a second name), and the reviewer can still tick
-      // it. See echoesPublishedAction.
-      const echoed = (Array.isArray(resulting) ? resulting : [])
-        .find((row) => row && row !== record && echoesPublishedAction(row, record));
-      if (echoed) {
-        return withSelection(change, false, {
-          label: 'already in the list',
-          reason: `This looks like "${meetingMinutesAgentText(echoed.action, 200)}", which is already an action. Tick it only if it is separate work.`,
-          evidenceIds: record.evidenceIds || []
-        });
-      }
-      // A 40-word "action" listing hotels, dates, travel and report writing is
-      // a summary of the meeting. Offer it, but never apply it unasked.
-      if (meetingMinutesAgentText(record.action, 1600).split(/\s+/).filter(Boolean).length > 40) {
-        return withSelection(change, false, {
-          label: 'reads as a summary',
-          reason: 'This is long enough to be a summary of several things rather than one deliverable. Tick it only if it is a single action.',
-          evidenceIds: record.evidenceIds || []
-        });
-      }
-      const evidence = proposalEvidenceText(sourceUnits, record.evidenceIds);
-      const disposition = evidence ? actionDispositionWithContext(record, sourceUnits, evidence) : 'unclear';
-      if (!PRESELECTABLE_ADD_DISPOSITIONS.has(disposition)) {
-        return withSelection(change, false, {
-          label: 'commitment not clear',
-          reason: 'The cited lines do not clearly show this being agreed. Tick it if it was.',
-          evidenceIds: record.evidenceIds || []
-        });
-      }
-      // Everything above has been ruled out: this addition is owned, distinct,
-      // short enough to be one deliverable and clearly evidenced. It is still
-      // offered unticked. A pre-ticked suggestion is applied by default, and
-      // the ones that survive to here are exactly the plausible-looking rows a
-      // reviewer waves through - DITA's duplicate Cody follow-up arrived that
-      // way. Adding an action is the change a reviewer should make on purpose.
-      return withSelection(change, false, {
-        label: 'ready to add',
-        reason: 'This reads as a clear, owned commitment in the cited lines. Tick it to add it.',
-        evidenceIds: record.evidenceIds || []
-      });
-    }
-    return withSelection(change, false);
-  });
-  return { ...proposal, changes };
-}
-
-// Discussion rows: additions and rewordings start ticked, removals never do.
-function preselectDiscussionProposal(proposal) {
-  proposal = filterIncompleteProposalChanges(proposal);
-  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
-  return {
-    ...proposal,
-    changes: proposal.changes.map((change) => {
-      if (change.selected === false) return change;
-      if (change.type === 'remove') {
-        return withSelection(change, false, {
-          label: 'removal not confirmed',
-          reason: 'The regenerated discussion left this out. It stays unless you tick this.',
-          evidenceIds: change.before?.evidenceIds || []
-        });
-      }
-      return withSelection(change, true);
-    })
-  };
-}
-
-// A reviewer's own instruction ("Ask AI to edit") is a request for exactly
-// these changes, so they start ticked.
-function preselectRequestedProposal(proposal) {
-  proposal = filterIncompleteProposalChanges(proposal);
-  if (!proposal || !Array.isArray(proposal.changes)) return proposal;
-  return { ...proposal, changes: proposal.changes.map((change) => ({ ...change, selected: change.selected !== false })) };
-}
-
-// Automatic adoption can encounter a proposal saved by an older version.
-// Validate its generated timing against the current source and final approved
-// rows as well; explicit manual acceptance remains a literal review decision.
-
-
-// Automatic adoption must respect the same positive checks as proposal review.
-// Consuming uncertain suggestions exposes their source-linked checks instead of
-// quietly applying them or leaving a hidden proposal that runs on every reload.
-
-
-function meetingAgentProposalChangeIsVisible(change = {}) {
-  if (change?.type !== 'modify') return true;
-  return meetingAgentEditableActionSignature(change.before) !== meetingAgentEditableActionSignature(change.after);
-}
-
-
-
-// What the reviewer sees of an Actions list: wording, owners and timing, in order.
-function meetingAgentActionsFingerprint(actions = []) {
-  const rows = (Array.isArray(actions) ? actions : []).map(meetingAgentEditableActionSignature);
-  return crypto.createHash('sha1').update(JSON.stringify(rows)).digest('hex').slice(0, 16);
-}
-
-
-// Decides what a finished Discussion or Actions run writes.
-// - Actions a reviewer has edited since they were generated are never
-//   replaced: the new run arrives as proposed changes to accept or reject.
-// - Open flags that belonged to replaced rows or a replaced proposal go with
-//   them. Referenced warning identities and evidence remain distinct.
-function admitMeetingAgentGeneratedActionChanges(fresh = {}, input = {}, generationKey = '') {
-  const changes = { ...input };
-  const checkedBefore = normaliseKeptActionOccurrenceIds(fresh.keptActionOccurrenceIds,
-    [...(fresh.actions || []), ...(fresh.removedActions || [])]);
-  if (JSON.stringify(checkedBefore) !== JSON.stringify(fresh.keptActionOccurrenceIds || [])) {
-    changes.keptActionOccurrenceIds = checkedBefore;
-  }
-  const original = Array.isArray(changes.actions) ? changes.actions : (fresh.actions || []);
-  const reserved = [...(fresh.actions || []), ...(fresh.removedActions || [])];
-  const allocated = Array.isArray(changes.actions)
-    ? assignGeneratedActionIdentities(original, {
-      existingActions: fresh.actions || [], reservedActions: reserved, generationKey
-    }).actions : original;
-  if (Array.isArray(changes.actions)) changes.actions = allocated;
-  const diagnostics = changes.qualityState?.actions?.actionDiagnostics;
-  if (diagnostics && Array.isArray(changes.actions)) {
-    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-      actionDiagnostics: actionDiagnostics.bindPublished(diagnostics, original, allocated) } };
-  }
-  const separation = changes.qualityState?.discussion?.claimConsolidation;
-  if (Array.isArray(changes.actions) && Array.isArray(changes.discussion)
-    && separation?.method === discussionActionSeparation.VERSION && separation.applied) {
-    const bound = discussionActionSeparation.rebindActionIdentities(original, allocated, separation);
-    if (!bound) {
-      const reverted = discussionActionSeparation.revertGeneratedPair(input, separation);
-      return admitMeetingAgentGeneratedActionChanges(fresh, { ...reverted, qualityState: { ...reverted.qualityState,
-        discussion: { ...reverted.qualityState.discussion, claimConsolidation: separation.priorAudit || { ...separation, applied: false, reason: 'identity_binding_failed' } },
-        actions: { ...reverted.qualityState.actions, discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
-          deferredDiscussionActionSeparation: { ...separation, applied: false, reason: 'identity_binding_failed' } }
-      } }, generationKey);
-    }
-    changes.qualityState = { ...changes.qualityState, discussion: { ...changes.qualityState.discussion, claimConsolidation: bound } };
-  }
-  const phase = changes.qualityState?.actions?.actionPhaseCorrection;
-  if (phase?.applied) {
-    const bound=actionPhase.rebind(phase,original,allocated,normaliseSourceUnits(fresh.sourceUnits),meetingAgentTimingAnchor(fresh));
-    if (!bound) return admitMeetingAgentGeneratedActionChanges(fresh,{...input,actions:structuredClone(phase.original),
-      qualityState:{...changes.qualityState,actions:{...changes.qualityState.actions,
-        actionPhaseCorrection:{...phase,applied:false,receipts:[],reason:'identity_binding_failed'}}}},generationKey);
-    changes.qualityState={...changes.qualityState,actions:{...changes.qualityState.actions,actionPhaseCorrection:bound}};
-  }
-  const union = changes.qualityState?.actions?.actionUnionRewrite;
-  if (Array.isArray(changes.actions) && union?.applied) {
-    const bound = union.receipts.map(receipt => {
-      const candidates = original.flatMap((row, index) => {
-        const proof = actionUnion.rebind(receipt, row, allocated[index], normaliseSourceUnits(fresh.sourceUnits));
-        return proof ? [proof] : [];
-      });
-      return candidates.length === 1 ? candidates[0] : null;
-    });
-    if (bound.some(receipt => !receipt)) return admitMeetingAgentGeneratedActionChanges(fresh, { ...input,
-      actions: structuredClone(union.original),
-      pendingProposal: union.coveredProposalChanges?.length ? { ...(input.pendingProposal || {stage:'actions'}),
-        changes: [...(input.pendingProposal?.changes || []), ...union.coveredProposalChanges] } : input.pendingProposal,
-      qualityState: { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-        actionUnionRewrite: { ...union, applied:false, receipts:[], reason:'identity_binding_failed' } } }
-    }, generationKey);
-    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-      actionUnionRewrite: { ...union, receipts:bound,...(union.version==='compilation-union-v1'?{finalHash:actionUnion.hash(allocated)}:{}), identityBinding:{complete:true} } } };
-  }
-  const semantic = changes.qualityState?.actions?.semanticReconciliation;
-  if (Array.isArray(changes.actions) && semantic?.applied && semantic.receipts?.length) {
-    const bound = semantic.receipts.map(receipt => {
-      const candidates = original.map((row, index) => ({ index,
-        bound: rebindReconciliationReceipt(receipt, row, allocated[index], normaliseSourceUnits(fresh.sourceUnits)) }))
-        .filter(item => item.bound);
-      return candidates.length === 1 ? candidates[0].bound : null;
-    });
-    if (bound.some(receipt => !receipt)) {
-      // Identity admission is mandatory. An unbindable proof cannot justify
-      // deletion: recover the retained originals and allocate them normally.
-      return admitMeetingAgentGeneratedActionChanges(fresh, { ...input,
-        actions: structuredClone(semantic.original),
-        qualityState: { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-          semanticReconciliation: { ...semantic, applied: false, receipts: [], ledger: [],
-            identityBinding: { complete: false },
-            unresolved: [...(semantic.unresolved || []), { reason: 'semantic_identity_binding_failed' }] }
-        } }
-      }, generationKey);
-    }
-    changes.qualityState = { ...changes.qualityState, actions: { ...changes.qualityState.actions,
-      semanticReconciliation: { ...semantic, receipts: bound, identityBinding: { complete: true },
-        ...(isActionOnlySemanticScope(semantic.policy?.scope) ? { restoreSnapshot: structuredClone(allocated) } : {}) }
-    } };
-  }
-  const proposal = changes.pendingProposal;
-  if (proposal?.stage !== 'actions' || !Array.isArray(proposal.changes)) return changes;
-  const additions = proposal.changes.filter(change => change.type === 'add' && change.after);
-  const admittedAdds = assignGeneratedActionIdentities(additions.map(change => change.after), {
-    reservedActions: [...reserved, ...allocated], generationKey: generationKey + ':proposal'
-  }).actions;
-  let addIndex = 0;
-  changes.pendingProposal = { ...proposal, changes: proposal.changes.map(change => {
-    if (change.type === 'add' && change.after) return { ...change, after: admittedAdds[addIndex++] };
-    if (!change.before) return change;
-    const index = findActionOccurrenceIndex(original, change.before);
-    if (index < 0) return change;
-    const target = allocated[index];
-    return { ...change,
-      before: preserveActionIdentity(target, change.before),
-      ...(change.type === 'modify' && change.after ? { after: preserveActionIdentity(target, change.after) } : {})
-    };
-  }) };
-  return changes;
-}
-
-function meetingAgentRegenerationChanges(fresh = {}, stage = '', scopedChanges = {}, result = {}) {
-  const changes = { ...scopedChanges };
-  let incomingFlags = Array.isArray(result.reviewFlags) ? result.reviewFlags : [];
-  let keptReviewerActions = false;
-  if (stage === 'discussion' && Object.prototype.hasOwnProperty.call(changes, 'discussion')) {
-    const generated = Array.isArray(changes.discussion) ? changes.discussion : [];
-    const current = Array.isArray(fresh.discussion) ? fresh.discussion : [];
-    const previousFingerprint = fresh.qualityState?.discussion?.generatedFingerprint || '';
-    const reviewerEdited = current.length > 0 && (!previousFingerprint
-      || meetingAgentDiscussionFingerprint(current) !== previousFingerprint);
-    const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
-    changes.qualityState = {
-      ...qualityState,
-      discussion: {
-        ...(qualityState.discussion || {}),
-        generatedFingerprint: meetingAgentDiscussionFingerprint(generated)
-      }
-    };
-    if (reviewerEdited) {
-      const proposal = preselectDiscussionProposal(buildProposal('discussion', current, generated));
-      changes.pendingProposal = proposal?.changes?.length ? { ...proposal, source: 'regeneration' } : null;
-      delete changes.discussion;
-      const semantic = changes.qualityState?.discussion?.semanticReconciliation;
-      if (semantic) changes.qualityState.discussion = { ...changes.qualityState.discussion,
-        semanticReconciliation: { ...semantic, applied: false, publishedApplied: false, deferredToProposal: true } };
-      const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
-      incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
-    }
-  }
-  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'actions')) {
-    const generated = Array.isArray(changes.actions) ? changes.actions : [];
-    const current = Array.isArray(fresh.actions) ? fresh.actions : [];
-    // Both lists go through the same normalisation a save applies, so a
-    // save's own tidying never reads as a reviewer edit.
-    const asSaved = (actions) => meetingAgentActionsFingerprint(
-      normaliseAgentResult({ actions }, fresh.sourceUnits || [], '', { enforceEvidence: false }).actions
-    );
-    const previousFingerprint = fresh.qualityState?.actions?.generatedFingerprint || '';
-    const keptOccurrences = new Set(fresh.keptActionOccurrenceIds || []);
-    const isExplicitlyKept = row => Boolean(row?.occurrenceId && keptOccurrences.has(row.occurrenceId));
-    const reviewerEdited = current.length > 0 && (current.some(isReviewerAuthored) || current.some(isExplicitlyKept)
-      || (Boolean(previousFingerprint) && asSaved(current) !== previousFingerprint));
-    const qualityState = changes.qualityState || { ...(fresh.qualityState || {}) };
-    // What was generated last time, so a later regeneration can tell the
-    // reviewer's own edits, additions and deletions apart.
-    const generatedTexts = generated.map((action) => meetingMinutesAgentText(action?.action, 1600)).filter(Boolean);
-    changes.qualityState = {
-      ...qualityState,
-      actions: { ...(qualityState.actions || {}), generatedFingerprint: asSaved(generated), generatedTexts,
-        generatedSignatures: generated.map(meetingAgentEditableActionSignature), fingerprintVersion: 2 }
-    };
-    if (reviewerEdited) {
-      keptReviewerActions = true;
-      const previousTexts = Array.isArray(fresh.qualityState?.actions?.generatedTexts) ? fresh.qualityState.actions.generatedTexts : null;
-      const previousSignatures = Array.isArray(fresh.qualityState?.actions?.generatedSignatures)
-        ? fresh.qualityState.actions.generatedSignatures : null;
-      const reviewerTouched = (row) => isReviewerAuthored(row) || isExplicitlyKept(row)
-        || (previousSignatures ? !previousSignatures.includes(meetingAgentEditableActionSignature(row))
-          : previousTexts && !previousTexts.includes(meetingMinutesAgentText(row?.action, 1600)));
-      const deletedByReviewer = previousTexts
-        ? previousTexts.filter((textValue) => !current.some((row) => meetingMinutesAgentText(row?.action, 1600) === textValue))
-        : [];
-      // Never propose undoing the reviewer's work: re-adding what they deleted,
-      // changing a row they wrote or edited, or removing a row they added.
-      const respectsReviewer = (change) => {
-        if (change.type === 'add') return !deletedByReviewer.some((textValue) => hybridActionsEquivalent(textValue, change.after?.action || ''));
-        if (change.type === 'modify' || change.type === 'remove') return !reviewerTouched(change.before);
-        return true;
-      };
-      const diff = buildProposal('actions', current, generated);
-      const generatedProposal = changes.pendingProposal && Array.isArray(changes.pendingProposal.changes) ? changes.pendingProposal : null;
-      const extraAdds = (generatedProposal?.changes || []).filter((change) => change?.type === 'add' && change.after)
-        .map((change) => ({ ...change, beforeIndex: current.length, index: current.length, afterIndex: null }));
-      const combined = [...diff.changes.filter(meetingAgentProposalChangeIsVisible), ...extraAdds].filter(respectsReviewer);
-      changes.pendingProposal = combined.length
-        ? preselectActionProposal({ ...diff, changes: combined, source: 'regeneration' }, current, fresh.sourceUnits || [])
-        : null;
-      delete changes.actions;
-      const semantic = changes.qualityState?.actions?.semanticReconciliation;
-      if (semantic) changes.qualityState.actions = { ...changes.qualityState.actions,
-        semanticReconciliation: { ...semantic, applied: false, publishedApplied: false, deferredToProposal: true } };
-      // The generated action register was not applied, so it cannot justify
-      // removing a corresponding row from the reviewer's Discussion.
-      delete changes.discussion;
-      const separation = changes.qualityState?.discussion?.claimConsolidation;
-      if (separation?.method === discussionActionSeparation.VERSION && separation.applied) {
-        changes.qualityState = { ...changes.qualityState, discussion: { ...(fresh.qualityState?.discussion || {}) },
-          actions: { ...changes.qualityState.actions, discussionActionSeparationCount: 0, sourceClarificationCorrectionCount: 0,
-            deferredDiscussionActionSeparation: { ...separation, applied: false, deferredToProposal: true } } };
-      }
-      // Flags raised on rows that were not applied would point at nothing.
-      const generatedFlagIds = meetingAgentReferencedFlagIds(generated);
-      incomingFlags = incomingFlags.filter((flag) => !generatedFlagIds.has(String(flag.id)));
-    }
-  }
-  if (stage === 'discussion' && Array.isArray(changes.unassignedSupportingDetails)) {
-    changes.unassignedSupportingDetails = withoutRepresentedUnassignedDetails(
-      optionalReview.active(mergeUnassignedSupportingDetails(fresh.unassignedSupportingDetails, changes.unassignedSupportingDetails), fresh),
-      changes.discussion || fresh.discussion || []
-    );
-  }
-  const field = stage === 'actions' ? 'actions' : stage === 'discussion' ? 'discussion' : '';
-  let priorFlags = Array.isArray(fresh.reviewFlags) ? fresh.reviewFlags : [];
-  if (field && Object.prototype.hasOwnProperty.call(changes, field)) {
-    const oldIds = meetingAgentReferencedFlagIds([...(fresh[field] || []),
-      ...(stage === 'discussion' ? normalizeUnassignedSupportingDetails(fresh.unassignedSupportingDetails) : [])]);
-    const newIds = meetingAgentReferencedFlagIds([...(changes[field] || []),
-      ...(stage === 'discussion' ? normalizeUnassignedSupportingDetails(changes.unassignedSupportingDetails ?? fresh.unassignedSupportingDetails) : [])]);
-    priorFlags = priorFlags.filter((flag) => !(oldIds.has(String(flag.id)) && !newIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
-  }
-  if (stage === 'actions' && Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')) {
-    const liveProposalFlagIds = new Set(((changes.pendingProposal && changes.pendingProposal.changes) || []).map(meetingAgentProposalReviewFlagId));
-    priorFlags = priorFlags.filter((flag) => !(String(flag.id || '').startsWith('proposal-review-')
-      && !liveProposalFlagIds.has(String(flag.id)) && meetingAgentFlagUntouched(flag)));
-  }
-  const merged = mergeMeetingAgentGenerationFlags(priorFlags, incomingFlags, result.replaceCoverageFlags, { stage, changes, draft: fresh });
-  const effectiveProposal = Object.prototype.hasOwnProperty.call(changes, 'pendingProposal')
-    ? changes.pendingProposal : fresh.pendingProposal;
-  const referencedFlagIds = meetingAgentReferencedFlagIds([
-    changes.actions ?? fresh.actions, changes.discussion ?? fresh.discussion,
-    ...(effectiveProposal?.changes || []).flatMap(change => [change.before, change.after]),
-    changes.unassignedSupportingDetails ?? fresh.unassignedSupportingDetails,
-    changes.meetingObjectives ?? fresh.meetingObjectives
-  ]);
-  const seen = new Set();
-  const reviewFlags = merged.filter((flag) => {
-    // Same display wording is not the same warning. Dropping a referenced ID
-    // strands its record and loses its source/check context. Exact unlinked
-    // automatic duplicates may still collapse; reviewed flags stay untouched.
-    if (!meetingAgentFlagUntouched(flag) || referencedFlagIds.has(String(flag.id))) return true;
-    const key = flag.systemTimingIssue ? `system-timing|${flag.id}`
-      : require('../utils/meetingMinutesProofHash').hash({ ...flag, id: '' });
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return { changes: stage === 'actions'
-    ? admitMeetingAgentGeneratedActionChanges(fresh, changes,
-      `${fresh.draftId || ''}:${fresh.generation?.startedAt || ''}:actions`) : changes,
-    reviewFlags, keptReviewerActions };
-}
-
-async function persistMeetingAgentBackgroundStage(options = {}) {
-  const {
-    draftId, userId, stage, sourceDraft = {}, result = null, failure = null,
-    getDraft = getMeetingMinutesAgentDraft,
-    saveDraft = (draft, changes) => saveMeetingAgentDraft(draft, { authUser: { userId } }, changes),
-    wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    maxAttempts = 3
-  } = options;
-  return meetingAgentSerialDraftWrite(draftId, async () => {
-    let lastConflict = null;
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const fresh = await getDraft(draftId, userId, { includeTranscript: true });
-      if (!fresh) return { saved: null, conflictFields: [], attemptCount: attempt + 1 };
-      let conflictFields = [];
-      let changes;
-      if (result) {
-        const scoped = meetingAgentStagePersistenceChanges(sourceDraft, fresh, stage, result.changes || {});
-        conflictFields = scoped.conflictFields;
-        changes = conflictFields.length
-          ? {
-            generation: {
-              stage, status: 'failed', bootId: MEETING_AGENT_BOOT_ID,
-              startedAt: sourceDraft.generation?.startedAt || new Date().toISOString(),
-              error: `This ${stage} section changed while generation was running. Your newer edits were kept; generate it again to replace them.`
-            }
-          }
-          : (() => {
-            const regeneration = meetingAgentRegenerationChanges(fresh, stage, scoped.changes, result);
-            return {
-              ...regeneration.changes,
-              reviewFlags: regeneration.reviewFlags,
-              staleStages: meetingAgentStaleStagesAfterGeneration(fresh, sourceDraft, stage, regeneration.changes),
-              currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], fresh.currentStep || 0),
-              generation: null
-            };
-          })();
-      } else {
-        changes = {
-          generation: {
-            stage, status: 'failed', bootId: MEETING_AGENT_BOOT_ID,
-            startedAt: sourceDraft.generation?.startedAt || new Date().toISOString(),
-            error: (failure && failure.message) || 'The agent could not complete this request.'
-          }
-        };
-      }
-      try {
-        const saved = await saveDraft(fresh, changes);
-        return { saved, conflictFields, attemptCount: attempt + 1 };
-      } catch (error) {
-        if (error.statusCode !== 409 || attempt === maxAttempts - 1) throw error;
-        lastConflict = error;
-        await wait(300 * (attempt + 1));
-      }
-    }
-    throw lastConflict;
-  });
-}
-
-// A real run adopts a speculative result only while the draft's inputs for
-// that stage are byte-for-byte what the speculation used. If it is still in
-// flight, the reviewer sees its progress and gets its result; if the inputs
-// moved on, the real run happens as before, seeded with any identical passes.
-async function adoptStageSpeculation(fresh, stage, draftId, userId) {
-  const entry = meetingAgentSpeculationFor(fresh, stage);
-  if (!entry) return null;
-  const waitedFrom = Date.now();
-  if (entry.status === 'running') {
-    const forward = async () => {
-      try {
-        await updateMeetingAgentHybridProgress(draftId, userId, stage, { ...(entry.progress || {}), ...(entry.preview || {}) });
-      } catch (error) { /* progress is best effort */ }
-    };
-    await forward();
-    const timer = setInterval(forward, 1500);
-    try { await entry.promise; } finally { clearInterval(timer); }
-  }
-  if (entry.status !== 'ready' || !entry.result) return null;
-  privateStageSpeculations.delete(speculationKey(draftId, stage));
-  console.info(JSON.stringify({
-    event: 'meeting_agent_speculation', journeyId: draftId, stage, adopted: true,
-    waitedMs: Date.now() - waitedFrom, speculationStartedAt: entry.startedAt, speculationCompletedAt: entry.completedAt
-  }));
-  return entry;
-}
-
-// Runs after the response has already gone back to the reviewer. Same in-process
-// pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
-// process, so there is no other executor to hand it to.
-let activeMeetingAgentBackgroundStages = 0;
-
-async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
-  activeMeetingAgentBackgroundStages += 1;
-  try {
-  const backgroundStartedAt = Date.now();
-  let result = null;
-  let failure = null;
-  let sourceDraft = null;
-  let speculationAdopted = false;
-  const hybrid = meetingMinutesAgentHybridEnabled();
-  const stageRetryDelays = hybrid ? [] : MEETING_AGENT_RETRY_MS;
-  for (let attempt = 0; attempt <= stageRetryDelays.length; attempt += 1) {
-    try {
-      const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
-      if (!fresh) return;
-      sourceDraft = fresh;
-      let adopted = null;
-      if (hybrid && meetingMinutesAgentSpeculativePipelineEnabled()) {
-        adopted = await adoptStageSpeculation(fresh, stage, draftId, userId);
-        if (!adopted) {
-          const seed = meetingAgentSpeculationPassCacheSeed(draftId, stage);
-          if (seed.length) {
-            fresh.passCache = normaliseMeetingAgentPassCache([...normaliseMeetingAgentPassCache(fresh.passCache), ...seed]);
-          }
-        }
-      }
-      speculationAdopted = Boolean(adopted);
-      result = adopted
-        ? adopted.result
-        : hybrid
-          ? await generateHybridMeetingAgentStage(fresh, stage, {
-            onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
-            onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
-            onRefereeFailure: (refereeFailureAudit) => updateMeetingAgentHybridProgress(draftId, userId, stage, { refereeFailureAudit }),
-            onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
-          })
-          : await generateMeetingAgentStage(fresh, stage, '');
-      failure = null;
-      break;
-    } catch (error) {
-      failure = error;
-      // The [5,15,30]s usage-limit ladder lives in the browser. A background run
-      // has no browser, so without repeating it here this path would be strictly
-      // less reliable than the button it replaces.
-      if (!error.retryable || attempt === stageRetryDelays.length) break;
-      await new Promise((resolve) => setTimeout(resolve, stageRetryDelays[attempt]));
-    }
-  }
-
-  const processingElapsedMs = Date.now() - backgroundStartedAt;
-  if (result?.changes?.qualityState?.[stage]) {
-    result.changes.qualityState[stage] = {
-      ...result.changes.qualityState[stage],
-      backgroundStartedAt: sourceDraft?.generation?.startedAt || new Date(backgroundStartedAt).toISOString(),
-      processingElapsedMs
-    };
-  }
-  const persistenceStartedAt = Date.now();
-  const persistence = await persistMeetingAgentBackgroundStage({
-    draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
-  });
-  const persistenceElapsedMs = Date.now() - persistenceStartedAt;
-  if (persistence?.saved && meetingMinutesAgentSpeculativePipelineEnabled()) {
-    scheduleStageSpeculation(draftId, userId, { delayMs: 0 });
-  }
-  console.info(JSON.stringify({
-    event: 'meeting_agent_stage_performance', journeyId: draftId, stage,
-    ok: Boolean(result && !failure), processingElapsedMs, persistenceElapsedMs, speculationAdopted,
-    totalElapsedMs: Date.now() - backgroundStartedAt,
-    telemetry: result?.changes?.qualityState?.[stage]?.telemetry,
-    passImpact: result?.changes?.qualityState?.[stage]?.passImpact,
-    calls: result?.changes?.qualityState?.[stage]?.callPerformance,
-    revision: persistence?.saved?.revision,
-    persistenceAttemptCount: Number(persistence?.attemptCount || 0),
-    conflictFieldCount: Array.isArray(persistence?.conflictFields) ? persistence.conflictFields.length : 0,
-    errorCode: failure ? meetingMinutesAgentText(failure.code, 120) || undefined : undefined
-  }));
-  } finally {
-    activeMeetingAgentBackgroundStages = Math.max(0, activeMeetingAgentBackgroundStages - 1);
-  }
-}
-
-router.post('/meeting-minutes-agent/drafts/:draftId/generate-background', requireAuth, async (req, res) => {
-  try {
-    const stage = String(req.body?.stage || '').trim().toLowerCase();
-    if (!Object.hasOwn(MEETING_AGENT_STAGE_STEP, stage)) {
-      return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
-    }
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before generating again.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    if (parallelMinutes.isParallel(draft)) {
-      if (parallelMinutesRunner.active.has(String(draft.draftId))) {
-        return res.status(202).json({ok:true,generation:publicMeetingAgentDraft(draft).generation,draft:publicMeetingAgentDraft(draft)});
-      }
-      const saved = await meetingAgentSerialDraftWrite('parallel-start:'+draft.draftId, async () => {
-        const copyId = parallelMinutesCopies.get(String(draft.draftId));
-        if (copyId && parallelMinutesRunner.active.has(String(copyId))) {
-          return getMeetingMinutesAgentDraft(copyId,req.authUser.userId,{includeTranscript:true});
-        }
-        parallelMinutes.configuration();
-        let target = draft;
-        if (draft.qualityState?.parallel?.completedAt) {
-          const original = await loadOwnedMeetingAgentDraft(req, {includeTranscript:true});
-          if (original.revision !== draft.revision) throw Object.assign(new Error('Reload the saved draft before generating another version.'),{statusCode:409});
-          target = await createMeetingMinutesAgentDraft({
-            userId:req.authUser.userId,title:draft.details?.meetingTitle || draft.title,fileName:draft.fileName,
-            rawTranscript:original.rawTranscript,payload:parallelMinutes.initialPayload(draft)
-          });
-          if (draft.linkedProjectId) await linkMeetingMinutesAgentDraftToProject(target.draftId,req.authUser.userId,draft.linkedProjectId);
-        }
-        const started = await parallelMinutesRunner.start(target, req.authUser.userId);
-        if (target.draftId !== draft.draftId) {
-          parallelMinutesCopies.set(String(draft.draftId),target.draftId);
-          parallelMinutesRunner.active.get(String(target.draftId))?.finally(()=>parallelMinutesCopies.delete(String(draft.draftId)));
-        }
-        return started;
-      });
-      return res.status(202).json({ok:true,generation:publicMeetingAgentDraft(saved).generation,draft:publicMeetingAgentDraft(saved)});
-    }
-    const existing = meetingAgentGenerationState(draft.generation);
-    if (existing && existing.status === 'running') {
-      return res.status(202).json({ ok: true, generation: publicMeetingAgentGeneration(existing), draft: publicMeetingAgentDraft(draft) });
-    }
-    const generation = {
-      stage,
-      semanticPolicy: captureSemanticPolicy(),
-      discussionCoveragePolicy: captureDiscussionCoveragePolicy(),
-      status: 'running',
-      bootId: MEETING_AGENT_BOOT_ID,
-      startedAt: new Date().toISOString(),
-      pass: meetingMinutesAgentHybridEnabled() ? 'starting' : '',
-      message: meetingMinutesAgentHybridEnabled() ? 'Preparing independent quality checks…' : '',
-      completedPasses: [],
-      callTimings: [],
-      degradedSources: [],
-      error: ''
-    };
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      generation,
-      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0),
-      selectedStep: Math.max(0, Math.min(
-        Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0),
-        Number(req.body?.selectedStep ?? MEETING_AGENT_STAGE_STEP[stage]) || 0
-      ))
-    });
-    const userId = req.authUser?.userId;
-    setImmediate(() => {
-      runMeetingAgentBackgroundStage(saved.draftId, userId, stage)
-        .catch((error) => safeLogError('[meeting-minutes-agent/background] failed', error));
-    });
-    return res.status(202).json({ ok: true, generation: publicMeetingAgentGeneration(generation), draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    safeLogError('[meeting-minutes-agent/generate-background] failed', error);
-    return sendMeetingAgentFailure(res, error);
-  }
-});
-
-router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, async (req, res) => {
-  try {
-    const draft = await loadOwnedMeetingAgentDraft(req);
-    const generation = meetingAgentGenerationState(draft.generation);
-    const running = Boolean(generation && generation.status === 'running');
-    const completedPerformance = running ? null : meetingAgentCompletedStagePerformance(draft);
-    let observedPerformance;
-    if (completedPerformance) {
-      const observedAt = new Date().toISOString();
-      const pollingOverheadMs = Math.max(0, Date.now() - new Date(draft.updatedAt || observedAt).getTime());
-      observedPerformance = {
-        stage: completedPerformance.stage,
-        processingElapsedMs: Number(completedPerformance.processingElapsedMs
-          || completedPerformance.stageElapsedMs || 0),
-        persistedAt: draft.updatedAt,
-        observedAt,
-        pollingOverheadMs
-      };
-      const observationKey = `${draft.draftId}:${draft.revision}:${completedPerformance.stage}`;
-      if (!meetingAgentObservedGenerationCompletions.has(observationKey)) {
-        meetingAgentObservedGenerationCompletions.add(observationKey);
-        if (meetingAgentObservedGenerationCompletions.size > 500) {
-          meetingAgentObservedGenerationCompletions.delete(meetingAgentObservedGenerationCompletions.values().next().value);
-        }
-        console.info(JSON.stringify({
-          event: 'meeting_agent_poll_observed', journeyId: draft.draftId,
-          revision: draft.revision, ...observedPerformance
-        }));
-      }
-    }
-    return res.json({
-      ok: true,
-      generation: publicMeetingAgentGeneration(generation),
-      actionsPrewarm: meetingAgentActionsPrewarmState(draft),
-      speculation: meetingAgentSpeculationState(draft),
-      // Carry the draft only once the run is over, so completion is one round trip.
-      draft: running ? undefined : publicMeetingAgentDraft(draft),
-      performance: observedPerformance
-    });
-  } catch (error) {
-    return sendMeetingAgentFailure(res, error);
-  }
-});
-
-router.post('/meeting-minutes-agent/generate', requireAuth, async (req, res) => {
-  try {
-    const stage = String(req.body?.stage || '').trim().toLowerCase();
-    if (!Object.hasOwn(MEETING_AGENT_STAGE_STEP, stage)) {
-      return res.status(400).json({ ok: false, error: 'Choose discussion, actions or summary.' });
-    }
-    const instruction = meetingMinutesAgentText(req.body?.instruction, 4000);
-    if (stage === 'summary' && instruction) {
-      // buildProposal diffs arrays of rows; there is no meaningful diff for a
-      // prose summary, so this stage is edited directly rather than proposed.
-      return res.status(400).json({ ok: false, error: 'The summary is edited directly, not through the agent editor.' });
-    }
-    const draft = await getMeetingMinutesAgentDraft(req.body?.draftId, req.authUser?.userId, { includeTranscript: true });
-    if (!draft) return res.status(404).json({ ok: false, error: 'Meeting-minutes draft not found.' });
-    if (Number(req.body?.revision) !== draft.revision) {
-      const error = new Error('This draft was updated elsewhere. Reload it before generating again.');
-      error.statusCode = 409;
-      error.currentDraft = draft;
-      throw error;
-    }
-    const result = await generateMeetingAgentStage({ ...draft,
-      _semanticPolicy: captureSemanticPolicy(), _discussionCoveragePolicy: captureDiscussionCoveragePolicy() }, stage, req.body?.instruction);
-    if (instruction) {
-      const before = stage === 'discussion' ? draft.discussion || [] : draft.actions || [];
-      const after = stage === 'discussion' ? result.normalised.discussion : result.normalised.actions;
-      const proposal = preselectRequestedProposal(buildProposal(stage, before, after));
-      const saved = await saveMeetingAgentDraft(draft, req, {
-        pendingProposal: proposal,
-        reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags)
-      });
-      return res.json({ ok: true, stage, proposal, draft: publicMeetingAgentDraft(saved) });
-    }
-    const saved = await saveMeetingAgentDraft(draft, req, {
-      ...result.changes,
-      reviewFlags: mergeMeetingAgentGenerationFlags(draft.reviewFlags, result.reviewFlags, result.replaceCoverageFlags, { stage, changes: result.changes, draft }),
-      staleStages: meetingAgentStaleStagesAfterGeneration(draft, draft, stage, result.changes),
-      currentStep: Math.max(MEETING_AGENT_STAGE_STEP[stage], draft.currentStep || 0)
-    });
-    return res.json({ ok: true, stage, draft: publicMeetingAgentDraft(saved) });
-  } catch (error) {
-    safeLogError('[meeting-minutes-agent/generate] failed', error);
-    return sendMeetingAgentFailure(res, error);
-  }
-});
+registerMeetingMinutesGeneration(router);
 
 router.post('/meeting-minutes-agent/drafts/:draftId/audit-actions', requireAuth, async (req, res) => {
   try {

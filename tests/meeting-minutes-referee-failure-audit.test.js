@@ -9,7 +9,7 @@ function createOriginalExecution(services) {
   finally { provider.mock.restore(); }
 }
 const A=require('../routes/api').stagedEvaluation;
-const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
+const source=fs.readFileSync(require.resolve('../utils/meetingMinutesGenerationLifecycle'),'utf8');
 const transportSource=fs.readFileSync(require.resolve('../utils/meetingMinutesAgentTransport'),'utf8');
 const payload=prompt=>JSON.parse(prompt.split('refereePayload:\n')[1]);
 const child={candidateId:'child',recordType:'discussion_point',text:'The supplier requires oversight.',evidenceIds:['T0001']};
