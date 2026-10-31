@@ -1,3 +1,5 @@
+const MAX_TRANSCRIPT_CHARS = 2 * 1024 * 1024;
+
 function extractTextFromUpload(file, mammoth) {
   const fileName = file.originalname || '';
   const mimeType = file.mimetype || '';
@@ -36,6 +38,21 @@ function extractTextFromUpload(file, mammoth) {
   });
 }
 
+function validateTranscriptText(text) {
+  if (!text || !text.trim()) {
+    const error = new Error('Transcript text is empty. Paste text or upload a non-empty transcript file.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (text.length > MAX_TRANSCRIPT_CHARS) {
+    const error = new Error(`Transcript is too large. Maximum supported text length is ${MAX_TRANSCRIPT_CHARS} characters.`);
+    error.statusCode = 413;
+    throw error;
+  }
+}
+
 module.exports = {
-  extractTextFromUpload
+  extractTextFromUpload,
+  validateTranscriptText
 };

@@ -265,6 +265,19 @@ function isLowValueStagedDiscussionText(value) {
   return false;
 }
 
+function uniqueCleanDiscussionItems(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const cleaned = cleanStagedDiscussionText(value);
+    const key = cleaned.toLowerCase();
+    if (!cleaned || isNoEvidenceDiscussionText(cleaned) || isLowValueStagedDiscussionText(cleaned) || seen.has(key)) continue;
+    seen.add(key);
+    result.push(cleaned);
+  }
+  return result;
+}
+
 function cleanStagedActionText(value) {
   let action = cleanStagedGeneratedLine(value)
     .replace(/\s+/g, ' ')
@@ -353,6 +366,7 @@ module.exports = {
   cleanStagedDiscussionText,
   isNoEvidenceDiscussionText,
   isLowValueStagedDiscussionText,
+  uniqueCleanDiscussionItems,
   cleanStagedActionText,
   transcriptForStagedAI,
   stagedTokenSimilarity,
