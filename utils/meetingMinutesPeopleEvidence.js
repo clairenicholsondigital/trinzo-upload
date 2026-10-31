@@ -43,7 +43,6 @@ function mentionedPeople(units = []) {
   return [...counts.entries()].filter(([, count]) => count >= 2).map(([name]) => name);
 }
 
-
 const OWNER_ONGOING_WORK = /\bi(?:'m|’m|\s+am)\s+(?:currently\s+|still\s+|just\s+|now\s+|also\s+)?(?:trying|working|looking|going\s+through|doing|chasing|sorting|reviewing|rewriting|drafting|writing|preparing|checking|testing|simulating|updating|pulling|putting\s+together|waiting\s+on|in\s+the\s+middle\s+of)\b|\bi(?:'ve|’ve|\s+have)\s+(?:just\s+|also\s+|only\s+|actually\s+)?been\s+\w+ing\b|\bi(?:'ve|’ve|\s+have)\s+(?:already\s+|just\s+|now\s+)?(?:added|started|begun|drafted|made\s+a\s+start)\b/i;
 const OWNER_FIRST_PERSON = new RegExp(`${/\bi\b(?:\s+\w+){0,2}\s+(?:will|shall|can|could|need to|needs to|have to|going to|gonna|intend to|plan to|aim to)\b|\b(?:i'll|i'd|i'm going to|i'm gonna)\b|\bshould i\s+(?:just\s+)?(?:add|check|email|forward|place|pop|put|review|send|share|upload)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\blet me\b|\bi can take that\b/.source}|${OWNER_ONGOING_WORK.source}`, 'i');
 const OWNER_ACCEPTS = /^\s*(?:yes|yeah|yep|okay|ok|sure|will do|absolutely|of course|perfect|no problem)\b/i;
@@ -398,7 +397,6 @@ function applyRequesterOwnerRule(actions = [], units = []) {
   return { actions: checked, flags };
 }
 
-
 // ---- A named person must be in the row's own evidence -----------------------
 // The minutes are read a row at a time, so a row reading "Rebecca has reviewed
 // David's feedback" while citing only the line in which *David* does the
@@ -603,6 +601,64 @@ function speakerIsOwner(speaker, owners = []) {
   });
 }
 
+function splitOwners(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/\s*(?:,|&|\band\b)\s*/i);
+  return [...new Set(source.map((owner) => text(owner, 180)).filter((owner) => owner && !/^not stated$/i.test(owner)))].slice(0, 12);
+}
+
+function ownerIdentityTokens(value) {
+  const titles = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'professor']);
+  return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .match(/[a-z0-9]+/g)?.filter((token) => token.length > 1 && !titles.has(token)) || [];
+}
+
+function ownerIdentityKey(value) {
+  return [...new Set(ownerIdentityTokens(value))].sort().join('|');
+}
+
+function normaliseOwnerIdentity(owner, units = []) {
+  const raw = text(owner, 180);
+  const ownerWords = ownerIdentityTokens(raw);
+  if (!ownerWords.length) return raw;
+  const speakers = evidenceContextFor(units).speakers;
+  const exactKey = ownerIdentityKey(raw);
+  let matches = speakers.filter((speaker) => ownerIdentityKey(speaker) === exactKey);
+  if (!matches.length && ownerWords.length === 1) {
+    matches = speakers.filter((speaker) => ownerIdentityTokens(speaker).includes(ownerWords[0]));
+  }
+  // Teams may alternate between "Surname, Given Initial" and "Given Surname"
+  // for the same participant. Count canonical identities rather than raw labels,
+  // while still refusing to expand an ambiguous first name.
+  const identities = new Map();
+  for (const speaker of matches) {
+    const key = ownerIdentityKey(speaker);
+    if (!identities.has(key)) identities.set(key, []);
+    identities.get(key).push(speaker);
+  }
+  if (identities.size !== 1) return raw;
+  const aliases = [...identities.values()][0];
+  const displays = aliases.map(canonicalSpeakerDisplayName);
+  // Prefer an already human-readable source label, then the deterministic
+  // inversion of Teams' comma form. Either way every pass gets one spelling.
+  return displays.find((name, index) => !aliases[index].includes(',')) || displays[0] || raw;
+}
+
+function ownerSupportedByEvidence(owner, evidenceText, units = []) {
+  const ownerWords = contentTokens(owner);
+  const evidenceWords = contentTokens(evidenceText);
+  if (!ownerWords.length) return false;
+  if (ownerWords.every((word) => evidenceWords.includes(word))) return true;
+  // Meeting speech commonly assigns work using a first name while the agent
+  // returns the person's full speaker name. Accept that expansion only when the
+  // complete identity is independently present in a transcript speaker label.
+  // This does not let an invented surname pass: every owner token must belong to
+  // the same known speaker, and the cited evidence must still name that person.
+  const knownSpeaker = evidenceContextFor(units).speakerTokens.some((speakerWords) => {
+    return ownerWords.every((word) => speakerWords.includes(word));
+  });
+  return knownSpeaker && ownerWords.some((word) => evidenceWords.includes(word));
+}
+
 module.exports = {
   OWNER_FIRST_PERSON,
   MEETING_WORK_WORDS,
@@ -622,5 +678,10 @@ module.exports = {
   ownerTakesItOn,
   applyRequesterOwnerRule,
   groundRowAttributions,
-  flagConflictingDiscussionRoles
+  flagConflictingDiscussionRoles,
+  normaliseOwnerIdentity,
+  ownerIdentityKey,
+  ownerIdentityTokens,
+  ownerSupportedByEvidence,
+  splitOwners
 };

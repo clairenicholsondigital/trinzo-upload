@@ -1,5 +1,7 @@
 'use strict';
 
+const { normaliseAgentDeclaredProposals } = require('./meetingMinutesDiscoveryValidation');
+
 const { dedupeHybridActionProposals, dedupeHybridActionRecords, isClientReadyActionWording } = require('./meetingMinutesActionDuplicatePolicy');
 const { meetingAgentInfrastructureFailure, normaliseAgentCandidateDispositions, reconcileRefereeActionMaterialization } = require('./meetingMinutesResponseContracts');
 const { isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag, reconcileRecordFlags, mergeMeetingAgentFlags } = require('./meetingMinutesReviewFlags');
@@ -8,23 +10,25 @@ const { applyRequesterOwnerRule } = require('./meetingMinutesPeopleEvidence');
 
 const { TIMING_POLICY_VERSION } = require('./meetingMinutesTiming');
 const {
-  actionCompletenessCheckItems, actionCompletenessCheckPrompt, answeredCheckItems,
-  answeredCheckPrompt, applyActionCompletenessResults, applyAnsweredCheckResults, applyChainedTimingRule,
+  actionCompletenessCheckItems, actionCompletenessCheckPrompt, answeredCheckItems, answeredCheckPrompt,
+  applyActionCompletenessResults, applyAnsweredCheckResults, applyChainedTimingRule,
   applyCommitmentCheckResults, applyCompletedInMeetingCheckResults, applyFinalActionLifecycleResults,
-  applyTimingCheckResults, applyTimingClauseChecks,
-  attachNearbyDependencyConditions, backfillActionCommitmentEvidence, commitmentCheckItems,
-  commitmentCheckPrompt, completedInMeetingCheckItems, completedInMeetingCheckPrompt,
-  correctnessChecksEnabled, describesUsualPractice, finalActionLifecycleCheckItems,
-  finalActionLifecycleCheckPrompt, finaliseActionTimings, isAobPersonalAside, isFarewellAction,
-  isMinuteInstruction, isNotAnAction, isSocialAside,
+  applyTimingCheckResults, applyTimingClauseChecks, attachNearbyDependencyConditions,
+  backfillActionCommitmentEvidence, commitmentCheckItems, commitmentCheckPrompt,
+  completedInMeetingCheckItems, completedInMeetingCheckPrompt, describesUsualPractice,
+  finalActionLifecycleCheckItems, finalActionLifecycleCheckPrompt, finaliseActionTimings,
+  isAobPersonalAside, isFarewellAction, isMinuteInstruction, isNotAnAction, isSocialAside,
   answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
   commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled,
-  timingCheckEnabled: meetingMinutesTimingCheckEnabled,
-  timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled, mergeDuplicateCommitments,
-  normaliseAgentResult,
+  timingCheckEnabled: meetingMinutesTimingCheckEnabled, mergeDuplicateCommitments,
   reconcileSiblingTimingDecisions, softenBestEffortCompletion, splitExplicitMultiOwnerActions,
   surroundingEvidence, timingCheckItems, timingCheckPrompt, uncoveredCandidateInventory
 } = require('./meetingMinutesAgentV2');
+const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
+const {
+  timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled
+} = require('./meetingMinutesActionTimingInference');
+const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const actionDiagnostics = require('./meetingMinutesActionDiagnostics');
 const {
   annotateMeetingAgentPassImpact, meetingAgentCallPerformance, meetingAgentExecutionTelemetry,
@@ -72,7 +76,6 @@ function createOriginalActionsStage(services) {
     meetingMinutesMinuteInstructionRuleEnabled,
     meetingMinutesProposalRecheckEnabled,
     mergePublishedActionEvidence,
-    normaliseAgentDeclaredProposals,
     preselectActionProposal,
     publishedActionCoversProposal,
     reconcileAcceptedRefereeActions,

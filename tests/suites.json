@@ -7,6 +7,8 @@
     "tests/meeting-minutes-draft-context.test.js",
     "tests/meeting-minutes-response-contracts.test.js",
     "tests/meeting-minutes-result-aggregation.test.js",
+    "tests/meeting-minutes-result-normalization.test.js",
+    "tests/meeting-minutes-discovery-validation.test.js",
     "tests/meeting-minutes-review-flags.test.js",
     "tests/spoken-number-evidence.test.js",
     "tests/meeting-minutes-action-evidence.test.js",

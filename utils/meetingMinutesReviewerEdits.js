@@ -68,4 +68,38 @@ function markMeetingAgentReviewerEdits(previous = {}, incoming = {}) {
   return next;
 }
 
-module.exports = { markMeetingAgentReviewerEdits };
+function reviewerProvenance(value, options = {}) {
+  // Only a reviewer-save boundary may carry authorship into persisted rows.
+  // Generated JSON cannot grant itself an exemption from publication checks.
+  if (options.preserveReviewerEdits !== true) return {};
+  return {
+    ...(value?.reviewerAuthored === true ? { reviewerAuthored: true } : {}),
+    ...(value?.confirmedTopic === true ? { confirmedTopic: true } : {})
+  };
+}
+
+// Merge history describes deleted predecessor records; it is not evidence or
+// reviewer authorship. Only the editor-save boundary carries this metadata,
+// without requiring its historical IDs to exist in the current register.
+// Historical topic writers allowed 220-character IDs: reject longer values
+// rather than truncating them into a different record's identity.
+function reviewerFilingProvenance(value, options = {}) {
+  return options.preserveReviewerEdits === true
+    ? require('./meetingMinutesFilingProvenance').filingProvenance(value) : {};
+}
+
+function reviewerMergeHistory(value, field, survivorId, options = {}) {
+  if (options.preserveReviewerEdits !== true || !Array.isArray(value?.[field])) return {};
+  const ids = [...new Set(value[field].slice(0, 1000)
+    .filter(id => typeof id === 'string' && id.length <= 220)
+    .map(id => id.trim())
+    .filter(id => id && id !== survivorId && !/[\u0000-\u001f\u007f]/.test(id)))];
+  return ids.length ? { [field]: ids } : {};
+}
+
+module.exports = {
+  markMeetingAgentReviewerEdits,
+  reviewerFilingProvenance,
+  reviewerMergeHistory,
+  reviewerProvenance
+};

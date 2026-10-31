@@ -14,28 +14,15 @@ const {
   meetingAgentMaterialPassImpact,
 } = require('./meetingMinutesAgentGeneration');
 const {
-    applyDecisionCheckResults,
-    applyDiscussionFidelityResults,
-    applyOpenQuestionCheckResults,
-    correctnessChecksEnabled,
-    decisionCheckItems,
-    decisionCheckPrompt,
-    demoteSupersededRows,
-    discussionFidelityCheckItems,
-    discussionFidelityCheckPrompt,
-    filterUnsupportedQuantifiedDiscussion,
-    groundUnstatedDiscussionMonths,
-    labelSupersededContext,
-    answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
-    decisionCheckEnabled: meetingMinutesDecisionCheckEnabled,
-    mergeGroundedObjectiveRecords,
-    openQuestionCheckItems,
-    openQuestionCheckPrompt,
-    promoteMaterialObjectionDetails,
-    promoteNamedFactDetails,
-    supersededCheckItems,
-    supersededVerdicts,
-  } = require('./meetingMinutesAgentV2');
+  applyDecisionCheckResults, applyDiscussionFidelityResults, applyOpenQuestionCheckResults,
+  decisionCheckItems, decisionCheckPrompt, demoteSupersededRows, discussionFidelityCheckItems,
+  discussionFidelityCheckPrompt, filterUnsupportedQuantifiedDiscussion, groundUnstatedDiscussionMonths,
+  labelSupersededContext, answeredCheckEnabled: meetingMinutesAnsweredCheckEnabled,
+  decisionCheckEnabled: meetingMinutesDecisionCheckEnabled, mergeGroundedObjectiveRecords,
+  openQuestionCheckItems, openQuestionCheckPrompt, promoteMaterialObjectionDetails,
+  promoteNamedFactDetails, supersededCheckItems, supersededVerdicts
+} = require('./meetingMinutesAgentV2');
+const { correctnessChecksEnabled } = require('./meetingMinutesEvidenceChecks');
 const {
   applyDiscussionTopicArrangement,
   dedupeAdjacentRestatements,

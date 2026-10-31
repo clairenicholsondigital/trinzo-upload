@@ -31,7 +31,13 @@ test('Word export works without loading the legacy generation module', () => {
 
 test('legacy callers retain the shared text and timing function exports', () => {
   const legacy = require('../utils/meetingMinutesAgentV2');
-  for (const helpers of [require('../utils/meetingMinutesText'), require('../utils/meetingMinutesTimingPublication')]) {
+  const text = require('../utils/meetingMinutesText');
+  // These are public V2 aliases. recordLabel and salientExcerpt remain private
+  // to V2 even though their shared owner also exports them for other consumers.
+  const textExports = ['normaliseColloquialTimes', 'normaliseKnownTerms', 'normaliseKnownTermsDeep',
+    'isAutomaticTerminologyFlag', 'cleanActionWording', 'isIdeaOnlyContemplation', 'normaliseExecutiveSummary'];
+  const legacyText = Object.fromEntries(textExports.map(name => [name, text[name]]));
+  for (const helpers of [legacyText, require('../utils/meetingMinutesTimingPublication')]) {
     for (const [name, value] of Object.entries(helpers)) {
       if (name !== 'text' && typeof value === 'function') assert.equal(legacy[name], value, name);
     }

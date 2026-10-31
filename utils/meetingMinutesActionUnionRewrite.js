@@ -1,4 +1,6 @@
 'use strict';
+
+const { normaliseActions } = require('./meetingMinutesActionNormalization');
 const crypto = require('node:crypto');
 const B = require('./canonicalMinutes/discussionBoundedRewrite');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
@@ -129,7 +131,7 @@ async function rewrite(actions, units, options={}) {
   if(hash(actions)!==packet.inputHash||hash(V.normaliseSourceUnits(units))!==packet.sourceHash){audit.reason='stale_input';return {actions:original,audit};}
   const [a,b]=packet.originalActions;
   if(!/^Review\b/.test(c.text)||c.outputSentences.length!==1||!originalVocabularyRetained(packet,c.text))throw Error('not_one_work_instruction');
-  const normalized=V.normaliseActions({actions:[{...a,action:c.text,evidenceIds:c.metadata.evidenceIds}]},units,{meetingDate:options.meetingDate||''})[0];
+  const normalized=normaliseActions({actions:[{...a,action:c.text,evidenceIds:c.metadata.evidenceIds}]},units,{meetingDate:options.meetingDate||''})[0];
   if(!normalized||normalized.action!==c.text||normalized.reviewFlagIds?.length)throw Error('normalisation_changed_instruction');
   const final={...normalized,id:a.id,...(a.occurrenceId?{occurrenceId:a.occurrenceId}:{}),action:c.text,owners:clone(a.owners),timing:clone(a.timing),evidenceIds:c.metadata.evidenceIds};
   const receipt={version:VERSION,packet,responses,final:clone(final)};
