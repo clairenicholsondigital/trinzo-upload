@@ -1,5 +1,8 @@
 'use strict';
 
+const { meetingMinutesAgentPrimaryPrompt } = require('./meetingMinutesAgentPrompts');
+const { meetingAgentActionPrimaryPromptForDraft } = require('./meetingMinutesGenerationRuntime');
+
 const { groundedObjectiveRecords } = require('./meetingMinutesSummaryPublication');
 
 const {
@@ -55,7 +58,6 @@ function createOriginalDiscovery(services) {
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
     hybridCandidateLedgerFromResult,
-    meetingAgentActionPrimaryPromptForDraft,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
     meetingMinutesAgentAnchoredActionPrompt,
@@ -64,7 +66,6 @@ function createOriginalDiscovery(services) {
     meetingMinutesAgentDedupedCoverageEnabled,
     meetingMinutesAgentFastActionPathEnabled,
     meetingMinutesAgentGlobalDiscussionRefereeEnabled,
-    meetingMinutesAgentPrimaryPrompt,
     meetingMinutesAgentPrimaryUnionEnabled,
     meetingMinutesAgentRecoveryPrompt,
     meetingMinutesAgentRefereePrompt,

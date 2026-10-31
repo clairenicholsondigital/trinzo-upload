@@ -1,5 +1,7 @@
 'use strict';
 
+const { isVagueReconstructedAction } = require('./meetingMinutesDraftView');
+
 const { stripMinorCommunicationCourtesy } = require('./meetingMinutesPublication');
 
 const { surroundingEvidence } = require('./meetingMinutesEvidenceContext');
@@ -74,7 +76,6 @@ function createOriginalActionsStage(services) {
     hybridCandidateDispositions,
     hybridCandidateLedgerFromResult,
     isReviewableActionProposal,
-    isVagueReconstructedAction,
     meetingAgentActionAuditCandidates,
     meetingAgentCommitmentRecheckNeeded,
     meetingAgentProposalChangeIsVisible,

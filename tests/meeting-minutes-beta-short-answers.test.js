@@ -13,7 +13,7 @@ const V = require('../utils/meetingMinutesAgentV2');
 async function upload(provider, flag) {
   const source = fs.readFileSync(path.join(__dirname, '../routes/api.js'), 'utf8');
   const start = source.indexOf("router.post('/meeting-minutes-agent/prepare'");
-  const end = source.indexOf('\nrouter.', start + 1);
+  const end = source.indexOf('\nregisterMeetingMinutesLibraryList(router)', start + 1);
   let handler, options, persisted;
   const context = {
     router: { post(route, auth, fn) { handler = fn; } },

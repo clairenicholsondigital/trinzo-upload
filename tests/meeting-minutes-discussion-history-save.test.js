@@ -56,7 +56,7 @@ function draftFixture() {
 function patchHarness(initial) {
   const source = fs.readFileSync(path.join(__dirname, '../routes/api.js'), 'utf8');
   const start = source.indexOf("router.patch('/meeting-minutes-agent/drafts/:draftId',");
-  const end = source.indexOf("\nrouter.delete('/meeting-minutes-agent/drafts/:draftId',", start);
+  const end = source.indexOf("\nregisterMeetingMinutesLibraryDelete(router)", start);
   assert.ok(start >= 0 && end > start, 'the production draft PATCH route must be present');
   let stored = structuredClone(initial);
   let handler;
