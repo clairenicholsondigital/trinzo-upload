@@ -2,6 +2,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const api=require('../routes/api').stagedEvaluation;
 const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
+const runtimeSource=fs.readFileSync(require.resolve('../utils/meetingMinutesGenerationRuntime'),'utf8');
+function productionFunction(text,name){
+  let start=text.indexOf('function '+name+'(');
+  if(start>=6&&text.slice(start-6,start)==='async ')start-=6;
+  const end=text.indexOf('\n}\n',start);
+  if(start<0||end<=start)throw Error('Missing production function: '+name);
+  return text.slice(start,end+2);
+}
 const discoverySource=fs.readFileSync(require.resolve('../utils/meetingMinutesOriginalDiscovery'),'utf8');
 const draft=()=>({draftId:'ready-join',preparedTranscript:'[T0001] Morgan: I will prepare the report.',transcriptSha256:'source-hash',details:{meetingDate:'2026-06-17'},sourceUnits:[{id:'T0001',speaker:'Morgan',text:'I will prepare the report.'}]});
 function harness(){
@@ -13,9 +21,9 @@ function harness(){
     privateStagedCandidateCache:cache,PRIVATE_STAGED_CACHE_TTL_MS:60000,PRIVATE_STAGED_CACHE_MAX_ENTRIES:20,
     privateStagedCandidateCacheKey:api.privateStagedCandidateCacheKey,cachedStagedCandidatesForStage:api.cachedStagedCandidatesForStage,
     withPrivateStagedCandidateSlot:task=>task(),buildPrivateStagedCandidateLedger:()=>{calls++;return pending;}});
-  for(const [from,to]of [['function prunePrivateStagedCandidateCache(', 'const PRIVATE_STAGED_MAX_CONCURRENCY'],
-    ['function startPrivateStagedCandidateLedger(', 'function meetingAgentActionPrimaryPromptForDraft(']]) {
-    vm.runInContext(source.slice(source.indexOf(from),source.indexOf(to)),context);
+  vm.runInContext(productionFunction(runtimeSource,'prunePrivateStagedCandidateCache'),context);
+  for(const name of ['startPrivateStagedCandidateLedger','awaitPrivateStagedCandidateLedger','peekReadyPrivateStagedCandidateLedger']) {
+    vm.runInContext(productionFunction(source,name),context);
   }
   const rows=api.stagedCandidateLedgerFromResult({discussion:[],objectives:[],actions:[{id:'report',action:'Prepare the report.',owners:['Morgan'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0001'],reviewFlagIds:[]}]},d);
   const freeze=(current=[])=>{

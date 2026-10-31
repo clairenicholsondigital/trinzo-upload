@@ -29,6 +29,8 @@ class FrontendContractTest(unittest.TestCase):
         client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
         agent_normalization = (REPO_DIR / "utils" / "meetingMinutesResultNormalization.js").read_text(encoding="utf-8")
         publication = (REPO_DIR / "utils" / "meetingMinutesPublication.js").read_text(encoding="utf-8")
+        draft_view = (REPO_DIR / "utils" / "meetingMinutesDraftView.js").read_text(encoding="utf-8")
+        draft_http = (REPO_DIR / "utils" / "meetingMinutesDraftHttp.js").read_text(encoding="utf-8")
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
@@ -59,8 +61,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("Continuing now", client)
         self.assertNotIn("Retrying the agent now", client)
         self.assertIn("error.code === 'M365_AGENT_USAGE_LIMIT' && error.retryable", client)
-        self.assertIn("code: 'M365_AGENT_USAGE_LIMIT'", api)
-        self.assertIn("retryable: true", api)
+        self.assertIn("code: 'M365_AGENT_USAGE_LIMIT'", draft_http)
+        self.assertIn("retryable: true", draft_http)
         self.assertNotIn('id="denoisedTranscript"', page)
         self.assertNotIn('data-denoised-transcript', page)
         self.assertIn('data-label="Owners"', client)
@@ -173,7 +175,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('grid-template-columns:auto minmax(0,1fr)', page)
         self.assertIn("normaliseKnownTerms: normaliseMeetingAgentKnownTerms", api)
         self.assertIn("isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag", api)
-        public_draft = api.split("function publicMeetingAgentDraft", 1)[1].split("function meetingInsightEvidence", 1)[0]
+        public_draft = draft_view.split("function publicMeetingAgentDraft", 1)[1].split("function meetingInsightEvidence", 1)[0]
         self.assertNotIn("One independent quality check could not complete", public_draft)
         self.assertLess(public_draft.index("const visibleReviewFlags"), public_draft.index("normaliseMeetingAgentKnownTermsDeep"))
         self.assertEqual(page.count('class="agent-edit agent-edit-inline"'), 2)
@@ -656,11 +658,12 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('id="libraryNext"', jobs_page)
         self.assertIn('const libraryPageSize = 10;', jobs_page)
         self.assertIn('fetchJson(`/api/meeting-minutes-agent/drafts?${params.toString()}`)', jobs_page)
-        self.assertIn('listMeetingMinutesAgentDraftPage', api)
-        self.assertIn("search: req.query?.search", api)
-        self.assertIn("status: req.query?.status", api)
-        self.assertIn("sort: req.query?.sort", api)
-        self.assertIn("pagination: { total: page.total, limit: page.limit, offset: page.offset }", api)
+        library_routes = (REPO_DIR / "routes" / "meetingMinutesLibrary.js").read_text(encoding="utf-8")
+        self.assertIn('listMeetingMinutesAgentDraftPage', library_routes)
+        self.assertIn("search: req.query?.search", library_routes)
+        self.assertIn("status: req.query?.status", library_routes)
+        self.assertIn("sort: req.query?.sort", library_routes)
+        self.assertIn("pagination: { total: page.total, limit: page.limit, offset: page.offset }", library_routes)
         self.assertIn('async function listMeetingMinutesAgentDraftPage', db)
         self.assertIn("title ILIKE '%' || $2 || '%'", db)
         self.assertIn("newest: 'created_at DESC, id DESC'", db)
@@ -677,7 +680,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("generating ? 'View progress'", jobs_page)
         self.assertIn('class="generation-spinner"', jobs_page)
         self.assertIn('generation: draft.generation || null', jobs_page)
-        self.assertIn('generation: safe.generation ?', api)
+        draft_view = (REPO_DIR / "utils" / "meetingMinutesDraftView.js").read_text(encoding="utf-8")
+        self.assertIn('generation: safe.generation ?', draft_view)
         self.assertIn('class="col-actions" data-label="Actions"><div class="library-action-group">', jobs_page)
         self.assertIn('.jobs .col-actions { width:25%; }', shared_css)
         self.assertNotIn('href="/jobs?type=meeting-minutes"', jobs_page)
@@ -1016,8 +1020,10 @@ class FrontendContractTest(unittest.TestCase):
 
         # Still reaches the model, and still invalidates speculative work when
         # it changes - the two things that make it worth keeping at all.
-        self.assertIn("REVIEWER EMPHASIS - prioritisation only. It is not evidence.", api)
-        self.assertIn("steer: meetingMinutesAgentText(draft.steer, 4000)", api)
+        agent_prompts = (REPO_DIR / "utils" / "meetingMinutesAgentPrompts.js").read_text(encoding="utf-8")
+        self.assertIn("REVIEWER EMPHASIS - prioritisation only. It is not evidence.", agent_prompts)
+        stage_protocol = (REPO_DIR / "utils" / "meetingMinutesStageProtocol.js").read_text(encoding="utf-8")
+        self.assertIn("steer: meetingMinutesAgentText(draft.steer, 4000)", stage_protocol)
 
     def test_minutes_omit_the_client_attendee_line_when_nobody_attended(self):
         """"Client attendees: Not stated" asserts something untrue of an

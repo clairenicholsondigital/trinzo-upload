@@ -1,5 +1,8 @@
 'use strict';
 
+const { meetingMinutesAgentPrompt } = require('./meetingMinutesAgentPrompts');
+const { MEETING_AGENT_STAGE_STEP } = require('./meetingMinutesStageProtocol');
+
 const {
   meetingAgentReviewerSummaryHash, meetingAgentSummaryAuthority, groundedExecutiveSummary,
   groundedObjectiveRecords
@@ -20,10 +23,8 @@ const { preserveCopiedReviewerContent } = require('./meetingMinutesReviewedAiEdi
 
 function createOriginalEditStage(services) {
   const {
-    MEETING_AGENT_STAGE_STEP,
     askPowerAutomateMeetingMinutesAgent,
     askPowerAutomateMeetingMinutesAgentWithRetry,
-    meetingMinutesAgentPrompt,
     verifyMeetingAgentSummaryTiming,
   } = services;
 

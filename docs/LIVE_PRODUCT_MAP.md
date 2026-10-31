@@ -743,6 +743,65 @@ lifecycle have not moved in this batch. Those actual remaining boundaries keep
 the full publication/Library stage unfinished; neither Stage 3 nor Stage 4 is
 declared complete by the reduced service-map count.
 
+### Complete Library read/export and draft-view ownership
+
+The full Library/editor view and all eight Library registrations now have actual
+owners. The existing list, project-link, insights, detail, delete and Word/PDF
+handlers live in `routes/meetingMinutesLibrary.js`. API composes that owner at
+the four original list/detail/delete/export positions, preserving its ordering
+among reviewer and generation routes. Authentication, owner-scoped database
+queries, paging, revisions, errors, download headers and renderers remain their
+existing implementations. The project-update handoff uses the same moved draft
+view without moving its project orchestration.
+
+| Actual owner | Responsibility |
+| --- | --- |
+| `utils/meetingMinutesDraftView.js` | Complete Original/Beta public draft projection, Library insights, private-field omission, proposal/warning filtering, legacy date views and restore/history presentation. |
+| `utils/meetingMinutesDraftHttp.js` | Existing owned draft read and common HTTP failure response. Database pool/schema ownership stays in `utils/db.js`. |
+| `utils/meetingMinutesGenerationRuntime.js` | The single three existing Maps and boot identity, their pruners, cache keys and prewarm/speculation status readers. It does not schedule providers. |
+| `utils/meetingMinutesStageProtocol.js` | Shared stage/screen constants, live feature reads, completion markers and input/upstream fingerprints. |
+| `utils/meetingMinutesAgentPrompts.js` | Existing common/primary prompts, their exact rule constants and reviewer steer normalization. |
+| `utils/meetingMinutesCandidatePack.js` | Existing dependency-free candidate packing, imported directly by prompts and retained as the same V2 compatibility export. |
+
+The planned closure moves 58 declarations unchanged: 38 functions and 20
+constants, totalling 764 declaration lines. Eight route registrations retain
+their exact statements after removing the owner's indentation. All 19 existing
+top-level cache/boot consumers and the inline/background consumers reuse the
+same imported runtime identities; there is no cache snapshot, extra boot token
+or copied reset state. Reads may prune the existing expired caches as before,
+but do not begin provider processing or persist draft changes.
+
+Six Original consumers now directly import five newly owned policies instead
+of receiving API callbacks: common prompts in Summary/Edits, the stage constant
+in Edits, both action-primary prompt functions in Discovery, and reconstructed
+action wording in Actions. The supplied Original map falls from 85 to 80
+entries. All inner runtime bodies remain exact. API keeps 223 compatibility
+exports and V2 keeps 158. API-to-V2 local bindings fall from 66 to 65, and local
+V2 exports from 83 to 82. All 27 provider-prompt definitions retain their exact
+bytes. API falls from 14,319 to 13,364 lines and V2 from 4,355 to 4,306; these are
+entrypoint sizes, not equivalent whole-repository deletion.
+
+The draft view directly imports `discussionClaimConsolidationState` for its
+existing `canRestore` function, which the larger consolidation module already
+re-exports unchanged. The complete eager/lazy graph still contains the real
+EnquiryRecovery receipt-restoration boundary. Its PhaseCorrection,
+CompilationUnion and ActionUnionRewrite modules retain three existing V2
+imports and the existing action-reconciliation, discussion-consolidation/
+directional-coverage, and compilation/union cycle families.
+Those edges and algorithms are byte exact; the move introduces no cycle or
+reverse import. The graph reaches neither API nor a new provider call from a
+read, but it cannot yet be described as wholly V2-free or acyclic. Those actual
+receipt/history dependencies belong to the next reviewer ownership work.
+
+This implements the complete Library route, view and shared-state ownership
+batch. Stage 3/4 final acceptance remains open for the explicit restoration
+graph dependencies and release validation; the current summary timing instance
+also remains an unfinished generation process boundary. Reviewer transactions,
+history and generation lifecycle are not completed by their shared foundations.
+Existing mixed save/reload, database, browser, project-handoff and export checks
+remain; source-reading fixtures follow their real owners. Frontend assets,
+stored formats, renderer implementations and provider configuration are unchanged.
+
 ## Evidence and limits
 
 - The baseline contains 1,341 tracked files. Source sizes: `routes/api.js` 21,456

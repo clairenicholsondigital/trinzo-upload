@@ -1,5 +1,7 @@
 'use strict';
 
+const { meetingMinutesAgentPrompt } = require('./meetingMinutesAgentPrompts');
+
 const {
   meetingAgentReviewerSummaryHash, meetingAgentSummaryAuthority, groundedExecutiveSummary,
   mergeGroundedObjectiveRecords
@@ -19,7 +21,6 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 
 function createOriginalSummaryStage(services) {
   const {
-    meetingMinutesAgentPrompt,
     verifyMeetingAgentSummaryTiming,
   } = services;
 

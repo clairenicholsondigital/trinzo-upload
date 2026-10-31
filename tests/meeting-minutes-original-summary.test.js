@@ -46,6 +46,11 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
   // effects while returning only fixture transport replies; stage policy stays real.
   context.call = async (pass, prompt, options) => {
     calls.push({ pass, prompt, options });
+    if (pass === 'summary') {
+      const marker = 'CONFIRMED DISCUSSION AND ACTIONS:\n';
+      const current = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length).split('\n\n', 1)[0]);
+      prompts.push({ current });
+    }
     const result = pass === 'summary' ? (reply || {
       executiveSummary: statement + ' Penguins deliver moon rockets.',
       meetingObjectives: [{ text: 'Review the supplier report.', evidenceIds: ['T0001'] }]
@@ -74,12 +79,6 @@ function fixture({ includeSections, reply, timingReply, reviewed, publication } 
   };
   const run = createOriginalSummaryStage({
     verifyMeetingAgentSummaryTiming: createSummaryTimingVerifier(ports),
-    // Prompt composition is a separate production port with existing contract
-    // tests. Capture its complete input instead of replacing any output policy.
-    meetingMinutesAgentPrompt(input) { prompts.push(input); return 'SUMMARY\n' + JSON.stringify(input); },
-    flattenHybridDiscussion(discussion = []) {
-      return discussion.flatMap(topic => [...(topic.points || []), ...(topic.decisions || []), ...(topic.openQuestions || [])]);
-    }
   });
   return { draft, context, calls, prompts, run, statement };
 }
