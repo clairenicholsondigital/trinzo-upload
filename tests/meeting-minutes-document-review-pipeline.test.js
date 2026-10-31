@@ -3,6 +3,35 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const { performance } = require('node:perf_hooks');
+
+// Keep the real retry delays, call pacing and deadlines, but advance their clock
+// together after pending Promise work has had a chance to finish.
+const realSetImmediate = setImmediate;
+const clock = test.mock.timers;
+clock.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+test.after(() => clock.reset());
+
+async function withAdvancingClock(task) {
+  let settled = false, rejected = false, value, failure;
+  Promise.resolve(task).then(result => { value = result; settled = true; }, error => {
+    failure = error; rejected = true; settled = true;
+  });
+  const started = performance.now();
+  let advanced = 0;
+  while (!settled && advanced < 120000) {
+    await new Promise(resolve => realSetImmediate(resolve));
+    if (settled) break;
+    if (performance.now() - started > 10000) {
+      throw new Error('Offline generation exceeded the real-time clock-driver limit.');
+    }
+    clock.tick(100);
+    advanced += 100;
+  }
+  if (!settled) throw new Error('Offline generation did not settle within two virtual minutes.');
+  if (rejected) throw failure;
+  return value;
+}
 
 Object.assign(process.env, {
   POWER_AUTOMATE_AGENT_WEBHOOK_URL: 'https://document-review.fixture.invalid',
@@ -75,7 +104,7 @@ for(const kind of ['prefix','warning'])for(const unavailable of ['primary','seco
    details:{meetingTitle:`Document assessment ${kind} ${unavailable}`,meetingType:'Review',meetingDate:'2026-10-27',internalAttendees:['Maya Patel'],clientAttendees:[]},
    sourceUnits:copy(units),preparedTranscript:V.preparedTranscriptFromUnits(units),discussion:[],actions:[],reviewFlags:[],qualityState:{},passCache:[],candidateLedger:[],staleStages:[],changeHistory:[],redoHistory:[]};
   draft.candidateLedger=[{candidateId:'cached-delivery',sourcePass:'staged',recordType:'action',text:delivery.action,evidenceIds:delivery.evidenceIds,record:copy(delivery),timingInferenceVersion:V.TIMING_INFERENCE_POLICY_VERSION,timingInferenceInputKey:A.privateStagedCandidateCacheKey(draft,'actions')}];
-  const generated=await A.generateHybridMeetingAgentStage(copy(draft),'actions');
+  const generated=await withAdvancingClock(A.generateHybridMeetingAgentStage(copy(draft),'actions'));
   const key=kind==='prefix'?'documentReferenceContext':'sourceReviewContext';
   assert.ok(generated.reviewFlags.some(flag=>flag[key]),'generation must actually carry the source question');
   let saved=copy(draft);
