@@ -975,7 +975,7 @@ and reviewer hash directly; its provider call remains a genuine per-run input.
 The 49 actual declarations (701 declaration lines, including the existing
 17-line Summary verifier) retain their algorithms. Original Summary, Edits and
 Finalization no longer receive deterministic callback bags. The shared services
-map falls from 71 to 38 entries: 33 remaining policy helpers and five real
+map falls from 71 to 38 entries: 33 policy/diagnostic helpers and five real
 execution dependencies. The larger Original generation and canonical staged
 processing/evaluation work remains unfinished.
 
@@ -985,8 +985,10 @@ source-presence assertions retire; every test method remains. One live prompt
 assertion follows its new owner with its original literal and assertion. The
 existing Summary fixtures now construct real publication state instead of
 substituting policy callbacks. No new test cases are added. Twenty-two unneeded
-new API import bindings are omitted while historical require initialization
-and order remain. API falls from 9,760 to 8,299 lines; V2 stays at 3,615.
+new API import bindings are omitted, and 31 original import bindings retire
+with their moved implementations and removed factory. Historical unused imports
+remain outside this batch. Every require initializer and its order remain.
+API falls from 9,760 to 8,282 lines; V2 stays at 3,615.
 Entrypoint reduction includes relocation and verified deletion.
 
 The 26 surviving prompt definitions, route and compatibility contracts,
