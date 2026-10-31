@@ -1,9 +1,11 @@
 'use strict';
 
+const { normaliseSourceUnits } = require('./meetingMinutesSource');
+const { commitmentQuoteTiesOwner } = require('./meetingMinutesActionSourceMatching');
+
 // Two instructions stay two instructions. This corrects a repeated handoff and
 // an unsafe phase conflation; it is deliberately not timed-action equivalence.
 const { hash } = require('./meetingMinutesProofHash');
-const V = require('./meetingMinutesAgentV2');
 const T = require('./meetingMinutesTiming');
 const { isReviewerAuthored } = require('./canonicalMinutes/state');
 const { conflictingRecipients, conflictingDestinations } = require('./canonicalMinutes/commitmentDuplicates');
@@ -63,7 +65,7 @@ function eligible(row, protectedIds) {
       && row.reviewFlagIds.every(id => typeof id === 'string' && id));
 }
 function prepare(actions, sourceUnits, meetingDate = '', protectedIds = []) {
-  const units = V.normaliseSourceUnits(sourceUnits), candidates = [];
+  const units = normaliseSourceUnits(sourceUnits), candidates = [];
   for (let i = 0; i < actions.length; i++) for (let j = i + 1; j < actions.length; j++) {
     const rows = [actions[i], actions[j]];
     if (rows.some(row => !eligible(row, protectedIds) || actions.filter(a => a.id === row.id).length !== 1)
@@ -153,7 +155,7 @@ function verified(packet, selected, response) {
     || !checks.every(k => r.checks?.[k] === true) || !witnessValid(packet,r.assignmentWitnesses)) return false;
   const assignee = owner(packet.originalActions[0]);
   if (!r.assignmentWitnesses.some(w => packet.sourceUnits.some(u => u.id === w.sourceId && canonical(u.speaker) === assignee
-    && (V.commitmentQuoteTiesOwner(w.quote,packet.originalActions[0].owners,u.speaker+': '+w.quote)
+    && (commitmentQuoteTiesOwner(w.quote,packet.originalActions[0].owners,u.speaker+': '+w.quote)
       || /\b(?:i['’]m|i am)\s+in the middle\b/i.test(w.quote))))) return false;
   if (r.claimChecks?.length !== selected.claims.length || new Set(r.claimChecks.map(c=>c.claimId)).size !== selected.claims.length
     || r.claimChecks.some(c => !selected.claims.some(v=>v.id===c.claimId) || c.retainedOrCorrected !== true
@@ -183,7 +185,7 @@ function valid(receipt, actions, sourceUnits, date) {
   try {
     if (receipt?.version !== VERSION || receipt.packet?.meetingDate !== date) return false;
     const p=receipt.packet,{packetHash,...body}=p;
-    if (hash(body)!==packetHash || p.sourceHash!==hash(V.normaliseSourceUnits(sourceUnits))) return false;
+    if (hash(body)!==packetHash || p.sourceHash!==hash(normaliseSourceUnits(sourceUnits))) return false;
     const reconstructed=prepare(p.originalActions,sourceUnits,date);
     if (!reconstructed || hash(reconstructed.originalActions)!==hash(p.originalActions)
       || hash(reconstructed.sourceUnits)!==hash(p.sourceUnits) || hash(reconstructed.draftRows)!==hash(p.draftRows)) return false;
@@ -215,7 +217,7 @@ async function correct(actions, sourceUnits, options={}) {
     const selected=proposal(packet,await ask('proposal',prompt(packet)));
     if (!selected) return {actions:original,audit:{...audit,reason:'proposal_declined',responses}};
     if (!verified(packet,selected,await ask('verification',verificationPrompt(packet,selected)))) return {actions:original,audit:{...audit,reason:'verification_declined',responses}};
-    if (packet.inputHash!==hash(actions) || packet.sourceHash!==hash(V.normaliseSourceUnits(sourceUnits))) throw Error('stale_input');
+    if (packet.inputHash!==hash(actions) || packet.sourceHash!==hash(normaliseSourceUnits(sourceUnits))) throw Error('stale_input');
     const finalRows=expected(packet,selected,sourceUnits),receipt={version:VERSION,packet,responses,finalRows};
     const ordered=selected.rows.slice().sort((a,b)=>a.phase==='initial_handoff'?-1:b.phase==='initial_handoff'?1:0)
       .map(change=>finalRows.find(row=>row.id===change.id));

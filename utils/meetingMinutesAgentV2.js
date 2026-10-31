@@ -1,3 +1,6 @@
+const { reconcileSiblingTimingDecisions, sameTimingWork, timingBoundToActionSteps, compoundActionClauses, ACTION_VERBS, sourceBindsTimingToStep, sourceInstructionClauses, finaliseActionTimings } = require('./meetingMinutesProposalTiming');
+const { salientDetailInventory, MEETING_ADMIN_PATTERN } = require('./meetingMinutesAssessmentEvidence');
+const { commitmentQuoteTiesOwner, FIRST_PERSON_COMMITMENT } = require('./meetingMinutesActionSourceMatching');
 const { candidatePromptPack } = require('./meetingMinutesCandidatePack');
 'use strict';
 
@@ -91,7 +94,7 @@ const { boundedReviewEvidence } = require('./meetingMinutesReviewEvidence');
 const { SCHEMA_VERSION } = require('./meetingMinutesResponseContracts');
 
 const { PAYLOAD_VERSION, migrateDraftPayload } = require('./meetingMinutesDraftStorage');
-const MEETING_ADMIN_PATTERN = /\b(?:hard stop|drop(?:ping)? off|another (?:call|meeting)|running late|can you hear|breaking up|share (?:my|the) screen|screen[- ]?shar|recording (?:has )?(?:started|stopped)|stop(?:ped)? recording|on mute|un\s?mute|you'?re muted|bear with me|lost (?:you|connection)|connection (?:is )?(?:bad|poor)|back in a (?:sec|second|minute)|meeting (?:started|opened|began) with (?:attendee )?introductions?|attendees? introduced themselves|presence of .{0,80}(?:was|were) noted)\b/i;
+
 // Declarative technical behaviour is discussion evidence even when it contains no
 // decision, owner or future action. Giving it an explicit candidate kind protects
 // statements such as "the device does not..." from being crowded out by commitments.
@@ -100,44 +103,7 @@ const TECHNICAL_BEHAVIOUR_PATTERN = /\b(?:the|a|an)\s+(?:device|system|software|
 // allocation and operational coordination for later classification.
 const MATERIAL_DISCUSSION_CONTEXT_PATTERN = /\b(?:corporate|head office|site[- ]level|top[- ]level|handled (?:at|by)|fed down|responsibil(?:ity|ities)|separate track|workstream|in parallel|coordinate|coordination|handover|debrief|end of day|after (?:the )?site|on the way back|return journey)\b/i;
 
-function salientDetailInventory(units = []) {
-  const patterns = [
-    ['quantity', /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:(?:additional|extra|more|not[- ]started|outstanding|remaining|completed?)\s+)?(?:languages?|alarms?|bands?|levels?|categories|devices?|products?|tests?|documents?|weeks?|days?|items?|versions?|samples?|units?|batches|sites?)\b/i],
-    ['progress_change', /\b(?:mov(?:e|ed|ing)|progress(?:ed|ion)?|reduc(?:e|ed|tion)|increas(?:e|ed)|fell|rose|down|up|from)\b[^.!?]{0,100}\b(?:to|by|from)\s+(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b/i],
-    // A number is a standards reference because something says so in front of it.
-    // The prefix used to be optional, which made this "any bare 3-5 digit number"
-    // and turned "a hard stop at 1130" into a reference for the reviewer to check.
-    ['standard_reference', /\b(?:BS\s+EN|EN|IEC|ISO|ASTM|standards?)\s+\d{3,5}(?:[-–]\d+)*(?::\d{4})?\b/i],
-    ['alarm_behaviour', /\b(?:alarm|audible|mute|silenc|beep)\b/i],
-    ['approval_status', /\b(?:approved?|accepted?|signed?\s*off|pending approval|not approved|rejected?)\b/i],
-    ['blocker_dependency', /\b(?:block(?:ed|er|ing)?|depend(?:s|ent|ency)?|waiting for|held up|holding (?:it|this|that|them) up|stalled|delayed by|subject to|before .* can|once .* (?:is|has been)|cannot .* until|pending)\b/i]
-  ];
-  const result = [];
-  for (const unit of normaliseSourceUnits(units).filter(includedUnit)) {
-    if (MEETING_ADMIN_PATTERN.test(unit.text) || LEAVING_REMARK_PATTERN.test(unit.text)) continue;
-    for (const [kind, pattern] of patterns) {
-      if (!pattern.test(unit.text)) continue;
-      if (kind === 'alarm_behaviour' && /\bno alarm bells?\b/i.test(unit.text)) continue;
-      if (kind === 'blocker_dependency' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
-      if (kind === 'progress_change' && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
-      if (kind === 'quantity' && /\b(?:weeks?|days?|sites?)\b/i.test(unit.text) && !DELIVERABLE_CONTEXT_PATTERN.test(unit.text)) continue;
-      result.push({ id: stableId('detail', `${kind}|${unit.id}`), kind, text: salientExcerpt(unit.text, pattern), evidenceIds: [unit.id] });
-    }
-  }
-  // Avoid allowing a long run of quantities near the beginning to crowd every
-  // standard, dependency or approval out of the prompt. Round-robin by kind,
-  // retaining transcript order inside each category.
-  const byKind = new Map(patterns.map(([kind]) => [kind, result.filter((item) => item.kind === kind)]));
-  const balanced = [];
-  while (balanced.length < 80 && [...byKind.values()].some((items) => items.length)) {
-    for (const [kind] of patterns) {
-      const item = byKind.get(kind).shift();
-      if (item) balanced.push(item);
-      if (balanced.length >= 80) break;
-    }
-  }
-  return balanced;
-}
+
 
 function relativeExactDate(wording, meetingDate) {
   return TimingIntegrity.resolveExactDate(wording, meetingDate);
@@ -1350,57 +1316,9 @@ function replacementTimingSourceIds(action, item, replacement, options = {}) {
   })).map(unit => unit.id);
 }
 
-function sameTimingWork(left = {}, right = {}) {
-  const owners = row => [...new Set((row.owners || []).map(owner => comparisonText(owner)))].sort().join('|');
-  if (!owners(left) || owners(left) !== owners(right)) return false;
-  const shared = new Set(left.evidenceIds || []);
-  if (!(right.evidenceIds || []).some(id => shared.has(id))) return false;
-  const wording = row => comparisonText(row.action).replace(/[.!;]+$/, '')
-    .replace(/^(?:complete|finish)\s+(?:the\s+)?updates?\s+to\s+/, 'update ')
-    .replace(/^(?:update|revise|amend|edit)\s+(?:the\s+)?/, 'update ');
-  const a = wording(left), b = wording(right);
-  if (a === b) return true;
-  // Mutual retention is much narrower than related work. Do not use a
-  // one-way contained step or overlapping transcript window to erase timing
-  // for a different operation or a larger workflow.
-  const untimed = row => ({ ...row, timing: { kind: 'not_stated', wording: '', exactDate: '' } });
-  return commitmentCanBeRepresented(untimed(left), untimed(right))
-    && commitmentCanBeRepresented(untimed(right), untimed(left));
-}
 
-function reconcileSiblingTimingDecisions(actions = [], units = [], options = {}) {
-  const list = Array.isArray(actions) ? actions : [];
-  const flags = [];
-  const actionsAfter = list.map(action => {
-    if (isReviewerAuthored(action)) return action;
-    const wording = comparisonText(action.timing?.wording || '');
-    const date = action.timing?.exactDate || '';
-    const rejectedSibling = list.find(other => other !== action && !isReviewerAuthored(other)
-      && TimingIntegrity.assessmentMatches(other, units, options.meetingDate, other.timingDecision)
-      && sameTimingWork(action, other)
-      // A shared context line is not the source of a rejected deadline. An
-      // equivalent task may be restated with genuinely new timing evidence.
-      && (other.timingDecision.sourceEvidenceIds || []).length > 0
-      && other.timingDecision.sourceEvidenceIds.every(id => (action.evidenceIds || []).includes(id))
-      && !timingBoundToActionSteps(action, units.filter(unit => (action.evidenceIds || []).includes(unit.id)
-        && !other.timingDecision.sourceEvidenceIds.includes(unit.id)), options)
-      && (date && (other.timingDecision.rejectedExactDates || []).includes(date)
-        || wording && (other.timingDecision.rejectedWordings || []).some(value => comparisonText(value) === wording)));
-    if (!rejectedSibling) return action;
-    const rejectWording = wording && (rejectedSibling.timingDecision.rejectedWordings || [])
-      .some(value => comparisonText(value) === wording);
-    const next = TimingIntegrity.rejectActionTiming(action, units, {
-      meetingDate: options.meetingDate, field: rejectWording ? 'all' : 'exactDate', reason: 'equivalent_work_source_rejection'
-    });
-    const flag = normaliseFlag({ kind: 'timing',
-      message: `The timing for "${text(action.action, 200)}" conflicts with a source-reviewed equivalent instruction; the rejected ${rejectWording ? 'timing' : 'exact date'} is not repeated. Confirm the source timing.`,
-      evidenceIds: [...new Set([...(action.evidenceIds || []), ...(rejectedSibling.evidenceIds || [])])] }, flags.length);
-    flags.push(flag);
-    next.reviewFlagIds = [...new Set([...(next.reviewFlagIds || []), flag.id])];
-    return next;
-  });
-  return { actions: actionsAfter, flags };
-}
+
+
 
 function applySourceTimingCheckResults(actions = [], items = [], results = [], options = {}) {
   const flags = [];
@@ -1687,31 +1605,8 @@ function commitmentCheckPrompt(items = []) {
 // The verified words tie the work to an owner when they name the owner
 // ("Janine, and I think Adil, you're involved") or are the owner committing in
 // the first person ("I'm gonna focus on TFO3").
-const FIRST_PERSON_COMMITMENT = /\b(?:i|we)(?:'ll| will| shall| can| am going to|'m going to|'m gonna| am gonna|'re going to| are going to)\b|\bleave (?:it|that|this) with me\b|\bwill do\b|\bi'll\b|\bokay\b|\byes\b|\bsure\b/i;
-function commitmentQuoteTiesOwner(quote = '', owners = [], passage = '') {
-  const said = quoteText(quote);
-  const names = (Array.isArray(owners) ? owners : []).map((owner) => String(owner || '').trim()).filter(Boolean);
-  if (!names.length) return false;
-  const firstNames = names.map((owner) => owner.split(/\s+/)[0].toLowerCase());
-  const lines = String(passage || '').split('\n');
-  // The line(s) carrying the quote: a quote may run across adjacent lines.
-  const inLine = (index) => index >= 0 && index < lines.length
-    && (decisionQuoteFound(quote, lines[index]) || quoteText(lines[index]).includes(said.slice(0, 40)));
-  // A line carries the quote when the quote is in it, or starts in it and runs
-  // into the next line (but not when it sits wholly in the next line).
-  const carryingIndexes = lines.map((line, index) => (inLine(index)
-    || (!inLine(index + 1) && decisionQuoteFound(quote, `${line}\n${lines[index + 1] || ''}`)) ? index : -1))
-    .filter((index) => index >= 0);
-  const carrying = carryingIndexes.map((index) => lines[index]);
-  const spoken = (line) => quoteText(String(line || '').slice(String(line || '').indexOf(':') + 1));
-  // "he's just looking into that" refers back to "there's Andrew who ..." a
-  // few lines earlier, so the owner may be named up to three lines before.
-  const nearby = [...new Set(carryingIndexes.flatMap((index) => [index - 3, index - 2, index - 1, index]).filter((index) => index >= 0))].map((index) => lines[index]);
-  if (firstNames.some((name) => said.includes(name) || nearby.some((line) => new RegExp(`\\b${name}\\b`).test(spoken(line))))) return true;
-  const speakers = carrying.map((line) => line.split(':')[0].trim().toLowerCase());
-  const ownerSpoke = speakers.some((speaker) => names.some((owner) => speaker === owner.toLowerCase() || speaker.split(/\s+/)[0] === owner.toLowerCase().split(/\s+/)[0]));
-  return ownerSpoke && FIRST_PERSON_COMMITMENT.test(quote);
-}
+
+
 
 function applyCommitmentCheckResults(actions = [], items = [], results = [], options = {}) {
   const verdicts = new Map((Array.isArray(results) ? results : []).map((row) => [text(row?.id, 20), row || {}]));
@@ -2246,17 +2141,9 @@ function mergeDuplicateCommitments(actions = []) {
 // ---- Explicit multi-owner compound commitments -----------------------------
 // Split only when the cited source maps each recognised verb clause uniquely
 // to a different named owner. Ambiguous compounds are left untouched.
-const ACTION_VERBS = new Set(ACTION_VERB_GROUPS.flat());
 
-function compoundActionClauses(value = '') {
-  const source = text(value, 1200).replace(/\s+/g, ' ').trim();
-  if (!source) return [];
-  const verbPattern = [...ACTION_VERBS].sort((left, right) => right.length - left.length)
-    .map((verb) => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const clauses = source.split(new RegExp(`\\s+(?:and|then)\\s+(?=(?:${verbPattern})\\b)`, 'ig'))
-    .map((clause) => clause.trim().replace(/[.;]+$/, '')).filter(Boolean);
-  return clauses.length > 1 && clauses.every((clause) => ACTION_VERBS.has(contentTokens(clause)[0])) ? clauses : [];
-}
+
+
 
 function explicitOwnerAssignments(action = {}, units = []) {
   const ownerRows = (action.owners || []).map((owner) => ({ owner, parts: nameParts(owner) }));
@@ -2278,57 +2165,13 @@ function explicitOwnerAssignments(action = {}, units = []) {
   return assignments;
 }
 
-function sourceInstructionClauses(value = '') {
-  const verbs = [...new Set(ACTION_VERB_GROUPS.flat())].sort((a, b) => b.length - a.length)
-    .map(verb => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  return String(value).split(new RegExp(`[.;!?]+|[,;]\\s*(?:and\\s+|then\\s+|but\\s+)?(?=(?:${verbs})\\b)|\\s+(?:and|then|but)\\s+(?=(?:(?:I|we)\\s+(?:will|'ll)\\s+)?(?:${verbs})\\b)`, 'i'))
-    .map(clause => clause.trim()).filter(Boolean);
-}
 
-function sourceBindsTimingToStep(step, source, timing, options = {}) {
-  const canonical = value => comparisonText(value).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
-  const sourceTiming = clause => {
-    if (timing.wording && canonical(clause).includes(canonical(timing.wording))) return true;
-    if (!timing.exactDate) return false;
-    return TimingIntegrity.resolveExactDate(clause, options.meetingDate) === timing.exactDate
-      || dateWordingVariants(timing.exactDate).some(phrase => canonical(clause).includes(canonical(phrase)));
-  };
-  const stepWords = new Set(materialTokens(step).filter(word => !ACTION_VERBS.has(word)));
-  const about = clause => {
-    if (!actionPredicateSupported(step, clause)) return false;
-    const words = new Set(materialTokens(clause));
-    const shared = [...stepWords].filter(word => words.has(word)).length;
-    return stepWords.size > 0 && shared >= Math.min(2, stepWords.size)
-      && shared / stepWords.size >= 0.6;
-  };
-  return sourceInstructionClauses(source).some(clause =>
-    !/\b(?:not|never|cannot|can't|won't|instead|except|excluding|unless)\b/i.test(clause)
-      && sourceTiming(clause) && about(clause));
-}
+
+
 
 // Rewrites and both splitters use a source-to-operation proof. A date naming
 // one child cannot become the date of a wider instruction or another owner.
-function timingBoundToActionSteps(action = {}, units = [], options = {}) {
-  if (!action.timing || action.timing.kind === 'not_stated') return true;
-  const cited = new Set(action.evidenceIds || []);
-  const source = normaliseSourceUnits(units).filter(unit => cited.has(unit.id));
-  const steps = compoundActionClauses(action.action);
-  const required = steps.length ? steps : [action.action];
-  const owned = unit => {
-    if (!(action.owners || []).length) return false;
-    const lower = comparisonText(unit.text);
-    const otherFutureSubject = [...String(unit.text || '').matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:will|shall|must|is\s+going\s+to)\b/g)]
-      .some(match => !/^(?:We|They|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(match[1])
-        && !(action.owners || []).some(owner => nameParts(match[1]).every(part => nameParts(owner).includes(part))));
-    if (otherFutureSubject) return false;
-    return speakerIsOwner(unit.speaker, action.owners)
-      || (action.owners || []).some(owner => {
-        const name = comparisonText(owner).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${name}\\s+(?:will|shall|must|is\\s+to|to)\\b`).test(lower);
-      });
-  };
-  return required.every(step => source.some(unit => owned(unit) && sourceBindsTimingToStep(step, unit.text, action.timing, options)));
-}
+
 
 function splitExplicitMultiOwnerActions(actions = [], units = [], options = {}) {
   let split = 0;
@@ -4121,28 +3964,7 @@ function applyActionCompletenessResults(actions = [], items = [], results = [], 
 // Last generation boundary: assess existing fields without deriving a date.
 // The durable source-bound assessment also protects proposals/final survival
 // from resurrecting an earlier rejected value.
-function finaliseActionTimings(actions = [], units = [], options = {}) {
-  const flags = [];
-  const assessments = [];
-  const checked = (Array.isArray(actions) ? actions : []).map((row) => {
-    const result = TimingIntegrity.assessActionTiming(row, units, options);
-    if (result.assessment) assessments.push(result.assessment);
-    const issues = [...result.issues, ...(row.timing?.kind === 'not_stated' ? row._timingRecoveryIssues || [] : [])];
-    const assessedAction = { ...result.action };
-    delete assessedAction._timingRecoveryIssues;
-    if (!issues.length) return assessedAction;
-    const rowFlags = issues.map(issue => {
-      const removed = row.timing?.wording && !assessedAction.timing?.wording
-        && (assessedAction.timingDecision?.rejectedWordings || []).includes(row.timing.wording);
-      const message = /^timing_inference_/.test(issue.code) ? issue.message
-        : `${issue.message} ${isReviewerAuthored(row) ? 'Confirm the reviewer-entered timing.' : issue.preserveValue ? 'The stated date was retained for review.' : removed ? 'The unsupported timing was removed; confirm this work’s own timing.' : 'The exact date was removed; confirm the retained source wording.'}`;
-      return normaliseFlag(actionTimingIssueFlag({ code: removed ? 'timing_value_removed' : issue.code }, row, message), flags.length);
-    });
-    flags.push(...rowFlags);
-    return { ...assessedAction, reviewFlagIds: [...new Set([...(assessedAction.reviewFlagIds || []), ...rowFlags.map(flag => flag.id)])] };
-  });
-  return { actions: checked, flags, assessments };
-}
+
 
 module.exports = {
   SCHEMA_VERSION,

@@ -2,7 +2,7 @@
 
 // Nomination is deliberately directional. Only independent source/coverage
 // verification in discussionClaimConsolidation can authorise a removal.
-const C = require('./discussionClaimConsolidation');
+const C = require('./discussionClaimConsolidationState');
 const safety = require('./discussionMergeSafety');
 const { numberWordsToValue } = require('./textNormalisation');
 const { temporalMeaningRetained } = require('../meetingMinutesTemporalReview');
