@@ -3,7 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const I = require('../utils/meetingMinutesActionIdentity');
-const V = require('../utils/meetingMinutesAgentV2');
+const ActionNormalization = require('../utils/meetingMinutesActionNormalization'),
+  Text = require('../utils/meetingMinutesText'),
+  Proposals = require('../utils/meetingMinutesProposals');
 
 const row = (id, action, extra = {}) => ({
   id, action, owners: ['Morgan Lee'], timing: { kind: 'not_stated', wording: '', exactDate: '' },
@@ -97,7 +99,7 @@ test('identical editable rows with different provenance remain distinct occurren
 test('ordinary reviewer normalization carries valid occurrence IDs without minting or renumbering', () => {
   const input = [row('A4', 'Send the inspection report.', { occurrenceId: 'action-occurrence_123' }),
     row('A4', 'Review the inspection report.')];
-  const out = V.normaliseActions({ actions: input }, [], { enforceEvidence: false, dedupeActions: false, preserveReviewerEdits: true });
+  const out = ActionNormalization.normaliseActions({ actions: input }, [], { enforceEvidence: false, dedupeActions: false, preserveReviewerEdits: true });
   assert.deepEqual(out.map(r => r.id), ['A4', 'A4']);
   assert.equal(out[0].occurrenceId, input[0].occurrenceId);
   assert.equal(Object.hasOwn(out[1], 'occurrenceId'), false);
@@ -113,7 +115,7 @@ test('deep terminology normalization preserves opaque occurrence keys throughout
     pendingProposal: { changes: [{ before: { occurrenceId: 'meds-app' }, after: { occurrenceId: 'Meds-App' } }] }
   };
   const original = structuredClone(input);
-  const out = V.normaliseKnownTermsDeep(input);
+  const out = Text.normaliseKnownTermsDeep(input);
   assert.equal(out.actions[0].occurrenceId, 'meds-app');
   assert.equal(out.removedActions[0].occurrenceId, 'Meds-App');
   assert.deepEqual(out.keptActionOccurrenceIds, input.keptActionOccurrenceIds);
@@ -121,7 +123,7 @@ test('deep terminology normalization preserves opaque occurrence keys throughout
   assert.equal(out.actions[0].action, 'Review MDSAP.');
   assert.equal(out.removedActions[0].action, 'Archive MDSAP.');
   assert.deepEqual(input, original);
-  assert.deepEqual(V.normaliseKnownTermsDeep(out), out);
+  assert.deepEqual(Text.normaliseKnownTermsDeep(out), out);
 });
 
 test('proposal modifications preserve the target identity and use its exact occurrence after reorder', () => {
@@ -129,7 +131,7 @@ test('proposal modifications preserve the target identity and use its exact occu
   const second = row('A4', 'Send the inspection report.', { occurrenceId: 'second', evidenceIds: ['T0020'] });
   const p = proposal([change('modify-second', 'modify', second,
     { ...second, id: 'MODEL_REPLACEMENT', occurrenceId: 'wrong', action: 'Send the final inspection report.' }, 1)]);
-  const out = V.applyProposal([second, first], p, ['modify-second']);
+  const out = Proposals.applyProposal([second, first], p, ['modify-second']);
   assert.equal(out[0].id, second.id);
   assert.equal(out[0].occurrenceId, second.occurrenceId);
   assert.equal(out[0].action, 'Send the final inspection report.');
@@ -142,8 +144,8 @@ test('legacy proposal targeting distinguishes provenance and refuses a missing o
   const p = proposal([change('modify', 'modify', second, { ...second, action: 'Provide full command details.' }, 1)]);
   assert.equal(I.findActionOccurrenceIndex([second, first], second), 0);
   assert.equal(I.findActionOccurrenceIndex([first], second), -1);
-  assert.deepEqual(V.applyProposal([first], p, ['modify']), [first]);
-  const out = V.applyProposal([second, first], p, ['modify']);
+  assert.deepEqual(Proposals.applyProposal([first], p, ['modify']), [first]);
+  const out = Proposals.applyProposal([second, first], p, ['modify']);
   assert.equal(out[0].action, 'Provide full command details.');
   assert.equal(out[1], first);
   assert.equal(I.findActionOccurrenceIndex([first, structuredClone(first)], structuredClone(first)), -1);
@@ -157,14 +159,14 @@ test('partial proposal additions reserve active and removed IDs and repeat accep
   const first = row('A4', 'Review the safety report.');
   const second = row('A6', 'Prepare the safety report.');
   const p = proposal([change('add-one', 'add', null, first, 1), change('add-two', 'add', null, second, 1)]);
-  const once = V.applyProposal([existing], p, ['add-one'], { reservedActions: [removed] });
+  const once = Proposals.applyProposal([existing], p, ['add-one'], { reservedActions: [removed] });
   assert.equal(once.length, 2);
   assert.equal(once[0], existing);
   assert.notEqual(once[1].id, existing.id);
   assert.deepEqual(withoutIdentity(once[1]), withoutIdentity(first));
-  const repeated = V.applyProposal(once, p, ['add-one'], { reservedActions: [removed] });
+  const repeated = Proposals.applyProposal(once, p, ['add-one'], { reservedActions: [removed] });
   assert.deepEqual(repeated, once);
-  const both = V.applyProposal(once, p, ['add-two'], { reservedActions: [removed] });
+  const both = Proposals.applyProposal(once, p, ['add-two'], { reservedActions: [removed] });
   assert.equal(both.length, 3);
   assert.equal(new Set(both.map(r => r.id)).size, 3);
   assert.ok(both.every(r => r.id !== removed.id));
@@ -175,13 +177,13 @@ test('a copied occurrence on a distinct addition is reminted instead of silently
   const existing = row('A4', 'Send the inspection report.', { occurrenceId: 'shared' });
   const addition = { ...existing, evidenceIds: ['T0020'], reviewFlagIds: ['different'], timingDecision: { status: 'unresolved' } };
   const p = proposal([change('add', 'add', null, addition, 1)]);
-  const out = V.applyProposal([existing], p, ['add']);
+  const out = Proposals.applyProposal([existing], p, ['add']);
   assert.equal(out.length, 2);
   assert.equal(out[0], existing);
   assert.notEqual(out[1].id, existing.id);
   assert.notEqual(out[1].occurrenceId, existing.occurrenceId);
   assert.deepEqual(withoutIdentity(out[1]), withoutIdentity(addition));
-  assert.deepEqual(V.applyProposal(out, p, ['add']), out, 'reminted additions are stable on repeat acceptance');
+  assert.deepEqual(Proposals.applyProposal(out, p, ['add']), out, 'reminted additions are stable on repeat acceptance');
 });
 
 test('captured identical legacy targets cannot consume a remaining indistinguishable sibling', () => {
@@ -191,7 +193,7 @@ test('captured identical legacy targets cannot consume a remaining indistinguish
     change('modify', 'modify', first, { ...first, action: 'Send the final report.' }, 0),
     change('remove', 'remove', copy, null, 1)
   ])));
-  assert.deepEqual(V.applyProposal([first], p, ['modify', 'remove']), [first]);
+  assert.deepEqual(Proposals.applyProposal([first], p, ['modify', 'remove']), [first]);
 });
 
 test('a newly restored generated row cannot reuse the ID of another admitted occurrence', () => {

@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const F=require('../utils/meetingMinutesActionPhaseCorrection'),V=require('../utils/meetingMinutesAgentV2'),T=require('../utils/meetingMinutesTiming');
+const F=require('../utils/meetingMinutesActionPhaseCorrection'),ProposalTiming = require('../utils/meetingMinutesProposalTiming'),T=require('../utils/meetingMinutesTiming');
 const provider=require('./helpers/action-phase-provider');
 const fixture=require('./helpers/action-phase-fixture');
 const run=(f,mutate,extra={})=>F.correct(f.actions,f.units,{meetingDate:'2026-06-15',ask:provider(f,mutate),...extra});
@@ -14,7 +14,7 @@ for(const reverse of [false,true])test('source-proven two-phase correction prese
  assert.deepEqual(new Set(r.actions.flatMap(a=>a.reviewFlagIds)),new Set(f.actions.flatMap(a=>a.reviewFlagIds)));
  assert.equal(F.valid(r.audit.receipts[0],r.actions,f.units,'2026-06-15'),true);
  assert.deepEqual(F.restore(r.actions,r.audit,f.units,'2026-06-15'),f.actions);assert.deepEqual(f,before);
- const final=V.finaliseActionTimings(r.actions,f.units,{meetingDate:'2026-06-15'}).actions;
+ const final=ProposalTiming.finaliseActionTimings(r.actions,f.units,{meetingDate:'2026-06-15'}).actions;
  assert.equal(final.find(a=>a.id==='a').timing.exactDate,'');assert.equal(final.find(a=>a.id==='b').timing.exactDate,'');
  assert.ok(final.every(a=>a.timingDecision.status==='rejected'));
 });

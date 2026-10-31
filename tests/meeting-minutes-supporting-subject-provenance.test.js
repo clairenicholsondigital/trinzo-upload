@@ -1,8 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const A = require('../routes/api').stagedEvaluation;
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesDiscussionSelection = require('../utils/meetingMinutesDiscussionSelection');
+const MinutesRefereeDiscussion = require('../utils/meetingMinutesRefereeDiscussion');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
 const S = require('../utils/meetingMinutesSupportingDetails');
 const { rehomeSupportingDetails, unitIndex } = require('../utils/canonicalMinutes/discussionOrganiser');
 const units = [
@@ -23,11 +24,11 @@ function rehome(topics) {
 }
 
 test('a valid but unrelated referee target cannot overwrite the original supporting subject', () => {
-  const compact = A.compactDiscussionPropositions(discussion(), [], units, {
+  const compact = MinutesDiscussionSelection.compactDiscussionPropositions(discussion(), [], units, {
     promoteMaterialSupporting: false, supportingCandidates: [{ candidate: support, mergeTarget: 'pressure' }]
   });
   assert.equal(compact[0].points[0].supportingDetails.length, 1, 'exercise the existing explicit-target handoff');
-  const normalised = V.normaliseAgentResult({ discussion: compact }, units, 'discussion').discussion;
+  const normalised = MinutesResultNormalization.normaliseAgentResult({ discussion: compact }, units, 'discussion').discussion;
   const pool = rehome(normalised);
   assert.equal(pool.length, 1);
   assert.equal(pool[0].originalTopic, 'Supplier insurance');
@@ -46,7 +47,7 @@ test('reconstructed referee support retains its own subject before and after fai
     { candidateId: 'pressure', disposition: 'core', targetId: 'pressure', evidenceIds: ['T0001'] },
     { candidateId: support.candidateId, disposition: 'supporting', targetId: 'pressure', evidenceIds: ['T0002'] }
   ];
-  const rebuilt = A.reconstructMissingRefereeDiscussion([], verdicts, [core, support], units);
+  const rebuilt = MinutesRefereeDiscussion.reconstructMissingRefereeDiscussion([], verdicts, [core, support], units);
   const pool = rehome(rebuilt.discussion);
   assert.equal(pool[0].originalTopic, support.topic);
   assert.deepEqual(pool[0].reviewFlagIds, ['insurance-warning']);
@@ -59,7 +60,7 @@ test('a rejected raw parent retains its child subject, while legacy children sti
     const raw = [{ topic: 'Coolant inspection', points: [{ id: 'raw', text: 'Could you check that?',
       evidenceIds: ['T0001'], supportingDetails: [child] }], decisions: [], openQuestions: [] }];
     const pool = [];
-    A.compactDiscussionPropositions(raw, [], units, { promoteMaterialSupporting: false,
+    MinutesDiscussionSelection.compactDiscussionPropositions(raw, [], units, { promoteMaterialSupporting: false,
       onUnassignedSupportingDetail: (detail, context) => {
         pool.push(...S.collectUnassignedSupportingDetails(detail, context)); return true;
       } });
@@ -81,7 +82,7 @@ test('subject metadata is not evidence, authorship or a waiver of subject placem
   topics[0].points[0].supportingDetails = [{ id: 'unsupported', text: support.text, evidenceIds: ['T0002'],
     originalTopic: 'Coolant inspection' }];
   assert.equal(rehome(topics)[0].placementReason, 'no_subject_match');
-  const row = V.normaliseAgentResult({ discussion: [{ topic: 'Insurance', points: [{ ...parent,
+  const row = MinutesResultNormalization.normaliseAgentResult({ discussion: [{ topic: 'Insurance', points: [{ ...parent,
     originalTopic: 'Supplier insurance', reviewerAuthored: true }], decisions: [], openQuestions: [] }] }, units, 'discussion').discussion[0].points[0];
   assert.equal(row.originalTopic, 'Supplier insurance');
   assert.equal(row.reviewerAuthored, undefined);
@@ -107,7 +108,7 @@ test('direct and overlong filing retain an existing origin rather than a later t
     const candidate = { ...support, topic: 'Later proposed topic', text,
       record: { ...support.record, text, originalTopic: 'Supplier insurance' } };
     const pool = [];
-    A.compactDiscussionPropositions(discussion(), [], units, {
+    MinutesDiscussionSelection.compactDiscussionPropositions(discussion(), [], units, {
       promoteMaterialSupporting: false, supportingCandidates: [{ candidate, mergeTarget: 'missing-target' }],
       onUnassignedSupportingDetail: (detail, context) => {
         pool.push(...S.collectUnassignedSupportingDetails(detail, context)); return true;

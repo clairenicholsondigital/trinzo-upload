@@ -12,8 +12,8 @@ const noNetwork = async () => { throw new Error('Provider access forbidden in pr
 global.fetch = noNetwork;
 const fetchPath = require.resolve('node-fetch');
 require.cache[fetchPath] = { id: fetchPath, filename: fetchPath, loaded: true, exports: noNetwork };
-const A = require('../routes/api').stagedEvaluation;
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesProposalReview = require('../utils/meetingMinutesProposalReview');
+const MinutesProposals = require('../utils/meetingMinutesProposals');
 
 const row = (id, action = 'Send the inspection report.', extra = {}) => ({
   id, occurrenceId: `occ-${id}`, action, owners: ['Morgan Reed'],
@@ -27,8 +27,8 @@ const proposal = changes => ({ id: 'proposal', stage: 'actions', changes });
 const automaticFlag = (review, id) => review.reviewFlags.find(flag => flag.id === `automatic-review-${id}`);
 function reviewAndApply(current, p, flags = []) {
   const original = structuredClone({ current, p, flags });
-  const review = A.automaticMeetingAgentProposalReview(p, flags, current);
-  const after = V.applyProposal(current, p, review.acceptedIds);
+  const review = MinutesProposalReview.automaticMeetingAgentProposalReview(p, flags, current);
+  const after = MinutesProposals.applyProposal(current, p, review.acceptedIds);
   assert.deepEqual({ current, p, flags }, original, 'review must not mutate its inputs');
   return { ...review, after };
 }
@@ -177,7 +177,7 @@ test('an old composite removal cannot be retargeted to either current split acti
 test('explicit manual selection retains literal transaction behavior', () => {
   const target = row('A1');
   const p = proposal([change('manual', 'modify', target, { ...target, action: 'Email the inspection report.' })]);
-  assert.equal(V.applyProposal([target], p, ['manual'])[0].action, 'Email the inspection report.');
+  assert.equal(MinutesProposals.applyProposal([target], p, ['manual'])[0].action, 'Email the inspection report.');
   const stale = { ...p, changes: [{ ...p.changes[0], before: { ...target, occurrenceId: 'old' } }] };
-  assert.deepEqual(V.applyProposal([target], stale, ['manual']), [target]);
+  assert.deepEqual(MinutesProposals.applyProposal([target], stale, ['manual']), [target]);
 });

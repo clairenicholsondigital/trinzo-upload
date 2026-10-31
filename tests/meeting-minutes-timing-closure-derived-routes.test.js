@@ -1,17 +1,17 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const V=require('../utils/meetingMinutesAgentV2');
-const api=require('../routes/api').stagedEvaluation;
-const units=rows=>V.normaliseSourceUnits(rows.map(([speaker,text])=>({speaker,text})));
+const MinutesSource = require('../utils/meetingMinutesSource');
+const MinutesRefereeActionRecovery = require('../utils/meetingMinutesRefereeActionRecovery');
+const units=rows=>MinutesSource.normaliseSourceUnits(rows.map(([speaker,text])=>({speaker,text})));
 function visit(offer) {
   const source=units([['Chair','Could someone visit the storage yard?'],['Morgan',offer],['Chair','Check the gate hinge and latch.']]);
-  return api.acceptedVisitAssignmentActions(source,[]);
+  return MinutesRefereeActionRecovery.acceptedVisitAssignmentActions(source,[]);
 }
 function deferred(rows) {
   const source=units(rows);
   const thread={candidateId:'pending',recordType:'action_thread',sourcePass:'deterministic',evidenceIds:source.map(row=>row.id),focusEvidenceId:source.at(-1).id,cueKinds:['commitment','decision_resolution'],dispositionHint:'conditional_commitment',priority:12,sequence:1};
-  return api.commitmentThreadBackstopProposals([thread],[],source);
+  return MinutesRefereeActionRecovery.commitmentThreadBackstopProposals([thread],[],source);
 }
 
 test('accepted visits cannot inherit a separate photograph or other work date',()=>{

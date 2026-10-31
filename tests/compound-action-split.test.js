@@ -3,7 +3,7 @@
 // Generic cases only: none of these sentences come from the evaluation corpus.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { splitCompoundActionList } = require('../routes/api').stagedEvaluation;
+const { splitCompoundActionList } = require('../utils/meetingMinutesActionPromotion');
 
 const row = (action, timing = { kind: 'not_stated', wording: '', exactDate: '' }) => ({
   id: 'a1', action, owners: ['Sam'], timing, evidenceIds: ['T0001'], reviewFlagIds: []

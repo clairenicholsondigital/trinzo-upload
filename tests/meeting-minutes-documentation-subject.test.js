@@ -2,11 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  explicitFutureDocumentationCommitment,
-  safeAgentProposalPromotion,
-  isReviewableActionProposal
-} = require('../routes/api').stagedEvaluation;
+const { explicitFutureDocumentationCommitment, safeAgentProposalPromotion, isReviewableActionProposal } = require('../utils/meetingMinutesActionPromotion');
 
 const action = (wording = 'Write down the delivery readiness risks.', overrides = {}) => ({
   id: 'A1',

@@ -1,7 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const api = require('../routes/api').stagedEvaluation;
+const MinutesDiscussionSelection = require('../utils/meetingMinutesDiscussionSelection');
+const MinutesRefereeDiscussion = require('../utils/meetingMinutesRefereeDiscussion');
+const MinutesPublication = require('../utils/meetingMinutesPublication');
 
 const row = (id, text, evidenceIds = ['T0001']) => ({ id, text, evidenceIds, supportingDetails: [] });
 const topic = points => ({ id: 'inspection', topic: 'Inspection planning', points, decisions: [], openQuestions: [] });
@@ -13,7 +15,7 @@ const allRecords = result => {
 };
 const compactWithReviewPool = (primary, recovered, units, options = {}) => {
   const unassignedSupportingDetails = [];
-  const discussion = api.compactDiscussionPropositions(primary, recovered, units, {
+  const discussion = MinutesDiscussionSelection.compactDiscussionPropositions(primary, recovered, units, {
     ...options,
     onUnassignedSupportingDetail(detail, context) {
       unassignedSupportingDetails.push(structuredClone({ ...detail, ...context }));
@@ -67,7 +69,7 @@ test('duration, recurrence, clock, zone and qualification differences survive su
   for (const [first, second] of variants) {
     const parent = row('parent', first);
     parent.supportingDetails = [row('variant', second)];
-    const retained = api.consolidateSupportingDetails(parent);
+    const retained = MinutesDiscussionSelection.consolidateSupportingDetails(parent);
     assert.equal(retained.length, 1, `${first} must not erase ${second}`);
     const result = compact([parent], [], unitsFor([`${first} ${second}`]));
     assert.ok(allRecords(result).some(r => r.text === first), first);
@@ -87,7 +89,7 @@ test('cluster release preserves a richer timed member after a shorter matching m
   const short = 'The inspection lead is identified as Morgan.';
   const long = 'Morgan is the inspection lead. Preparation starts Monday and the inspection takes five days from the 20th.';
   for (const texts of [[short, long], [long, short]]) {
-    const released = api.refereeClusterSupportingCandidates([{ candidateId: 'core', disposition: 'core' }], [{
+    const released = MinutesRefereeDiscussion.refereeClusterSupportingCandidates([{ candidateId: 'core', disposition: 'core' }], [{
       candidateId: 'core', text: 'Inspection planning was discussed.', evidenceIds: ['T0001'],
       clusterMembers: texts.map((text, index) => ({ candidateId: `member${index}`, text, evidenceIds: ['T0001'],
         sourcePass: 'primary', clusterRelation: 'overflow' }))
@@ -102,7 +104,7 @@ test('cluster release keeps conflicting weekdays and removes a true reordered re
     'On Monday morning the laboratory inspection starts.',
     'The laboratory inspection starts Tuesday morning.'
   ];
-  const released = api.refereeClusterSupportingCandidates([{ candidateId: 'core', disposition: 'core' }], [{
+  const released = MinutesRefereeDiscussion.refereeClusterSupportingCandidates([{ candidateId: 'core', disposition: 'core' }], [{
     candidateId: 'core', text: 'Inspection planning was discussed.', evidenceIds: ['T0001'],
     clusterMembers: texts.map((text, index) => ({ candidateId: `m${index}`, text, evidenceIds: ['T0001'],
       sourcePass: 'primary', clusterRelation: 'paraphrase' }))
@@ -117,7 +119,7 @@ test('semantic similarity cannot erase a distinct timed detail before the fideli
   const monday = row('monday', 'The laboratory inspection starts Monday.');
   const tuesday = row('tuesday', 'The laboratory inspection starts Tuesday.');
   parent.supportingDetails = [schedule, monday, tuesday];
-  const result = await api.dedupeSupportingDetailsSemantically([topic([parent])], {
+  const result = await MinutesDiscussionSelection.dedupeSupportingDetailsSemantically([topic([parent])], {
     vectors: [[1, 0], [1, 0], [1, 0], [1, 0]], threshold: 0.8
   });
   assert.deepEqual(result[0].points[0].supportingDetails.map(r => r.id), ['schedule', 'monday', 'tuesday']);
@@ -130,7 +132,7 @@ test('a complete temporal restatement is still removed in compactor and semantic
   assert.equal(allRecords(result).length, 1);
   const source = structuredClone(original);
   source.supportingDetails = [restated];
-  const semantically = await api.dedupeSupportingDetailsSemantically([topic([source])], {
+  const semantically = await MinutesDiscussionSelection.dedupeSupportingDetailsSemantically([topic([source])], {
     vectors: [[1, 0], [1, 0]], threshold: 0.8
   });
   assert.equal(semantically[0].points[0].supportingDetails.length, 0);
@@ -159,7 +161,7 @@ test('distinct evidenced temporal context survives exhausted per-parent and whol
     ]
   }));
   const before = structuredClone(parents);
-  const limited = api.limitSupportingDetails([topic(parents)], 3, 1, source);
+  const limited = MinutesDiscussionSelection.limitSupportingDetails([topic(parents)], 3, 1, source);
   const details = limited[0].points.flatMap(r => r.supportingDetails);
   for (const detail of timing) assert.ok(details.some(r => r.id === detail.id && r.text === detail.text));
   assert.equal(details.filter(r => r.id.startsWith('context')).length, 3);
@@ -171,7 +173,7 @@ test('timed context exemption still consolidates a complete restatement', () => 
   const monday = row('monday', 'The laboratory inspection starts on Monday morning.');
   const duplicate = row('duplicate', 'On Monday morning the laboratory inspection starts.');
   const input = [topic([{ ...row('parent', 'Inspection scheduling was discussed.'), supportingDetails: [monday, duplicate] }])];
-  const result = api.limitSupportingDetails(input, 0, 0, unitsFor([monday.text]));
+  const result = MinutesDiscussionSelection.limitSupportingDetails(input, 0, 0, unitsFor([monday.text]));
   assert.equal(result[0].points[0].supportingDetails.length, 1);
   assert.ok(/Monday morning/.test(result[0].points[0].supportingDetails[0].text));
 });
@@ -189,9 +191,9 @@ test('raw, removed, unknown and missing evidence cannot exempt generated timing 
     row('missing', 'The stability review starts Friday.', []),
     row('raw', 'So we should, you know, maybe come back next month with our ideas.')
   ];
-  const result = api.limitSupportingDetails([topic([{ ...row('parent', 'Scheduling was discussed.'), supportingDetails: details }])], 0, 0, source);
+  const result = MinutesDiscussionSelection.limitSupportingDetails([topic([{ ...row('parent', 'Scheduling was discussed.'), supportingDetails: details }])], 0, 0, source);
   assert.deepEqual(result[0].points[0].supportingDetails.map(r => r.id), ['valid']);
-  const restored = api.limitSupportingDetails([topic([{ ...row('parent', 'Scheduling was discussed.'),
+  const restored = MinutesDiscussionSelection.limitSupportingDetails([topic([{ ...row('parent', 'Scheduling was discussed.'),
     supportingDetails: [details[1]] }])], 0, 0, source.map(u => u.id === 'T0002' ? { ...u, restored: true } : u));
   assert.equal(restored[0].points[0].supportingDetails[0].id, 'removed');
 });
@@ -203,7 +205,7 @@ test('ordinary untimed context keeps existing round-robin total and per-record l
     { ...row('two', 'Laboratory records were reviewed.'), supportingDetails: [
       row('c', 'The sample archive contains the reference results.'), row('d', 'A storage appendix describes specimen handling.') ] }
   ];
-  const result = api.limitSupportingDetails([topic(parents)], 2, 1, unitsFor(['Unrelated source.']));
+  const result = MinutesDiscussionSelection.limitSupportingDetails([topic(parents)], 2, 1, unitsFor(['Unrelated source.']));
   assert.deepEqual(result[0].points.map(r => r.supportingDetails.length), [1, 1]);
   assert.equal(result[0].points.flatMap(r => r.supportingDetails).length, 2);
 });
@@ -216,7 +218,7 @@ test('context budgeting preserves reviewer detail, parent and topic wording with
   const reviewerTopic = { ...topic([{ ...row('topic-parent', 'A manually arranged section.'),
     supportingDetails: [row('topic-detail', 'The reviewer wanted this additional context.', [])] }]), id: 'manual-topic', reviewerAuthored: true };
   const input = [topic([parent, authored]), reviewerTopic], before = structuredClone(input);
-  const result = api.limitSupportingDetails(input, 0, 0, []);
+  const result = MinutesDiscussionSelection.limitSupportingDetails(input, 0, 0, []);
   assert.deepEqual(result[0].points[0].supportingDetails, [manual]);
   assert.deepEqual(result[0].points[1], authored);
   assert.deepEqual(result[1], reviewerTopic);
@@ -230,9 +232,9 @@ test('a source-proved material deadline is promoted before the context cap and r
   const discussion = [topic([{ ...row('parent', 'Registration requirements were reviewed.'), supportingDetails: [row('deadline', text)] }])];
   const promoted = promoteMaterialTimingDetails(discussion, units, { meetingDate: '2026-06-17' });
   assert.equal(promoted.promoted, 1);
-  const capped = api.limitSupportingDetails(promoted.discussion, 0, 0, units);
+  const capped = MinutesDiscussionSelection.limitSupportingDetails(promoted.discussion, 0, 0, units);
   assert.ok(capped.flatMap(t => t.points).some(r => r.id === 'deadline' && r.text === text));
-  const published = api.meetingAgentDraftForPdf({ details: { meetingDate: '2026-06-17' }, discussion: capped,
+  const published = MinutesPublication.meetingAgentDraftForPdf({ details: { meetingDate: '2026-06-17' }, discussion: capped,
     sourceUnits: units, qualityState: { preparation: { dateContext: { source: 'reviewer', meetingDate: '2026-06-17' } } } });
   assert.ok(published.discussion.flatMap(t => t.points).includes(text));
 });

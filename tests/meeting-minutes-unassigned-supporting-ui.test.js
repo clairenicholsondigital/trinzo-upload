@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
 const { rehomeSupportingDetails, unitIndex } = require('../utils/canonicalMinutes/discussionOrganiser');
 const { collectUnassignedSupportingDetails } = require('../utils/meetingMinutesSupportingDetails');
 
@@ -64,7 +64,7 @@ async function fixture(initial = draft()) {
     });
     // Exercise the production editor-save normalizer: a spread-only mock can
     // hide truncation when retained context becomes a main discussion point.
-    const normalized = V.normaliseAgentResult({ ...saved, ...req.body }, saved.sourceUnits, '', {
+    const normalized = MinutesResultNormalization.normaliseAgentResult({ ...saved, ...req.body }, saved.sourceUnits, '', {
       enforceEvidence: false, dedupeActions: false, mergeTopics: false, preserveReviewerEdits: true
     });
     saved = { ...saved, ...req.body, discussion: normalized.discussion,

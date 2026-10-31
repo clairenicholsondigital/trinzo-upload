@@ -2,8 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const A = require('../routes/api').stagedEvaluation;
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesProposalSelection = require('../utils/meetingMinutesProposalSelection');
+const MinutesProposalReview = require('../utils/meetingMinutesProposalReview');
+const MinutesProposals = require('../utils/meetingMinutesProposals');
 
 const row = (id, action, extra = {}) => ({ id, occurrenceId: `occ-${id}`, action, owners: ['Morgan'],
   timing: { kind: 'target', wording: 'this week', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [], ...extra });
@@ -20,7 +21,7 @@ function fixture(other = {}) {
 test('generated modifications that copy another current occurrence start unticked', () => {
   const { current, proposal } = fixture();
   const original = structuredClone({ current, proposal });
-  const [change] = A.preselectActionProposal(proposal, current, units).changes;
+  const [change] = MinutesProposalSelection.preselectActionProposal(proposal, current, units).changes;
   assert.equal(change.selected, false);
   assert.equal(change.reviewContext.label, 'already in the list');
   assert.deepEqual({ current, proposal }, original);
@@ -28,25 +29,25 @@ test('generated modifications that copy another current occurrence start unticke
 
 test('automatic adoption of an older selected duplicate modification preserves both rows and exposes the check', () => {
   const { current, proposal } = fixture();
-  const review = A.automaticMeetingAgentProposalReview(proposal, [], current);
+  const review = MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], current);
   assert.deepEqual(review.acceptedIds, []);
-  assert.deepEqual(V.applyProposal(current, proposal, review.acceptedIds), current);
+  assert.deepEqual(MinutesProposals.applyProposal(current, proposal, review.acceptedIds), current);
   assert.ok(review.reviewFlags.some(flag => flag.status === 'open' && /not applied/.test(flag.message)));
 });
 
 test('the target does not count as its own sibling and different owners or timing remain separate', () => {
   for (const other of [{ owners: ['Jordan'] }, { timing: { kind: 'target', wording: 'next week', exactDate: '' } }]) {
     const { current, proposal } = fixture(other);
-    assert.equal(A.preselectActionProposal(proposal, current, units).changes[0].selected, true);
-    assert.deepEqual(A.automaticMeetingAgentProposalReview(proposal, [], current).acceptedIds, ['edit']);
+    assert.equal(MinutesProposalSelection.preselectActionProposal(proposal, current, units).changes[0].selected, true);
+    assert.deepEqual(MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], current).acceptedIds, ['edit']);
   }
   const { current, proposal } = fixture();
-  assert.deepEqual(A.automaticMeetingAgentProposalReview(proposal, [], current.slice(0, 1)).acceptedIds, ['edit']);
+  assert.deepEqual(MinutesProposalReview.automaticMeetingAgentProposalReview(proposal, [], current.slice(0, 1)).acceptedIds, ['edit']);
 });
 
 test('explicit reviewer selection still applies the exact requested modification with occurrence state intact', () => {
   const { current, proposal } = fixture();
-  const result = V.applyProposal(current, proposal, ['edit']);
+  const result = MinutesProposals.applyProposal(current, proposal, ['edit']);
   assert.equal(result.length, 2);
   assert.equal(result[0].action, proposal.changes[0].after.action);
   assert.equal(result[0].occurrenceId, current[0].occurrenceId);

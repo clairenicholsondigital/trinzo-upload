@@ -6,7 +6,7 @@ const {
   isRoutineMeetingAdministrationText,
   removeRoutineMeetingAdministrationSentences
 } = require('../utils/meetingAdministration');
-const { groundedExecutiveSummary } = require('../utils/meetingMinutesAgentV2');
+const { groundedExecutiveSummary } = require('../utils/meetingMinutesSummaryPublication');
 const { summaryScreen, discussionScreen } = require('../utils/canonicalMinutes/liveStages');
 
 test('waiting briefly for an attendee is routine meeting administration', () => {

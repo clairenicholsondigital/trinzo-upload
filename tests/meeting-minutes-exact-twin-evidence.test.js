@@ -11,15 +11,20 @@ Module._load = function(request, parent, isMain) {
   if (/(?:^|\/)utils\/(?:db|copilot|knowledge)$/.test(request)) return new Proxy({}, { get: () => forbidden });
   return originalLoad.call(this, request, parent, isMain);
 };
-const A = require('../routes/api').stagedEvaluation;
+const MinutesRefereeDiscussion = require('../utils/meetingMinutesRefereeDiscussion');
+const MinutesDiscussionSelection = require('../utils/meetingMinutesDiscussionSelection');
+const MinutesDraftView = require('../utils/meetingMinutesDraftView');
+const MinutesPublication = require('../utils/meetingMinutesPublication');
+const MinutesRefereeCandidates = require('../utils/meetingMinutesRefereeCandidates');
 Module._load = originalLoad;
-const V = require('../utils/meetingMinutesAgentV2');
+const MinutesSource = require('../utils/meetingMinutesSource');
+const MinutesResultNormalization = require('../utils/meetingMinutesResultNormalization');
 process.env.MEETING_MINUTES_AGENT_CORRECTNESS_V1 = '1';
 test.after(() => assert.equal(externalCalls, 0));
 
 const meetingDate = '2026-06-17';
 const claim = 'Plan to change barcodes to 2D data matrix including lot number; label format still pending sign-off; new products must be entered into the catalogue immediately; existing products must be entered by 19th November 2026; no product information was found in the catalogue as of last Friday.';
-const units = V.normaliseSourceUnits([
+const units = MinutesSource.normaliseSourceUnits([
   { speaker: 'Morgan', text: 'We plan to change the barcodes to a 2D data matrix including the lot number.' },
   { speaker: 'Morgan', text: 'The label format is still pending sign-off.' },
   { speaker: 'Morgan', text: 'New products must be entered into the catalogue immediately.' },
@@ -36,11 +41,11 @@ const candidate = (candidateId, sourcePass, evidenceIds = []) => ({
 });
 const fixture = () => [candidate('recovery-twin', 'recovery'), candidate('primary-twin', 'primary', [...ids])];
 const disposition = { candidateId: 'recovery-twin', disposition: 'core', reason: 'The registration deadline is material.', evidenceIds: [] };
-const reconstruct = (candidates, sourceUnits = units, dispositions = [disposition]) => A.reconstructMissingRefereeDiscussion(
+const reconstruct = (candidates, sourceUnits = units, dispositions = [disposition]) => MinutesRefereeDiscussion.reconstructMissingRefereeDiscussion(
   [], dispositions, candidates, sourceUnits, { meetingDate }
 );
 const point = result => result.discussion.flatMap(topic => topic.points)[0];
-const compact = result => A.compactDiscussionPropositions(result.discussion, [], units, { meetingDate, promoteMaterialSupporting: false });
+const compact = result => MinutesDiscussionSelection.compactDiscussionPropositions(result.discussion, [], units, { meetingDate, promoteMaterialSupporting: false });
 
 test('an uncited exact representative retains its validated twin evidence through reconstruction and publication', () => {
   const candidates = fixture();
@@ -58,22 +63,22 @@ test('an uncited exact representative retains its validated twin evidence throug
   assert.equal(discussion.flatMap(topic => topic.points).filter(row => row.text === claim).length, 1);
   const draft = { details: { meetingTitle: 'Product records', meetingDate }, sourceUnits: units,
     discussion, actions: [], reviewFlags: [], qualityState: {} };
-  for (const visible of [A.publicMeetingAgentDraft(draft), A.meetingAgentDraftForDocx(draft)]) {
+  for (const visible of [MinutesDraftView.publicMeetingAgentDraft(draft), MinutesPublication.meetingAgentDraftForDocx(draft)]) {
     const row = visible.discussion.flatMap(topic => topic.points).find(row => row.id === 'recovery-twin');
     assert.ok(row);
     assert.deepEqual(new Set(row.evidenceIds), new Set(ids));
   }
-  const pdf = A.meetingAgentDraftForPdf(draft, true);
+  const pdf = MinutesPublication.meetingAgentDraftForPdf(draft, true);
   assert.ok(pdf.discussion.flatMap(topic => topic.points).some(text => /existing products must be entered by 19(?:th)? November 2026/.test(text)));
   assert.deepEqual(new Set(pdf.evidenceAppendix.map(unit => unit.id)), new Set(ids));
 });
 
 test('evidence recovery leaves nominee identities, order and contract selection unchanged', () => {
   const candidates = fixture();
-  const before = A.meetingAgentRefereeCandidates('discussion', candidates);
+  const before = MinutesRefereeCandidates.meetingAgentRefereeCandidates('discussion', candidates);
   const snapshot = structuredClone(before);
   reconstruct(candidates);
-  assert.deepEqual(A.meetingAgentRefereeCandidates('discussion', candidates), snapshot);
+  assert.deepEqual(MinutesRefereeCandidates.meetingAgentRefereeCandidates('discussion', candidates), snapshot);
   assert.deepEqual(candidates, fixture());
 });
 
@@ -148,7 +153,7 @@ test('source and donor ordering, JSON round trips and repeated normalization pre
     const out = reconstruct(pool, [...units].reverse());
     assert.equal(point(out).text, claim);
     assert.deepEqual(new Set(point(out).evidenceIds), new Set(expected.evidenceIds));
-    const normalized = V.normaliseAgentResult(JSON.parse(JSON.stringify(out)), units, 'discussion', { meetingDate });
+    const normalized = MinutesResultNormalization.normaliseAgentResult(JSON.parse(JSON.stringify(out)), units, 'discussion', { meetingDate });
     assert.deepEqual(new Set(normalized.discussion[0].points[0].evidenceIds), new Set(expected.evidenceIds));
   }
 });

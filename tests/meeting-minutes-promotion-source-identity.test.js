@@ -3,11 +3,7 @@
 // Generic identity cases for the two source-promise promotion shortcuts only.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  explicitFutureDocumentationCommitment,
-  repeatedOwnerCommitment,
-  safeAgentProposalPromotion
-} = require('../routes/api').stagedEvaluation;
+const { explicitFutureDocumentationCommitment, repeatedOwnerCommitment, safeAgentProposalPromotion } = require('../utils/meetingMinutesActionPromotion');
 
 const DOCUMENT_ACTION = 'Write down the delivery readiness risks.';
 const DOCUMENT_PROMISE = "I will write down the delivery readiness risks.";

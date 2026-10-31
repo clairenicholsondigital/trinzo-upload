@@ -2,27 +2,30 @@
 process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1 = '0';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const V = require('../utils/meetingMinutesAgentV2');
-const A = require('../routes/api').stagedEvaluation;
-const units = () => V.normaliseSourceUnits([
+const Source = require('../utils/meetingMinutesSource'),
+  EvidenceContext = require('../utils/meetingMinutesEvidenceContext'),
+  ReviewFlags = require('../utils/meetingMinutesReviewFlags'),
+  AssessmentEvidence = require('../utils/meetingMinutesAssessmentEvidence');
+const DiscoveryValidation = require('../utils/meetingMinutesDiscoveryValidation');
+const units = () => Source.normaliseSourceUnits([
   { id:'T0001', speaker:'Maya Patel', text:'The standard is 74216, covering portable pump requirements.' },
   { id:'T0002', speaker:'Maya Patel', text:'We can maybe get an assessment of that standard to see if it is applicable to the portable pump.' }
 ]);
 const action = 'Assess whether standard 74216 is applicable to the portable pump.';
 const proposal = extra => ({ id:'assessment', action, owners:['Maya Patel'], evidenceIds:['T0002'],
   timing:{kind:'not_stated',wording:'',exactDate:''},reviewFlagIds:[], ...extra });
-const normalise = (rows, source=units()) => A.normaliseAgentDeclaredProposals({actionProposals:rows},source);
+const normalise = (rows, source=units()) => DiscoveryValidation.normaliseAgentDeclaredProposals({actionProposals:rows},source);
 
 test('proposal-only context retains original citations and requires review without changing work, owners or timing', () => {
   const input=proposal(),source=units(),before=structuredClone([input,source]);
-  assert.equal(V.evidenceSupportScore(action,source[1].text),0);
+  assert.equal(EvidenceContext.evidenceSupportScore(action,source[1].text),0);
   const result=normalise([input],source);
   assert.equal(result.length,1);
   assert.equal(result[0].action,input.action);
   assert.deepEqual(result[0].owners,input.owners);
   assert.deepEqual(result[0].timing,input.timing);
   assert.deepEqual(result[0].evidenceIds,['T0001','T0002']);
-  const recovered=V.reconcileRecordFlags({actions:result},[]);
+  const recovered=ReviewFlags.reconcileRecordFlags({actions:result},[]);
   const warning=recovered.flags.find(flag=>flag.id.startsWith('flag-document-reference-'));
   assert.ok(warning);
   assert.equal(warning.kind,'unclear_reference');
@@ -34,10 +37,10 @@ test('proposal-only context retains original citations and requires review witho
 
 test('review provenance survives normalisation without overwriting a human decision', () => {
   const result=normalise([proposal()]);
-  const recovered=V.reconcileRecordFlags({actions:result},[]);
+  const recovered=ReviewFlags.reconcileRecordFlags({actions:result},[]);
   const warning=recovered.flags.find(flag=>flag.documentReferenceContext);
   const reviewed={...warning,status:'corrected',correctionNote:'Confirmed the reference with the meeting owner.'};
-  assert.deepEqual(V.normaliseFlag(JSON.parse(JSON.stringify(reviewed))),reviewed);
+  assert.deepEqual(ReviewFlags.normaliseFlag(JSON.parse(JSON.stringify(reviewed))),reviewed);
 });
 
 const negatives = [
@@ -61,12 +64,12 @@ const negatives = [
 ];
 for(const [name,change] of negatives)test('does not add context for '+name,()=>{
  const source=units();change(source);
- assert.equal(V.documentReferenceContextEvidence(action,['T0002'],source),null);
+ assert.equal(AssessmentEvidence.documentReferenceContextEvidence(action,['T0002'],source),null);
 });
 
 test('unstated identifier prefix and additional unsupported quantity are not repaired',()=>{
- assert.equal(V.documentReferenceContextEvidence(action.replace('standard 74216','ISO 74216'),['T0002'],units()),null);
- assert.equal(V.documentReferenceContextEvidence(action+' Complete 12 assessments.', ['T0002'],units()),null);
+ assert.equal(AssessmentEvidence.documentReferenceContextEvidence(action.replace('standard 74216','ISO 74216'),['T0002'],units()),null);
+ assert.equal(AssessmentEvidence.documentReferenceContextEvidence(action+' Complete 12 assessments.', ['T0002'],units()),null);
 });
 
 test('a source-stated prefix is permitted, still requiring review',()=>{
@@ -83,8 +86,8 @@ test('already sufficient evidence takes the existing path without a context warn
 });
 
 test('unverified source context cannot certify new dates or accept more than the citation budget',()=>{
- assert.equal(V.documentReferenceContextEvidence(action,['T0001','T0002'],units()),null);
- assert.equal(V.documentReferenceContextEvidence(action,Array.from({length:8},(_,i)=>'T'+String(i+2).padStart(4,'0')),units()),null);
- const malformed=V.normaliseFlag({documentReferenceContext:{kind:'verified',originalEvidenceIds:['T0002'],addedEvidenceIds:['T0001'],workEvidenceIds:['T0002']}});
+ assert.equal(AssessmentEvidence.documentReferenceContextEvidence(action,['T0001','T0002'],units()),null);
+ assert.equal(AssessmentEvidence.documentReferenceContextEvidence(action,Array.from({length:8},(_,i)=>'T'+String(i+2).padStart(4,'0')),units()),null);
+ const malformed=ReviewFlags.normaliseFlag({documentReferenceContext:{kind:'verified',originalEvidenceIds:['T0002'],addedEvidenceIds:['T0001'],workEvidenceIds:['T0002']}});
  assert.equal(Object.hasOwn(malformed,'documentReferenceContext'),false);
 });

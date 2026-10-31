@@ -2,11 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  meetingAgentDerivedStaleStages,
-  meetingAgentStaleStagesAfterGeneration,
-  meetingAgentStageInputFingerprint
-} = require('../routes/api').stagedEvaluation;
+const { meetingAgentDerivedStaleStages, meetingAgentStaleStagesAfterGeneration } = require('../utils/meetingMinutesReviewerState');
+const { meetingAgentStageInputFingerprint } = require('../utils/meetingMinutesStageProtocol');
 
 function draft() {
   return {
