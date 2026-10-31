@@ -1,6 +1,11 @@
 'use strict';
 
 const {
+  compactDiscussionPropositions, dedupeSupportingDetailsSemantically, limitSupportingDetails,
+  mergeHybridDiscussionTopics, promotePrioritySupportingDetails
+} = require('./meetingMinutesDiscussionSelection');
+
+const {
   discussionStructureDiagnostics, finalisePromotedDiscussion, promoteAllDiscussionDetails
 } = require('./meetingMinutesDiscussionFinalization');
 const {
@@ -85,15 +90,12 @@ const { meetingAgentReviewPacketError } = require('./meetingMinutesReviewAccount
 // API-owned orchestration helpers and outward prewarm ports remain explicit.
 function createOriginalDiscussionStage(services) {
   const {
-    compactDiscussionPropositions,
     corroboratedOmittedDiscussionRecords,
-    dedupeSupportingDetailsSemantically,
     discussionOverlapConsolidationPrompt,
     discussionRefereeFallbackPlan,
     discussionRefereeSufficiency,
     hybridCandidateDispositions,
     includeAllDiscussionDetailsExperiment,
-    limitSupportingDetails,
     meetingMinutesAgentCompactDiscussionEnabled,
     meetingMinutesAgentCompactDiscussionShadowEnabled,
     meetingMinutesAgentDiscussionOrganiseEnabled,
@@ -103,8 +105,6 @@ function createOriginalDiscussionStage(services) {
     meetingMinutesAgentTopicArrangementRepairPrompt,
     meetingMinutesDiscussionRestatementsEnabled,
     meetingMinutesPromoteNamedFactsEnabled,
-    mergeHybridDiscussionTopics,
-    promotePrioritySupportingDetails,
     reconstructMissingRefereeDiscussion,
     refereeClusterSupportingCandidates,
     startPrivateActionPrimaryPrewarm,

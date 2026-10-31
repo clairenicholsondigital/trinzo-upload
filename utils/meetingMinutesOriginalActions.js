@@ -6,7 +6,10 @@ const { surroundingEvidence } = require('./meetingMinutesEvidenceContext');
 
 const { normaliseAgentDeclaredProposals } = require('./meetingMinutesDiscoveryValidation');
 
-const { dedupeHybridActionProposals, dedupeHybridActionRecords, isClientReadyActionWording } = require('./meetingMinutesActionDuplicatePolicy');
+const {
+  dedupeHybridActionProposals, dedupeHybridActionRecords, isClientReadyActionWording,
+  mergePublishedActionEvidence
+} = require('./meetingMinutesActionDuplicatePolicy');
 const { meetingAgentInfrastructureFailure, normaliseAgentCandidateDispositions, reconcileRefereeActionMaterialization } = require('./meetingMinutesResponseContracts');
 const {
   isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, normaliseFlag: normaliseMeetingAgentFlag,
@@ -80,7 +83,6 @@ function createOriginalActionsStage(services) {
     meetingMinutesAgentSalvagePrompt,
     meetingMinutesMinuteInstructionRuleEnabled,
     meetingMinutesProposalRecheckEnabled,
-    mergePublishedActionEvidence,
     preselectActionProposal,
     publishedActionCoversProposal,
     reconcileAcceptedRefereeActions,
