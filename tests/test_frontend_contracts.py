@@ -27,7 +27,7 @@ class FrontendContractTest(unittest.TestCase):
         copilot = (REPO_DIR / "utils" / "copilot.js").read_text(encoding="utf-8")
         page = (REPO_DIR / "views" / "meeting-minutes-agent.html").read_text(encoding="utf-8")
         client = (REPO_DIR / "public" / "meeting-minutes-agent.js").read_text(encoding="utf-8")
-        agent_v2 = (REPO_DIR / "utils" / "meetingMinutesAgentV2.js").read_text(encoding="utf-8")
+        agent_normalization = (REPO_DIR / "utils" / "meetingMinutesResultNormalization.js").read_text(encoding="utf-8")
         dashboard = (REPO_DIR / "views" / "dashboard.html").read_text(encoding="utf-8")
 
         self.assertIn("app.get('/meeting-minutes-agent', authRoutes.requireAuth", server)
@@ -284,7 +284,7 @@ class FrontendContractTest(unittest.TestCase):
         # A reviewer's own edits are flagged against the evidence, never stripped
         # back out from under them; only agent output is enforced.
         self.assertIn("{ enforceEvidence: false }", api)
-        self.assertIn("const enforceEvidence = options.enforceEvidence !== false", agent_v2)
+        self.assertIn("const enforceEvidence = options.enforceEvidence !== false", agent_normalization)
         # A save conflict keeps what is on screen and offers an explicit reload.
         self.assertIn('id="reloadDraft"', page)
         self.assertIn("your edits are here but unsaved", client)

@@ -561,7 +561,11 @@ check enumerates its actual public aliases: all four original text aliases and
 all timing assertions remain, with three already-public V2 wording helpers also
 checked against their new Text owner. V2 retains its unchanged public surface.
 The initial compact check exposed that test's broader old assumption; its
-failure is archived before the test-only correction. Compact coverage and
+failure is archived before the test-only correction. The first release then
+identified a Python source reader still checking evidence enforcement in V2;
+it now reads the actual ResultNormalization owner, preserving its condition and
+all assertions. The failed release is archived before the required full rerun.
+Application code is unchanged by either test correction. Compact coverage and
 persistence-sensitive selection updates require the full release profile.
 
 Stage 3 remains in progress. Referee-candidate projection/contract ownership,
