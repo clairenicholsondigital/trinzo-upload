@@ -1,5 +1,7 @@
 'use strict';
 
+const { cachedStagedCandidatesForStage, hybridCandidateLedgerFromResult, peekReadyPrivateStagedCandidateLedger } = require('./meetingMinutesCandidateLedger');
+
 const { meetingMinutesAgentPrimaryPrompt } = require('./meetingMinutesAgentPrompts');
 const { meetingAgentActionPrimaryPromptForDraft } = require('./meetingMinutesGenerationRuntime');
 
@@ -23,9 +25,9 @@ const { meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldSt
 const { flattenHybridDiscussion } = require('./meetingMinutesDiscussionRows');
 
 const { SCHEMA_VERSION: MEETING_AGENT_SCHEMA_VERSION } = require('./meetingMinutesResponseContracts');
-const { actionCandidateInventory } = require("./meetingMinutesAgentV2");
-const { actionCommitmentChainInventory } = require("./meetingMinutesAgentV2");
-const { actionCommitmentThreadInventory } = require("./meetingMinutesAgentV2");
+const { actionCandidateInventory } = require("./meetingMinutesActionCandidateInventory");
+const { actionCommitmentChainInventory } = require("./meetingMinutesActionCandidateInventory");
+const { actionCommitmentThreadInventory } = require("./meetingMinutesActionCandidateInventory");
 const { actionRecoveryNeeded } = require("./meetingMinutesAgentV2");
 const { discourseSegments } = require("./canonicalMinutes/discourseSegments");
 const { discussionActionCandidates } = require("./meetingMinutesAgentV2");
@@ -53,11 +55,9 @@ const { timedStepCoverage } = require("./meetingMinutesTimedStepCoverage");
 function createOriginalDiscovery(services) {
   const {
     awaitPrivateStagedCandidateLedger,
-    cachedStagedCandidatesForStage,
     dedupeActionDiscoveryInventory,
     deterministicHybridLedger,
     enrichDiscussionEvidenceFromDispositions,
-    hybridCandidateLedgerFromResult,
     meetingAgentTopicSegmentsEnabled,
     meetingMinutesAgentAnchoredActionEnabled,
     meetingMinutesAgentAnchoredActionPrompt,
@@ -72,7 +72,6 @@ function createOriginalDiscovery(services) {
     meetingMinutesAgentRefereeRepairPrompt,
     meetingMinutesAgentTopicNamingPrompt,
     meetingMinutesDiscussionActionCandidatesEnabled,
-    peekReadyPrivateStagedCandidateLedger,
     reconstructRefereeActions,
   } = services;
 

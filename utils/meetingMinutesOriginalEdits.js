@@ -14,7 +14,8 @@ const {
 } = require('./meetingMinutesReviewFlags');
 const { resolveEvidence } = require('./meetingMinutesEvidenceResolution');
 
-const { actionCandidateInventory, discussionCandidateInventory } = require('./meetingMinutesAgentV2');
+const { actionCandidateInventory } = require('./meetingMinutesActionCandidateInventory');
+const { discussionCandidateInventory } = require('./meetingMinutesAgentV2');
 const { normaliseAgentResult } = require('./meetingMinutesResultNormalization');
 const { stripMeetingTitleReferences } = require('./canonicalMinutes/referenceText');
 const { safeLogError } = require('./apiErrors');

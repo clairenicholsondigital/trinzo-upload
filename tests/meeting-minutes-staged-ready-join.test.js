@@ -1,7 +1,8 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const api=require('../routes/api').stagedEvaluation;
-const source=fs.readFileSync(require.resolve('../routes/api'),'utf8');
+const prewarmSource=fs.readFileSync(require.resolve('../utils/meetingMinutesCandidatePrewarm'),'utf8');
+const ledgerSource=fs.readFileSync(require.resolve('../utils/meetingMinutesCandidateLedger'),'utf8');
 const runtimeSource=fs.readFileSync(require.resolve('../utils/meetingMinutesGenerationRuntime'),'utf8');
 function productionFunction(text,name){
   let start=text.indexOf('function '+name+'(');
@@ -23,7 +24,7 @@ function harness(){
     withPrivateStagedCandidateSlot:task=>task(),buildPrivateStagedCandidateLedger:()=>{calls++;return pending;}});
   vm.runInContext(productionFunction(runtimeSource,'prunePrivateStagedCandidateCache'),context);
   for(const name of ['startPrivateStagedCandidateLedger','awaitPrivateStagedCandidateLedger','peekReadyPrivateStagedCandidateLedger']) {
-    vm.runInContext(productionFunction(source,name),context);
+    vm.runInContext(productionFunction(name==='peekReadyPrivateStagedCandidateLedger'?ledgerSource:prewarmSource,name),context);
   }
   const rows=api.stagedCandidateLedgerFromResult({discussion:[],objectives:[],actions:[{id:'report',action:'Prepare the report.',owners:['Morgan'],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:['T0001'],reviewFlagIds:[]}]},d);
   const freeze=(current=[])=>{
@@ -81,4 +82,112 @@ test('an existing ensemble is not replaced and peeking does not mutate reviewer 
   h.d.actions=[{id:'manual',action:'Reviewer-owned instruction.',reviewerAuthored:true}];const before=structuredClone(h.d);
   const own=[{candidateId:'existing'}],frozen=h.freeze(own);
   assert.deepEqual(frozen.rows,own);assert.equal(frozen.audit.adoptedWithoutWait,false);assert.deepEqual(h.d,before);
+});
+
+// Load the actual process owner with controlled extractor/provider I/O. Canonical
+// policies and shared cache identities are retained; no network or subprocess runs.
+function lifecycleHarness(t) {
+  const runtime=require('../utils/meetingMinutesGenerationRuntime');
+  const previousStaged=new Map(runtime.privateStagedCandidateCache);
+  const previousPrimary=new Map(runtime.privateActionPrimaryCache);
+  runtime.privateStagedCandidateCache.clear();runtime.privateActionPrimaryCache.clear();
+  t.after(()=>{
+    runtime.privateStagedCandidateCache.clear();runtime.privateActionPrimaryCache.clear();
+    for(const [key,value] of previousStaged)runtime.privateStagedCandidateCache.set(key,value);
+    for(const [key,value] of previousPrimary)runtime.privateActionPrimaryCache.set(key,value);
+  });
+  const extracted=[],requested=[],fallback=[];
+  const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
+  const actualRequire=require('node:module').createRequire(require.resolve('../utils/meetingMinutesCandidatePrewarm'));
+  const context={module:{exports:{}},console,structuredClone,setTimeout,clearTimeout,
+    process:{env:{...process.env,MEETING_MINUTES_AGENT_STAGED_CANDIDATE_CONCURRENCY:'1'}},
+    require(name){
+      if(name==='./stagedMiniLmTrooper')return {generatePreparedTrooperStage(stage,transcript,options){
+        const pending=deferred();extracted.push({stage,transcript,options,...pending});return pending.promise;
+      }};
+      if(name==='./meetingMinutesAgentTransport')return {askPowerAutomateMeetingMinutesAgentWithRetry(prompt,options){
+        const pending=deferred();requested.push({prompt,options,...pending});return pending.promise;
+      }};
+      return actualRequire(name);
+    }};
+  vm.runInNewContext(prewarmSource,context,{filename:require.resolve('../utils/meetingMinutesCandidatePrewarm')});
+  const owned=context.module.exports;
+  const prewarm=owned.createMeetingMinutesCandidatePrewarm(async(...args)=>{
+    fallback.push(args);return {state:{discussion:[],actions:[],summary:{}}};
+  });
+  return {runtime,prewarm,extracted,requested,fallback,
+    state:()=>JSON.parse(JSON.stringify(owned.privateStagedCandidateQueueState())),
+    tick:()=>new Promise(resolve=>setImmediate(resolve))};
+}
+
+test('actual prewarm queue preserves discussion priority, FIFO, capacity and release after failure',async t=>{
+  const h=lifecycleHarness(t);
+  const input=label=>({...draft(),draftId:label,transcriptSha256:label,
+    sourceUnits:[{...draft().sourceUnits[0],text:'I will prepare the report. '+label}]});
+  const first=h.prewarm.startPrivateStagedCandidateLedger(input('active'),'actions');
+  const failed=assert.rejects(first,/controlled extractor failure/);
+  const action=h.prewarm.startPrivateStagedCandidateLedger(input('queued-action'),'actions');
+  const discussionA=h.prewarm.startPrivateStagedCandidateLedger(input('discussion-first'),'discussion');
+  const discussionB=h.prewarm.startPrivateStagedCandidateLedger(input('discussion-second'),'discussion');
+  await h.tick();
+  assert.deepEqual(h.state(),{stagedActive:1,stagedQueued:3});
+  assert.equal(h.extracted.length,1);
+  h.extracted[0].reject(Error('controlled extractor failure'));await failed;await h.tick();
+  assert.match(h.extracted[1].transcript,/discussion-first/);
+  assert.deepEqual(h.state(),{stagedActive:1,stagedQueued:2});
+  h.extracted[1].resolve({screens:{discussion:[]}});await discussionA;await h.tick();
+  assert.match(h.extracted[2].transcript,/discussion-second/);
+  h.extracted[2].resolve({screens:{discussion:[]}});await discussionB;await h.tick();
+  assert.match(h.extracted[3].transcript,/queued-action/);
+  assert.deepEqual(h.extracted.map(row=>row.stage),['actions','discussion','discussion','actions']);
+  assert.deepEqual(h.state(),{stagedActive:1,stagedQueued:0});
+  h.extracted[3].resolve({screens:{actions:[]}});await action;await h.tick();
+  assert.deepEqual(h.state(),{stagedActive:0,stagedQueued:0});
+  const value={...draft(),fileName:'fallback.txt'};
+  assert.deepEqual(await h.prewarm.buildPrivateStagedCandidateLedger(value),[]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.fallback)),[[value.preparedTranscript,{fileName:'fallback.txt'}]]);
+});
+
+test('actual Primary prewarm deduplicates requests and preserves cache identity, expiry and failure recovery',async t=>{
+  const h=lifecycleHarness(t),value=draft();
+  const response={result:{actions:[],discussion:[]},timings:[{elapsedMs:1,ok:true}]};
+  const key=input=>api.meetingAgentPassCacheKey(h.runtime.meetingAgentActionPrimaryPromptForDraft(input));
+  const first=h.prewarm.startPrivateActionPrimaryPrewarm(value);
+  assert.equal(h.prewarm.startPrivateActionPrimaryPrewarm(value),first);
+  assert.equal(h.requested.length,1);
+  assert.equal(typeof h.requested[0].options.validateResult,'function');
+  h.requested[0].resolve(response);const ready=await first;
+  assert.equal(await h.prewarm.usePrivateActionPrimaryPrewarm(value,h.requested[0].prompt),ready);
+  assert.equal(h.requested.length,1);
+  for(const changed of [
+    {...value,preparedTranscript:value.preparedTranscript+' Updated source.'},
+    {...value,steer:'Check the approval dependency.'},
+    {...value,details:{...value.details,meetingDate:'2026-06-18'}}
+  ]){
+    const before=h.requested.length,promise=h.prewarm.startPrivateActionPrimaryPrewarm(changed);
+    assert.equal(h.requested.length,before+1);
+    assert.notEqual(key(changed),key(value));
+    h.requested.at(-1).resolve(response);await promise;
+  }
+  const originalKey=key(value);
+  h.runtime.privateActionPrimaryCache.get(originalKey).expiresAt=Date.now()-1;
+  const expired=h.prewarm.startPrivateActionPrimaryPrewarm(value);
+  const oldFailure=assert.rejects(expired,/older request failed/);
+  const replacement={expiresAt:Date.now()+60000,status:'ready',promise:Promise.resolve(ready)};
+  h.runtime.privateActionPrimaryCache.set(originalKey,replacement);
+  h.requested.at(-1).reject(Error('older request failed'));await oldFailure;
+  assert.equal(h.runtime.privateActionPrimaryCache.get(originalKey),replacement);
+  assert.equal(h.prewarm.startPrivateActionPrimaryPrewarm(value),replacement.promise);
+  const retryInput={...value,steer:'Recover a failed request.'};
+  const pending=h.prewarm.startPrivateActionPrimaryPrewarm(retryInput);
+  const failed=assert.rejects(pending,/retryable fixture failure/);
+  h.requested.at(-1).reject(Error('retryable fixture failure'));await failed;
+  assert.equal(h.runtime.privateActionPrimaryCache.has(key(retryInput)),false);
+  const beforeRetry=h.requested.length,retry=h.prewarm.startPrivateActionPrimaryPrewarm(retryInput);
+  assert.equal(h.requested.length,beforeRetry+1);
+  h.requested.at(-1).resolve(response);await retry;
+  const safeInput={...value,steer:'Optional failed adoption.'};
+  const safe=h.prewarm.usePrivateActionPrimaryPrewarm(safeInput,h.runtime.meetingAgentActionPrimaryPromptForDraft(safeInput));
+  h.requested.at(-1).reject(Error('optional fixture failure'));
+  assert.equal(await safe,null);
 });
