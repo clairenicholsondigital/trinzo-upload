@@ -228,12 +228,12 @@ test('real requires and quoted source or fixture readers retain their consumers'
   write('tests/source-reader.test.js', "require('../utils/source-reader');");
   write('utils/source-reader.js', [
     "require('./actual-input');",
-    "fs.readFileSync(path.join(__dirname, 'fixtures', 'joined-source.json'), 'utf8');",
+    "fs.readFileSync(path.join(root, 'dynamic-inputs', 'joined-source.json'), 'utf8');",
     'fs.readFileSync("fixtures/double-quoted.json", "utf8");',
     "fs.readFileSync('fixtures/with\\'quote/escaped-quote.json', 'utf8');"
   ].join('\n'));
   write('utils/actual-input.js', '');
-  for (const file of ['utils/actual-input.js', 'tests/fixtures/joined-source.json',
+  for (const file of ['utils/actual-input.js', 'tests/dynamic-inputs/joined-source.json',
     'tests/fixtures/double-quoted.json', 'tests/fixtures/escaped-quote.json']) {
     const result = select([file]);
     assert.deepEqual({ files: result.files, python: result.python, integrationRequired: result.integrationRequired },
