@@ -1026,11 +1026,30 @@ supporting hidden checkout directories. Production file-serving policy stays
 unchanged. All 26 prompts, frontend assets, public routes/exports, saved formats,
 renderers, provider configuration and Python runtime remain unchanged.
 
-The real embedding worker/composition boundary and canonical staged processing,
-evaluation and queued ingestion remain unfinished. Test consumers still need
-ownership review so ordinary helper edits trigger relevant checks without
-losing explicit API/V2 compatibility coverage. Frozen release/deployment
-acceptance is required for this batch.
+## Canonical staged processing
+
+`utils/stagedMinutesContext.js` owns shared transcript preparation, people aliases
+and text/evidence cleanup, including the single private people-registry cache.
+`utils/stagedMinutesCanonicalResponse.js` owns the complete canonical response,
+its provider/worker calls, presentation and diagnostics, and the private serving
+revision cache. Response imports Context; neither module imports API or V2.
+The API retains its existing routes and compatibility exports. The 43 existing
+declarations relocate with their bodies and prompts unchanged; this is ownership
+separation, not implementation deletion or decomposition of the response's
+internal phases.
+
+Evaluation still uses the canonical response. Queued Discussion and Actions
+still use the measured MiniLM/Trooper path; the other queued stage branch calls
+the same canonical response. The five genuine Original prewarm/embedding-worker
+ports remain. Their composition, evaluation and queued ingestion are later
+ownership areas.
+
+The preceding helper-consumer cleanup redirected 52 existing test files to actual
+helper owners while preserving a deliberate API-initialization guard. Existing
+source-reading checks now follow the staged implementations' owners; runtime
+route and facade checks retain their original entry points. No existing case or
+assertion is retired by these changes. Release checks follow the actual Git diff
+and include compact coverage and required disposable-database fixtures.
 
 ## Evidence and limits
 
