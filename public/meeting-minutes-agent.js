@@ -11,6 +11,8 @@
   // Index 1 is left reserved so drafts saved under the six-step numbering still
   // resolve to the right screen.
   var MAX_STEP = 5;
+  // Autosave waits for a pause in typing before writing.
+  var SAVE_DEBOUNCE_MS = 1500;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 3000;
   var GENERATION_RETRY_MS = 8000;
@@ -77,7 +79,8 @@
 
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
-    if (mustKeepTabOpen(kind) && message && !/tab open/i.test(message)) message += ' Keep this tab open until it saves.';
+    // The status stays short. Asking the reviewer to keep the tab open is
+    // left to the browser's own leave warning (beforeunload).
     var strip = document.getElementById('saveStrip');
     strip.hidden = !state.draft;
     strip.dataset.state = kind || '';
@@ -136,6 +139,25 @@
     var download = document.getElementById('downloadDraft');
     if (download) download.hidden = state.currentStep === MAX_STEP;
     updateDraftDownloadState();
+    // The document has one bar: save state and checks on the left, Preview
+    // and Finalise on the right.
+    var doc = inDocumentMode();
+    var finalise = document.getElementById('finaliseMinutes');
+    if (finalise) finalise.hidden = !doc || finalComplete;
+    if (doc) {
+      if (download) download.hidden = true;
+      if (undo) undo.hidden = true;
+      if (redo) redo.hidden = true;
+      if (preview) {
+        var previewing = document.body.classList.contains('doc-preview');
+        preview.hidden = false;
+        var previewLabel = previewing ? 'Back to editing' : 'Preview';
+        preview.querySelector('.wide-label').textContent = previewLabel;
+        preview.querySelector('.narrow-label').textContent = previewing ? 'Edit' : 'Preview';
+        preview.setAttribute('aria-label', previewLabel);
+        preview.querySelector('.ic use').setAttribute('href', previewing ? '#i-arrow-left' : '#i-eye');
+      }
+    }
   }
 
   function generationStageLabel(stage) {
@@ -241,7 +263,7 @@
     endUndoGroup();
     pendingReviewDecisionLabel = formatReviewDecisionLabel(label || 'Review decision').slice(0, 160);
     editVersion += 1;
-    setSaveStatus('Saving review decision...', 'saving');
+    setSaveStatus('Saving…', 'saving');
     saveDraftNow().catch(function (error) { setStatus(error.message, true, currentStageName()); });
   }
 
@@ -271,7 +293,7 @@
   var EMPTY_ROW_NOTICE = 'Empty rows stay in this tab until you type into them.';
 
   function generationSaveText(running) {
-    if (pendingGenerationEdits) return 'Generation continues if you close this tab, but your latest edits are waiting to save. Keep this tab open until they are saved.';
+    if (pendingGenerationEdits) return 'Waiting to save until generation finishes…';
     if (hasTransientEditorState()) return EMPTY_ROW_NOTICE;
     return 'Everything is saved. You can close the tab' + (running === false ? '.' : ' - generation carries on without it.');
   }
@@ -721,6 +743,8 @@
   function showStep(index, options) {
     var leavingStep = state.currentStep;
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    if (inDocumentMode()) state.currentStep = MAX_STEP;
+    else if (state.currentStep !== MAX_STEP || !documentReady()) structureStep = state.currentStep;
     // The upload confirmation belongs to the moment after upload; moving on
     // to another screen is the reviewer saying they have read it.
     if (state.currentStep !== 0) hideUploadConfirmation();
@@ -771,10 +795,14 @@
     // Deliberate navigation is useful to remember, but it is not user work and
     // must not produce a warning that implies generation needs this tab. Save
     // the position after the generation write if the tab is still open.
-    if (!rendering && stepChanged && !(options && options.persist === false)) {
-      if (generationRunning()) pendingGenerationNavigation = true;
-      else scheduleSave();
-    }
+    // Moving between screens is not an edit, so it never starts a save. The
+    // selected screen is sent with the next content save; an edit still
+    // waiting for its pause in typing is sent now, so leaving cannot lose it.
+    if (!rendering && stepChanged && savePending && !draftWritesInFlight && !generationRunning()) saveDraftNow();
+    // The screen is remembered in this browser, so reopening the draft comes
+    // back to it without a save.
+    if (!rendering && stepChanged && state.draft && !inDocumentMode()) rememberStep(state.draft.draftId, state.currentStep);
+
     // Deliberate navigation goes to the beginning of the newly opened section.
     // Autosave normally preserves the reader's position, but while this move is
     // settling it must not restore the position from the previous section.
@@ -942,11 +970,56 @@
     });
   }
 
+  /* ------------------------------------------------------------------ *
+   * Outdated sections.
+   * A section whose inputs changed since it was generated says so under its
+   * own heading, with a link to regenerate it. The reviewer can dismiss the
+   * link; the dismissal is kept per draft in this browser.
+   * ------------------------------------------------------------------ */
+  var STALE_LINK_TEXT = {
+    actions: { lead: 'Discussion changed', link: 'regenerate actions?' },
+    summary: { lead: 'Minutes changed', link: 'regenerate the summary?' },
+    discussion: { lead: 'Details changed', link: 'regenerate the discussion?' }
+  };
+
+  function staleDismissKey() { return 'mma-stale-dismissed:' + ((state.draft && state.draft.draftId) || ''); }
+
+  function staleDismissed() {
+    try { return JSON.parse(window.localStorage.getItem(staleDismissKey()) || '{}') || {}; } catch (error) { return {}; }
+  }
+
+  function setStaleDismissed(stage, dismissed) {
+    var value = staleDismissed();
+    if (dismissed) value[stage] = true; else delete value[stage];
+    try { window.localStorage.setItem(staleDismissKey(), JSON.stringify(value)); } catch (error) { /* private mode */ }
+  }
+
+  function visibleStaleStages() {
+    if (!state.draft) return [];
+    var stale = state.draft.staleStages || [];
+    var dismissed = staleDismissed();
+    // Once a stage is up to date again, forget its dismissal so the next
+    // change is announced.
+    Object.keys(dismissed).forEach(function (stage) { if (stale.indexOf(stage) === -1) setStaleDismissed(stage, false); });
+    return stale.filter(function (stage) { return STALE_LINK_TEXT[stage] && !dismissed[stage]; });
+  }
+
+  function staleLinkHtml(stage) {
+    if (visibleStaleStages().indexOf(stage) === -1) return '';
+    var text = STALE_LINK_TEXT[stage];
+    return '<p class="section-stale" data-stale-link="' + stage + '"><span class="stale-dot" aria-hidden="true"></span><span>' + escapeHtml(text.lead) + ' — <button type="button" class="link-button" data-update-stale-stage="' + stage + '">' + escapeHtml(text.link) + '</button></span>'
+      + '<button type="button" class="stale-dismiss" data-dismiss-stale="' + stage + '" aria-label="Dismiss" title="Dismiss">&times;</button></p>';
+  }
+
   function renderStaleNotice() {
     var notice = document.getElementById('staleNotice');
     if (!notice || !state.draft) return;
     var stale = state.draft.staleStages || [];
-    notice.hidden = !stale.length;
+    // The old page-wide banner is retired; each affected section says so instead.
+    notice.hidden = true;
+    document.querySelectorAll('[data-stale-slot]').forEach(function (slot) {
+      slot.innerHTML = staleLinkHtml(slot.dataset.staleSlot);
+    });
     var stages = document.getElementById('staleStages');
     if (stages) stages.textContent = stale.join(' and ');
     var actions = document.getElementById('staleStageActions');
@@ -1217,15 +1290,94 @@
     renderPageHeading();
   });
 
+  /* ------------------------------------------------------------------ *
+   * Document mode.
+   * Once a transcript has been processed, the page is one document with
+   * click-to-edit text. The step screens stay available behind the
+   * "Edit structure" toggle, which is remembered per draft in this browser
+   * and never saved to the draft.
+   * ------------------------------------------------------------------ */
+  var structureStep = 2;
+
+  function documentReady() {
+    var draft = state.draft;
+    return Boolean(draft && stageGeneratedAt(draft, 'discussion') && stageGeneratedAt(draft, 'actions'));
+  }
+
+  function editStructureKey() { return 'mma-edit-structure:' + ((state.draft && state.draft.draftId) || ''); }
+
+  function editStructureOn() {
+    if (!state.draft) return false;
+    var stored = null;
+    try { stored = window.localStorage.getItem(editStructureKey()); } catch (error) { stored = null; }
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+    // With nothing to read in a section, start where it can be built.
+    return !(state.draft.discussion || []).length || !(state.draft.actions || []).length;
+  }
+
+  function inDocumentMode() { return documentReady() && !editStructureOn(); }
+
+  function renderDocumentMode() {
+    var ready = documentReady();
+    var doc = ready && !editStructureOn();
+    document.body.classList.toggle('doc-ready', ready);
+    document.body.classList.toggle('doc-mode', doc);
+    if (!doc) document.body.classList.remove('doc-preview');
+    var toggle = document.getElementById('editStructureToggle');
+    if (toggle) toggle.setAttribute('aria-pressed', String(ready && !doc));
+    var meta = document.getElementById('documentMeta');
+    if (meta) meta.innerHTML = ready ? documentMetaHtml(doc) : '';
+    // Download lives in Preview while the page is one document; the step
+    // screens keep their own Export menu on Review.
+    var exportLabel = document.getElementById('exportMenuLabel');
+    if (exportLabel) exportLabel.textContent = doc ? 'Download' : 'Export';
+    var exportMenu = document.querySelector('.export-menu');
+    var home = doc ? document.getElementById('previewExport') : document.querySelector('.final-actions .spacer');
+    if (exportMenu && home) {
+      if (doc && exportMenu.parentElement !== home) home.appendChild(exportMenu);
+      if (!doc && exportMenu.previousElementSibling !== home) home.insertAdjacentElement('afterend', exportMenu);
+    }
+  }
+
+  function documentMetaHtml(editable) {
+    var details = (state.draft && state.draft.details) || {};
+    var chip = function (field, value, options) {
+      if (!editable) return '<span class="meta-chip">' + escapeHtml(options.displayValue || value || options.empty) + '</span>';
+      return '<span class="meta-chip">' + finalTextEditor('details', 'meeting-details', field, value, options) + '</span>';
+    };
+    var typeLabel = meetingTypeLabel(details.meetingType) || 'Meeting type not set';
+    return chip('meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Date not set'})
+      + '<span class="meta-sep" aria-hidden="true">·</span>'
+      + chip('meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Location not set'})
+      + '<span class="meta-sep" aria-hidden="true">·</span>'
+      + '<span class="meta-chip">' + escapeHtml(typeLabel) + '</span>';
+  }
+
+  function setEditStructure(on) {
+    var top = window.scrollY;
+    try { window.localStorage.setItem(editStructureKey(), on ? '1' : '0'); } catch (error) { /* private mode */ }
+    readEditors();
+    activeFinalEdit = null;
+    if (on) showStep(structureStep === MAX_STEP ? 2 : structureStep, { persist: false });
+    else { renderFinal(); showStep(MAX_STEP, { persist: false }); }
+    renderDocumentMode();
+    if (!on) renderFinal();
+    // The page keeps its place: toggling is not navigation.
+    window.scrollTo({ top: top, behavior: 'auto' });
+  }
+
   function renderPageHeading() {
     var title = document.getElementById('pageTitle');
     if (!title) return;
     var method = document.getElementById('generationMethod');
-    if (method) method.hidden = !isParallelDraft();
+    if (method) method.hidden = true;
     renderBetaFlow();
     var details = state.draft && state.draft.details;
-    title.textContent = state.draft && details && String(details.meetingTitle || '').trim()
+    var text = state.draft && details && String(details.meetingTitle || '').trim()
       ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
+    if (inDocumentMode()) title.innerHTML = finalTextEditor('details', 'meeting-details', 'meetingTitle', text, {singleLine:true,label:'Edit meeting title'});
+    else title.textContent = text;
   }
 
   var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
@@ -2634,7 +2786,7 @@
     var include = includedSectionState();
     var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
     var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
-      + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+      + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + staleLinkHtml('summary') + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
       var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
@@ -2651,9 +2803,23 @@
         + cell('timing', finalTimingDisplay(action)) + '</tr>'
         + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
-    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>' + finalAttendeesHtml(details) + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
-    var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
+    var documentHead = inDocumentMode()
+      ? (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
+      : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
+    document.getElementById('finalDocument').innerHTML = documentHead + (inDocumentMode() ? '<section class="final-attendees"><h3>Attendees</h3>' + finalAttendeesHtml(details) + '</section>' : finalAttendeesHtml(details)) + summaryHtml + '<section><h3>Meeting content</h3>' + staleLinkHtml('discussion') + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3>' + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    renderPageHeading();
+    var meta = document.getElementById('documentMeta');
+    if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
+    var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
+  }
+
+  function finalHintDismissed() {
+    try { return window.localStorage.getItem('mma-final-hint-dismissed') === '1'; } catch (error) { return false; }
+  }
+
+  function finalDetailsLines(details) {
+    return '<p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>';
   }
 
   function renderParallelControls() {
@@ -2765,6 +2931,8 @@
     } else document.getElementById('staleNotice').hidden = true;
     // The Review page's document is built on entry; a draft resumed on Review
     // (or re-rendered while it is open) must build it too.
+    if (inDocumentMode()) state.currentStep = MAX_STEP;
+    renderDocumentMode();
     if (state.draft && state.currentStep === MAX_STEP) renderFinal();
     showStep(state.draft ? state.currentStep : 0, { persist: false });
     renderGenerationProgress();
@@ -2915,8 +3083,9 @@
     // On the initial load, restore the separately persisted selected screen;
     // older drafts fall back to their furthest unlocked step.
     if (!replacingExistingDraft) {
-      state.currentStep = Math.max(0, Math.min(MAX_STEP,
-        Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0));
+      var remembered = rememberedStep(draft.draftId);
+      state.currentStep = Math.max(0, Math.min(MAX_STEP, remembered != null ? remembered
+        : Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0));
     }
     renderAll();
     // A reload in the middle of a run must not look dead.
@@ -2935,6 +3104,16 @@
     if (!(options && options.skipAutomaticProposal) && state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) {
       window.setTimeout(applyPendingProposalAutomatically, 0);
     }
+  }
+
+  function rememberStep(draftId, step) {
+    try { window.localStorage.setItem('mma-step:' + draftId, String(step)); } catch (error) { /* private mode */ }
+  }
+
+  function rememberedStep(draftId) {
+    var value = null;
+    try { value = window.localStorage.getItem('mma-step:' + draftId); } catch (error) { value = null; }
+    return value === null || value === '' || isNaN(Number(value)) ? null : Number(value);
   }
 
   function readEditors() {
@@ -3002,11 +3181,11 @@
       return;
     }
     savePending = true;
-    setSaveStatus('Saving draft...', 'dirty');
+    setSaveStatus('Saving…', 'dirty');
     // Held until the operation finishes, then sent against the revision it
     // produced rather than the one it replaced.
     if (draftWritesInFlight) return;
-    saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
+    saveTimer = window.setTimeout(function () { saveDraftNow(); }, SAVE_DEBOUNCE_MS);
   }
 
   // Absorb the one revision conflict the reviewer should never be asked about:
@@ -3049,7 +3228,7 @@
     readEditors();
     var requestEditVersion = editVersion;
     var reviewDecisionLabel = pendingReviewDecisionLabel;
-    setSaveStatus('Saving...', 'saving');
+    setSaveStatus('Saving…', 'saving');
     saveInFlight = withBackgroundMerge(function () {
       return jsonRequest(draftUrl(), {
         method: 'PATCH',
@@ -3065,7 +3244,7 @@
         state.draft.updatedAt = payload.draft.updatedAt;
         state.draft.lastUndo = payload.draft.lastUndo;
         if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
-        setSaveStatus('Saving draft...', 'dirty');
+        setSaveStatus('Saving…', 'dirty');
         return state.draft;
       }
       pendingGenerationEdits = false;
@@ -4378,7 +4557,7 @@
   function applyFinalEdit() {
     if (!activeFinalEdit || !state.draft) return false;
     var edit = activeFinalEdit;
-    var editor = document.querySelector('#finalDocument [data-final-editor]');
+    var editor = document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]');
     if (!editor) return false;
     var valueControl = editor.querySelector('[data-final-editor-value]');
     var value = valueControl ? valueControl.value.trim() : '';
@@ -4432,7 +4611,7 @@
     return true;
   }
 
-  document.getElementById('finalDocument').addEventListener('click', function (event) {
+  function onFinalDocumentClick(event) {
     var removeOwner = event.target.closest('[data-final-remove-owner]');
     if (removeOwner && activeFinalEdit && activeFinalEdit.field === 'owners') {
       activeFinalEdit.ownerSelection = (activeFinalEdit.ownerSelection || []).filter(function (owner) {
@@ -4456,6 +4635,11 @@
     }
     if (event.target.closest('[data-final-cancel]')) { activeFinalEdit = null; renderFinal(); return; }
     if (event.target.closest('[data-final-save]')) applyFinalEdit();
+  }
+  // The document header (title, date, location) edits the same way as the body.
+  document.getElementById('finalDocument').addEventListener('click', onFinalDocumentClick);
+  document.getElementById('documentHeader').addEventListener('click', function (event) {
+    if (event.target.closest('[data-final-edit],[data-final-cancel],[data-final-save]')) onFinalDocumentClick(event);
   });
 
   document.getElementById('finalDocument').addEventListener('change', function (event) {
@@ -4469,13 +4653,46 @@
     renderFinal();
   });
 
-  document.getElementById('finalDocument').addEventListener('keydown', function (event) {
+  function onFinalDocumentKeydown(event) {
     if (event.key === 'Escape' && activeFinalEdit) { event.preventDefault(); activeFinalEdit = null; renderFinal(); }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && activeFinalEdit) { event.preventDefault(); applyFinalEdit(); }
+    // A single-line field in the header saves on Enter.
+    if (event.key === 'Enter' && !event.shiftKey && activeFinalEdit && event.target.matches('#documentHeader input[data-final-editor-value]')) { event.preventDefault(); applyFinalEdit(); }
+  }
+  document.getElementById('finalDocument').addEventListener('keydown', onFinalDocumentKeydown);
+  document.getElementById('documentHeader').addEventListener('keydown', onFinalDocumentKeydown);
+
+  document.getElementById('editStructureToggle').addEventListener('click', function () {
+    setEditStructure(!editStructureOn() || !documentReady() ? true : false);
+  });
+
+  document.addEventListener('click', function (event) {
+    var update = event.target.closest('[data-update-stale-stage]');
+    if (update && !update.closest('#staleStageActions')) { requestBackgroundStage(update.dataset.updateStaleStage, { regenerate: true }); return; }
+    var dismiss = event.target.closest('[data-dismiss-stale]');
+    if (dismiss) { setStaleDismissed(dismiss.dataset.dismissStale, true); renderStaleNotice(); if (state.currentStep === MAX_STEP) renderFinal(); return; }
+    if (event.target.closest('[data-dismiss-final-hint]')) {
+      try { window.localStorage.setItem('mma-final-hint-dismissed', '1'); } catch (error) { /* private mode */ }
+      var hint = document.querySelector('[data-final-hint]');
+      if (hint) hint.remove();
+      return;
+    }
+    if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); }
+  });
+
+  document.getElementById('finaliseMinutes').addEventListener('click', function () {
+    document.body.classList.remove('doc-preview');
+    document.getElementById('saveMinutes').click();
   });
 
   function openReviewTarget(targetButton) {
     var elementId = targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget || targetButton.dataset.viewCoverageAction;
+    // Until the checks point into the document itself, a check that lives on
+    // a step screen opens the structure view at that item.
+    if (targetButton.dataset.targetStep !== undefined && inDocumentMode() && Number(targetButton.dataset.targetStep) !== MAX_STEP) {
+      structureStep = Number(targetButton.dataset.targetStep);
+      setEditStructure(true);
+    }
     if (targetButton.dataset.targetStep !== undefined) showStep(Number(targetButton.dataset.targetStep), { scroll:true });
     window.setTimeout(function () {
         var target = document.getElementById(elementId);
@@ -4547,6 +4764,13 @@
   });
 
   document.getElementById('previewDocument').addEventListener('click', function () {
+    if (inDocumentMode()) {
+      // In the document, Preview shows the minutes read-only with Download.
+      readEditors(); activeFinalEdit = null;
+      document.body.classList.toggle('doc-preview');
+      renderFinal(); updateFinishingBar();
+      return;
+    }
     if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
     readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});
   });

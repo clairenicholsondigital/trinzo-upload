@@ -298,6 +298,13 @@ function startStubServer() {
     evidenceIds: ['T0002'], status: 'open', correctionNote: ''
   }];
   drafts.set('unlinked-warning', unlinkedWarning);
+  // A fully processed draft opens as one document.
+  const documentDraft = baseDraft('document', false);
+  documentDraft.currentStep = 5; documentDraft.selectedStep = 5;
+  documentDraft.generatedStages = { discussion: '2026-09-16T12:00:00.000Z', actions: '2026-09-16T12:00:00.000Z', summary: '2026-09-16T12:00:00.000Z' };
+  documentDraft.staleStages = ['actions'];
+  documentDraft.executiveSummary = 'The team agreed the revised report is ready.';
+  drafts.set('document', documentDraft);
   const layout = baseDraft('layout', false);
   layout.currentStep = 5;
   layout.selectedStep = 4;
@@ -934,7 +941,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 2);
     // The autosave succeeded, but the blank row still lives only in this tab:
     // the status must keep saying so and the resume link must stay hidden.
-    assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
+    await page.waitForFunction(() => /stay in this tab/i.test(document.getElementById('saveStatus').textContent));
 
     await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-edit-owners]');
@@ -1231,6 +1238,9 @@ test('an opened transcript panel survives a re-render, and each step remembers i
       await page.keyboard.press('Enter');
       await page.waitForSelector('[data-screen="' + step + '"].active');
     };
+    // Without the old page-wide banner this short fixture needs a shorter
+    // window to have room to scroll.
+    await page.setViewportSize({ width: 1280, height: 560 });
     await page.mouse.wheel(0, 220);
     await page.waitForFunction(() => window.scrollY >= 200);
     const before = await page.evaluate(() => window.scrollY);
@@ -1438,7 +1448,7 @@ test('a typing burst is one undo step, and a second field starts another', { tim
       await page.keyboard.type(word, { delay: 15 });
       await page.waitForTimeout(120);
     }
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1900);
     const afterFirst = await historyCount();
     assert.equal(afterFirst - before, 1, 'one burst is one step, not one per autosave');
     assert.match(await page.textContent('#undoLastDecision'), /Undo: edit action/i);
@@ -1447,7 +1457,7 @@ test('a typing burst is one undo step, and a second field starts another', { tim
     await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-timing-date]');
     await page.fill('#actionsBody [data-action-row="0"] [data-timing-date]', '2026-10-01');
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1900);
     assert.equal(await historyCount() - afterFirst, 1, 'another field is another step');
     assert.match(await page.textContent('#undoLastDecision'), /Undo: change timing/i);
 
@@ -1506,7 +1516,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.match(await page.textContent('#saveStatus'), /Everything is saved.*generation carries on without it/i,
       'navigation alone does not pretend the background run depends on this tab');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /Generation continues if you close this tab.*latest edits are waiting to save.*Keep this tab open until they are saved/i);
+    assert.match(await page.textContent('#saveStatus'), /Waiting to save until generation finishes/i);
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
@@ -1743,18 +1753,17 @@ test('selected stage and deletions survive save responses, navigation and reopen
         && response.request().method() === 'PATCH');
     await page.click('#actionsBody [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
-    const navigationSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
-      && response.request().method() === 'PATCH' && response.request().postDataJSON().selectedStep === 2);
-    await page.click('[data-step="2"]');
     await actionDeleteSave;
-    await navigationSave;
+    // Moving to another screen is not an edit, so it sends nothing; the
+    // screen is remembered in this browser instead.
+    await page.click('[data-step="2"]');
+    await page.waitForTimeout(400);
 
     const stateAfterActionDelete = await page.evaluate(async () => await (await fetch('/test-state/editor')).json());
     const savedAfterActionDelete = stateAfterActionDelete.draft;
     assert.equal(stateAfterActionDelete.lastPatch.actions.length, 0);
     assert.equal(savedAfterActionDelete.actions.length, 0);
     assert.equal(savedAfterActionDelete.currentStep, 3, 'furthest unlocked stage remains Actions');
-    assert.equal(savedAfterActionDelete.selectedStep, 2, 'selected Discussion stage is stored separately');
     assert.equal(savedAfterActionDelete.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'dismissed');
 
     await page.reload();
@@ -1836,11 +1845,21 @@ test('editing the discussion with nothing running marks the existing Actions out
     const launched = await launchPage(port, 'editor');
     browser = launched.browser;
     const { page, errors } = launched;
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'no warning before any edit');
+    const actionsLink = page.locator('[data-stale-slot="actions"] [data-stale-link="actions"]');
+    assert.equal(await actionsLink.count(), 0, 'no warning before any edit');
     await page.click('[data-step="2"]');
     await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation next week.');
-    assert.equal(await page.locator('#staleNotice').isVisible(), true, 'a material discussion edit warns immediately');
-    assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.equal(await actionsLink.count(), 1, 'a material discussion edit marks the Actions section immediately');
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'the page-wide banner is retired');
+    await page.click('[data-step="3"]');
+    assert.equal(await actionsLink.isVisible(), true);
+    assert.match(await actionsLink.textContent(), /Discussion changed/);
+    // Dismissing it is remembered for this draft.
+    await page.click('[data-stale-slot="actions"] [data-dismiss-stale="actions"]');
+    assert.equal(await actionsLink.count(), 0);
+    await page.reload();
+    await page.waitForSelector('#actionsBody tr');
+    assert.equal(await actionsLink.count(), 0, 'a dismissed link stays dismissed after reload');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -1857,19 +1876,20 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     const { page, errors } = launched;
     await page.click('[data-step="2"]');
     await page.click('#addDiscussion');
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
+    const actionsLink = page.locator('[data-stale-link="actions"]');
+    assert.equal(await actionsLink.count(), 0, 'a blank topic is not a material edit');
     await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
     // Autosave can replace the card between Playwright's stability probe and
     // the click. Dispatch on the current node, as a user click would, instead
     // of retrying a detached copy for the whole default timeout.
     await page.evaluate(() => document.querySelector('[data-delete-topic="1"]')?.click());
     assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
+    assert.equal(await actionsLink.count(), 0, 'deleting a topic that never had text is not a material edit');
     // Deleting a topic that carries real content still is.
     page.once('dialog', (dialog) => dialog.accept());
     await page.click('#discussionList .discussion-card:first-child .topic-menu>summary');
     await page.evaluate(() => document.querySelector('[data-delete-topic="0"]')?.click());
-    assert.equal(await page.locator('#staleNotice').isVisible(), true);
+    assert.equal(await actionsLink.count(), 1);
     assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
   } finally {
@@ -2545,7 +2565,9 @@ test('save and generation panels always show the same leave-safety state', { tim
       save: document.getElementById('saveStatus').textContent,
       generation: document.getElementById('generationLeaveMessage')
     }));
-    assert.match(messages.save, /Keep this tab open/i);
+    // The status stays short; leaving with unsaved work is the browser's
+    // leave warning's job.
+    assert.doesNotMatch(messages.save, /Keep this tab open/i);
     // One message, in one place: there is nothing left that could disagree.
     assert.equal(messages.generation, null);
     assert.deepEqual(errors, []);
@@ -3212,10 +3234,10 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
     assert.equal(await page.locator('#regenerationDialog').isVisible(), false);
 
-    await page.click('[data-step="2"]');
     const started = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/stale-actions/generate-background'));
-    await page.click('[data-update-stale-stage="actions"]');
+    // The offer to redo them sits under the Actions heading.
+    await page.click('[data-stale-slot="actions"] [data-update-stale-stage="actions"]');
     // Asking before replacing work the reviewer may have edited is the point of
     // the dialog, and it is still asked on the path that means "redo this".
     assert.equal(await page.locator('#regenerationDialog').isVisible(), true);
@@ -3223,9 +3245,9 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     assert.equal(await page.textContent('#confirmRegeneration'), 'Regenerate actions');
     await page.click('#confirmRegeneration');
     const response = await started;
-    assert.equal(response.request().postDataJSON().selectedStep, 2);
-    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true,
-      'an Actions run does not drag them off the discussion they were reading');
+    assert.equal(response.request().postDataJSON().selectedStep, 3);
+    assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true,
+      'regenerating keeps them on the screen they were reading');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -3548,6 +3570,8 @@ test('row and topic menus: one open at a time, Esc and outside clicks close them
     const { page, errors } = launched;
     await page.click('[data-step="2"]');
     const openMenus = () => page.locator('details[data-menu][open]').count();
+    // Tall enough that the point menu opens downwards and leaves the topic menu clear.
+    await page.setViewportSize({ width: 1280, height: 1100 });
     const pointMenu = page.locator('#discussionList .record-menu>summary').first();
     const topicMenu = page.locator('#discussionList .topic-menu>summary').first();
 
@@ -3584,6 +3608,62 @@ test('row and topic menus: one open at a time, Esc and outside clicks close them
 
     const headingFocus = await page.evaluate(() => [...document.querySelectorAll('h1,h2,h3')].filter((h) => h.hasAttribute('tabindex')).length);
     assert.equal(headingFocus, 0, 'no heading is focusable');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a processed draft opens as one document with one sticky bar, and Edit structure neither scrolls nor saves', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    const patches = async () => page.evaluate(async () => (await (await fetch('/test-state/document')).json()).patches);
+    await page.waitForSelector('body.doc-mode');
+    assert.equal(await page.locator('[data-screen="5"]').isVisible(), true, 'the document is shown');
+    assert.equal(await page.locator('.steps').isVisible(), false, 'no step tabs');
+    assert.equal(await page.locator('#staleNotice').isVisible(), false, 'no page-wide banner');
+    assert.equal(await page.locator('#generationMethod').isVisible(), false, 'no beta label');
+    assert.ok((await page.locator('#finalDocument').evaluate((node) => node.getBoundingClientRect().width)) <= 760);
+    assert.match(await page.textContent("#documentMeta"), /16 Sept? 2026.*Teams.*Review/);
+    // One bar: save state, checks, Preview and Finalise; nothing else filled.
+    assert.equal(await page.locator('#finaliseMinutes').isVisible(), true);
+    assert.equal(await page.locator('#downloadDraft').isVisible(), false);
+    assert.equal(await page.locator('.final-actions').isVisible(), false);
+    // The outdated Actions are flagged under their own heading.
+    assert.match(await page.textContent('#finalDocument [data-stale-link="actions"]'), /Discussion changed/);
+
+    const before = await patches();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.click('#editStructureToggle');
+    await page.waitForSelector('body:not(.doc-mode)');
+    assert.equal(await page.locator('.steps').isVisible(), true, 'the step screens are behind the toggle');
+    assert.equal(await page.evaluate(() => window.scrollY), 0, 'toggling does not scroll');
+    await page.waitForTimeout(1800);
+    assert.equal(await patches(), before, 'toggling does not save');
+    // Remembered for this draft.
+    await page.reload();
+    await page.waitForSelector('#editStructureToggle[aria-pressed="true"]');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('doc-mode')), false);
+    await page.click('#editStructureToggle');
+    await page.waitForSelector('body.doc-mode');
+
+    // The title edits in place from the document header and saves after a pause.
+    await page.click('#pageTitle [data-final-edit]');
+    await page.fill('#pageTitle input', 'Revised report review');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/document')).json()).draft.details.meetingTitle === 'Revised report review');
+    assert.doesNotMatch(await page.textContent('#saveStatus'), /tab open/i);
+
+    // Preview is read-only and carries Download.
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('#previewBar').isVisible(), true);
+    assert.equal(await page.locator('#previewBar .export-menu').count(), 1);
+    assert.match(await page.textContent('#previewDocument'), /Back to editing/);
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('#previewBar').isVisible(), false);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

@@ -1114,6 +1114,57 @@
   margin:0;padding:.75rem 1rem;border-bottom:1px solid var(--border);background:var(--soft);
   font-size:var(--fs-sm);color:var(--heading)}
 .meeting-agent-page .side-drawer-body{flex:1;overflow:auto;padding:.75rem 1rem;margin:0;border:0;border-radius:0;max-height:none}
+
+/* ------------------------------------------------------ document mode -- */
+/* Once a transcript is processed the page is one document: a header with the
+   title and meta line, the minutes at reading width, and one sticky bar. */
+.meeting-agent-page .document-header-tools{display:none}
+.meeting-agent-page.doc-ready .document-header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.meeting-agent-page.doc-ready .document-header-tools{display:flex;align-items:center;gap:.4rem;flex:none}
+.meeting-agent-page.doc-ready .document-header-main{min-width:0}
+.meeting-agent-page .document-meta{display:none}
+.meeting-agent-page.doc-ready .document-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem .4rem;margin:.3rem 0 0;color:#5B6470;font-size:var(--fs-sm)}
+.meeting-agent-page.doc-ready .hero p.document-meta{display:flex}
+.meeting-agent-page .meta-sep{color:var(--muted)}
+.meeting-agent-page .document-meta .final-inline-editor{display:inline-grid}
+.meeting-agent-page #editStructureToggle[aria-pressed="true"]{border-color:var(--accent);background:var(--brand-050);color:var(--accent)}
+.meeting-agent-page .doc-menu{position:relative}
+.meeting-agent-page .doc-menu>summary{min-width:2.35rem;padding:.35rem .55rem;list-style:none}
+.meeting-agent-page .doc-menu>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .doc-menu-popover{
+  position:absolute;z-index:30;top:calc(100% + .3rem);right:0;width:max-content;min-width:200px;padding:.4rem;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--shadow-lg)}
+.meeting-agent-page .doc-menu-popover>button{width:100%;justify-content:flex-start;white-space:nowrap}
+.meeting-agent-page.doc-mode .steps,
+.meeting-agent-page.doc-mode .mobile-step-picker,
+.meeting-agent-page.doc-mode .final-actions,
+.meeting-agent-page.doc-mode #generationMethod{display:none!important}
+.meeting-agent-page.doc-mode .hero h1 .final-editable{font:inherit}
+.meeting-agent-page.doc-mode [data-screen="5"]{padding:1.25rem 1rem}
+.meeting-agent-page.doc-mode .final-document{max-width:760px}
+.meeting-agent-page.doc-mode .final-document>section:first-of-type{margin-top:.4rem}
+.meeting-agent-page.doc-mode{padding-bottom:calc(56px + 1.6rem)}
+.meeting-agent-page.doc-mode .save-strip{min-height:56px;box-sizing:border-box;width:min(calc(100% - 2rem),760px)}
+.meeting-agent-page .save-strip .finalise-button{height:40px;padding:0 16px;font-size:14px;font-weight:600}
+.meeting-agent-page .preview-bar{display:none}
+.meeting-agent-page.doc-preview .preview-bar{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;max-width:760px;margin:0 auto .75rem;
+  padding:.55rem .75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);font-size:var(--fs-sm)}
+.meeting-agent-page.doc-preview .final-editable{pointer-events:none;border-color:transparent!important;background:transparent!important}
+.meeting-agent-page.doc-preview .final-edit-hint,.meeting-agent-page.doc-preview .section-stale{display:none}
+.meeting-agent-page .preview-bar .export-menu{position:relative}
+.meeting-agent-page .preview-bar .export-menu-body{bottom:auto;top:calc(100% + .4rem)}
+/* An outdated section says so under its heading. */
+.meeting-agent-page .section-stale{
+  display:flex;align-items:center;gap:.45rem;margin:.1rem 0 .6rem;color:var(--warn-text);font-size:var(--fs-sm)}
+.meeting-agent-page .stale-dot{width:.5rem;height:.5rem;border-radius:50%;background:#d99a00;flex:none}
+.meeting-agent-page .link-button{
+  display:inline;padding:0;margin:0;border:0;background:none;color:var(--accent);font:inherit;
+  text-decoration:underline;text-underline-offset:.15em;cursor:pointer}
+.meeting-agent-page .stale-dismiss{
+  display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--muted);font-size:1.05rem;line-height:1;cursor:pointer}
+.meeting-agent-page .stale-dismiss:hover{background:var(--soft-2);color:var(--heading)}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
@@ -1142,14 +1193,17 @@
 <main class="container">
   <nav class="nav" aria-label="Primary navigation"><a href="/meeting-minutes-agent" aria-current="page">Meeting Minutes Agent</a><a href="/jobs">Library</a><a href="/settings">Settings</a></nav>
 
-  <section class="panel hero"><h1 id="pageTitle">Meeting Minutes Agent</h1><p id="pageIntro">Upload a Word transcript and work through an evidence-backed, editable draft.</p></section>
+  <section id="documentHeader" class="panel hero document-header">
+    <div class="document-header-main"><h1 id="pageTitle">Meeting Minutes Agent</h1><p id="documentMeta" class="document-meta"></p><p id="pageIntro">Upload a Word transcript and work through an evidence-backed, editable draft.</p></div>
+    <div class="document-header-tools"><button id="editStructureToggle" class="secondary" type="button" aria-pressed="false" title="Show the step screens to reorder, merge and move items">Edit structure</button><details class="doc-menu" data-menu><summary class="secondary quiet" aria-label="More options" title="More options">•••</summary><div class="doc-menu-popover" data-menu-popover><button class="secondary quiet" data-doc-choose-transcript type="button">Choose another transcript</button></div></details></div>
+  </section>
   <p id="generationMethod" class="muted" hidden>Beta · Streamlined flow</p>
 
   <div class="steps" aria-label="Meeting minutes workflow"><button class="step active" data-step="0" data-num="1" type="button" aria-label="Step 1, upload and meeting details">Details</button><button class="step" data-step="2" data-num="2" type="button" disabled aria-label="Step 2, discussion">Discussion</button><button class="step" data-step="3" data-num="3" type="button" disabled aria-label="Step 3, actions">Actions</button><button class="step" data-step="4" data-num="4" type="button" disabled aria-label="Step 4, executive summary and objectives">Summary</button><button class="step" data-step="5" data-num="5" type="button" disabled aria-label="Step 5, final review">Review</button></div>
 
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 5</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
-  <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span></span></div>
+  <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span><button id="finaliseMinutes" class="button finalise-button" type="button" hidden>Finalise</button></span></div>
 
   <div class="workflow-utilities">
     <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div></div></details>
@@ -1238,7 +1292,7 @@
     <div class="paper">
       <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Apply changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
       <div id="omittedDetailsReview"></div>
-      <div id="discussionListBar"></div>
+      <div data-stale-slot="discussion"></div><div id="discussionListBar"></div>
       <div id="discussionList"></div>
     </div>
     <p id="actionsPrewarmNotice" class="prewarm-notice" role="status" hidden></p>
@@ -1249,7 +1303,7 @@
   <section class="panel screen" data-screen="3">
     <div class="paper">
       <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Apply changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button><button id="regenerateActions" class="secondary quiet" type="button" title="Ask the agent to draft the actions again from the transcript.">Regenerate</button></div></div>
-      <div id="actionReviewBar" class="action-review-bar" role="status" aria-live="polite" hidden></div>
+      <div data-stale-slot="actions"></div><div id="actionReviewBar" class="action-review-bar" role="status" aria-live="polite" hidden></div>
       <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
       <details id="removedActionsPanel" class="removed-actions" hidden><summary id="removedActionsSummary">Removed actions</summary><div id="removedActionsList"></div></details>
     </div>
@@ -1260,6 +1314,7 @@
   <!-- ======================================= 4 - summary and objectives -->
   <section class="panel screen" data-screen="4">
     <div class="toolbar"><h2>Meeting summary</h2><button id="generateSummary" class="secondary" type="button">Create summary</button></div>
+    <div data-stale-slot="summary"></div>
     <div id="summaryFields" class="summary-fields">
       <div class="summary-field" data-section="meetingObjectives">
         <span class="lbl">Meeting objectives</span>
@@ -1277,11 +1332,12 @@
 
   <!-- ================================================ 5 - final review -->
   <section class="panel screen" data-screen="5">
+    <div id="previewBar" class="preview-bar"><span>Preview: this is how the minutes will read.</span><span id="previewExport"></span></div>
     <div id="finalDocument" class="paper final-document"></div>
     <div class="screen-actions final-actions">
       <button class="secondary quiet" data-back="4" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to summary</button>
       <span class="spacer"></span>
-      <details class="export-menu" data-menu><summary class="secondary"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Export</summary><div class="export-menu-body"><label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button><button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download PDF</button><button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download Word</button></div></details>
+      <details class="export-menu" data-menu><summary class="secondary"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span id="exportMenuLabel">Export</span></summary><div class="export-menu-body"><label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button><button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download PDF</button><button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download Word</button></div></details>
       <button id="saveMinutes" class="button" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save final minutes</button>
     </div>
     <div id="finalSaveConfirmation" class="message success final-save-confirmation" role="status" aria-live="polite" hidden>

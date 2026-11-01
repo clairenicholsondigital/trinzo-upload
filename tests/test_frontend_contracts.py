@@ -266,7 +266,7 @@ class FrontendContractTest(unittest.TestCase):
         # The tab is only needed for edits that live nowhere else; generation
         # itself is detached, and the copy now says so rather than implying
         # the opposite.
-        self.assertIn("Generation continues if you close this tab, but your latest edits are waiting to save. Keep this tab open until they are saved.", client)
+        self.assertIn("Waiting to save until generation finishes…", client)
         self.assertIn("Everything is saved. You can close the tab", client)
         self.assertIn("generation carries on without it", client)
         self.assertIn("generationRunning('actions')", client)
