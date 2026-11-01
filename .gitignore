@@ -7,6 +7,9 @@ __pycache__/
 .pytest_cache/
 
 reports/live-baseline/
+# Output of scripts/run_minilm_comparison.py (experimental, regenerated on each run)
+reports/minilm_comparison.json
+reports/minilm_comparison_summary.md
 artifacts/live-action-path-eval/
 benchmark-results/performance-baseline-*/
 
