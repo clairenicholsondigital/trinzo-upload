@@ -8,7 +8,7 @@ const config=Object.fromEntries(['summary','discussion','actions'].map(stage=>[s
 }]));
 fs.writeFileSync(path.join(temp,'configuration.json'),JSON.stringify(config));
 process.env.MEETING_MINUTES_PARALLEL_CONFIG=path.join(temp,'configuration.json');
-const drafts=new Map();let creates=0,updates=0,calls=0;
+const drafts=new Map();let creates=0,updates=0,progressUpdates=0,calls=0;
 db.getMeetingMinutesAgentDraft=async(id,user)=>user==='owner'?structuredClone(drafts.get(id)||null):null;
 db.createMeetingMinutesAgentDraft=async input=>{
  creates++;const draft={...input.payload,draftId:'18',revision:1,status:'draft',title:input.title,fileName:input.fileName,rawTranscript:input.rawTranscript};
@@ -18,7 +18,7 @@ db.updateMeetingMinutesAgentDraft=async(id,user,revision,change)=>{
  const current=drafts.get(id);assert.equal(user,'owner');
  if(current.revision!==revision)throw Object.assign(Error('Conflict'),{statusCode:409});
  const draft={...change.payload,draftId:id,revision:revision+1,status:change.status,title:change.title,rawTranscript:current.rawTranscript};
- drafts.set(id,draft);updates++;return structuredClone(draft);
+ drafts.set(id,draft);updates++;if(change.payload.generation?.progress)progressUpdates++;return structuredClone(draft);
 };
 const priorFetch=global.fetch;
 global.fetch=async url=>{
@@ -45,7 +45,8 @@ test('concurrent regeneration requests create one new version and keep the old d
  const responses=await Promise.all([request(),request()]);
  for(const r of responses){assert.equal(r.statusCode,202,JSON.stringify(r.body));assert.equal(r.body.draft.draftId,'18');}
  for(let i=0;i<100 && !drafts.get('18').qualityState.parallel?.completedAt;i++)await new Promise(r=>setTimeout(r,10));
- assert.equal(creates,1);assert.equal(calls,3);assert.equal(updates,2);
+ assert.equal(creates,1);assert.equal(calls,3);assert.equal(updates-progressUpdates,2,'one start and one final result save; advisory progress is separate');
+ assert.ok(progressUpdates>0);
  assert.deepEqual(drafts.get('17'),old);assert.equal(drafts.get('18').executiveSummary,'A new summary.');
  assert.deepEqual(drafts.get('18').actions,[]);assert.deepEqual(drafts.get('18').sourceUnits,old.sourceUnits);
 });

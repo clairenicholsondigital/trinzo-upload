@@ -106,6 +106,85 @@ test('generation normalization retains bounded previews, policy snapshots and ex
   assert.equal(normaliseMeetingAgentGeneration(null, stageSteps), null);
 });
 
+test('progress snapshots retain simultaneous section updates and only bounded safe metadata', () => {
+  const { mergeMeetingAgentProgress, normaliseMeetingAgentProgress } = require('../utils/meetingMinutesAgentGeneration');
+  const first = mergeMeetingAgentProgress(null, { stage: 'summary', code: 'validated',
+    counts: { records: 4, flags: 1, privateText: 'PRIVATE' }, prompt: 'PRIVATE' });
+  const before = structuredClone(first);
+  const next = mergeMeetingAgentProgress(first, { stage: 'actions', code: 'request_sent', body: 'PRIVATE' });
+  assert.deepEqual(first, before, 'observing another branch does not mutate an earlier snapshot');
+  assert.deepEqual(next.sections.summary.counts, { records: 4, flags: 1 });
+  assert.equal(next.sections.actions.code, 'request_sent');
+  assert.equal(JSON.stringify(next).includes('PRIVATE'), false);
+  assert.equal(mergeMeetingAgentProgress(next, { code: 'untrusted-provider-text' }).code, 'request_sent');
+  const bounded = normaliseMeetingAgentProgress({ ...next, extra: 'PRIVATE', sections: {
+    summary: { code: 'validated', updatedAt: 'invalid', counts: { records: Infinity, proposals: -3, flags: 999999 } },
+    privateStage: { code: 'validated', counts: { records: 1 } }
+  } });
+  assert.deepEqual(bounded.sections, { summary: { code: 'validated', updatedAt: '', counts: { proposals: 0, flags: 100000 } } });
+  const replacement = mergeMeetingAgentProgress(next, { stage: 'summary', code: 'request_sent' });
+  assert.equal(replacement.sections.summary.counts, undefined, 'a new response cannot reuse earlier provisional counts');
+});
+
+test('API progress keeps active or failed attempts ahead of old completed sections', () => {
+  const { publicMeetingAgentProgress } = require('../utils/meetingMinutesAgentGeneration');
+  const now = Date.parse('2026-11-01T12:00:30.000Z');
+  const startedAt = '2026-11-01T12:00:00.000Z';
+  const draft = { generationProvider: 'parallel-specialists-v1',
+    qualityState: { summary: { completedAt: '2026-10-31T12:00:00.000Z', stage: 'PRIVATE' } },
+    generation: { status: 'running', startedAt } };
+  const generation = { ...draft.generation, message: 'PRIVATE', bootId: 'PRIVATE', requestId: 'PRIVATE',
+    progress: { code: 'validated', updatedAt: '2026-11-01T12:00:20.000Z', sections: {
+      summary: { code: 'validated', updatedAt: startedAt, counts: { records: 3 }, result: 'PRIVATE' },
+      discussion: { code: 'request_sent', updatedAt: startedAt },
+      actions: { code: 'request_sent', updatedAt: startedAt }
+    } } };
+  const result = publicMeetingAgentProgress(draft, generation, now);
+  assert.equal(result.status, 'running');
+  assert.equal(result.elapsedMs, 30000);
+  assert.equal(result.updatedAt, '2026-11-01T12:00:20.000Z');
+  assert.match(result.message, /summary received and checked.*discussion and actions/);
+  assert.equal(result.sections.summary.state, 'validated');
+  assert.equal(result.sections.actions.state, 'running');
+  assert.equal(JSON.stringify(result).includes('PRIVATE'), false);
+  assert.equal(publicMeetingAgentProgress(draft, { ...generation, code: 'ready', status: 'failed' }, now).code, 'interrupted');
+  const failedDraft = { ...draft, generation: { ...draft.generation, status: 'failed' } };
+  assert.equal(publicMeetingAgentProgress(failedDraft, { ...generation, status: 'failed' }, now).code, 'failed');
+  const saving = publicMeetingAgentProgress(draft, { ...generation, progress: { ...generation.progress, code: 'saving' } }, now);
+  assert.equal(saving.status, 'running');
+  assert.equal(saving.code, 'saving');
+  const malformed = publicMeetingAgentProgress(draft, { status: 'running', stage: 'PRIVATE', startedAt: 'PRIVATE' }, now);
+  assert.equal(['summary', 'discussion', 'actions', 'all'].includes(malformed.stage), true);
+  assert.equal(malformed.startedAt, '');
+  assert.equal(malformed.updatedAt, '');
+  assert.equal(JSON.stringify(malformed).includes('PRIVATE'), false);
+});
+
+test('API completion comes from saved quality markers and private progress stays out of legacy projections', () => {
+  const { publicMeetingAgentProgress, mergeMeetingAgentProgress } = require('../utils/meetingMinutesAgentGeneration');
+  const { publicMeetingAgentGeneration } = require('../utils/meetingMinutesGenerationRuntime');
+  assert.equal(publicMeetingAgentProgress({}, null), null);
+  const saved = { qualityState: { actions: { completedAt: '2026-11-01T12:00:10.000Z',
+    backgroundStartedAt: '2026-11-01T12:00:00.000Z' } } };
+  const progress = publicMeetingAgentProgress(saved, null, Date.parse('2026-11-02'));
+  assert.equal(progress.status, 'ready');
+  assert.equal(progress.elapsedMs, 10000, 'elapsed processing stops at the saved result');
+  assert.deepEqual(progress.sections.actions, { state: 'saved', updatedAt: '2026-11-01T12:00:10.000Z' });
+  const generation = { stage: 'actions', status: 'running', bootId: 'private',
+    message: 'Existing UI text', pass: 'primary', startedAt: '2026-11-01T12:00:00.000Z' };
+  const before = publicMeetingAgentGeneration(generation);
+  const enriched = normaliseMeetingAgentGeneration({ ...generation,
+    progress: mergeMeetingAgentProgress(null, { stage: 'actions', code: 'queued' }) }, { actions: 3 });
+  assert.equal(enriched.progress.code, 'queued');
+  assert.deepEqual(publicMeetingAgentGeneration({ ...generation, progress: enriched.progress }), before);
+  const parallel = publicMeetingAgentProgress({ generationProvider: 'parallel-specialists-v1', qualityState: {
+    summary: { completedAt: '2026-11-01T12:00:10.000Z' }, parallel: { branches: {
+      summary: { startedAt: '2026-11-01T12:00:00.000Z' }, actions: { startedAt: '2026-11-01T12:00:00.001Z' }
+    } } } }, null);
+  assert.equal(parallel.startedAt, '2026-11-01T12:00:00.000Z');
+  assert.equal(parallel.elapsedMs, 10000);
+});
+
 test('call performance exposes existing contribution and bounded numeric totals', () => {
   const source = [{
     stage: 'discussion', pass: 'referee', requestId: ' request\n id ', cached: true,

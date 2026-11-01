@@ -48,6 +48,26 @@ test('Original execution reuses an exact completed pass without another provider
   assert.equal(c.passProvenance.at(-1).cached, true);
 });
 
+test('Original execution forwards its owning stage and observer while preserving legacy progress and cache reuse', async t => {
+  const progress = [], calls = [];
+  const observer = () => new Promise(() => {});
+  const c = context(t, async (_prompt, options) => {
+    calls.push(options);
+    await options.onAttempt({ attempt: 1, maxAttempts: 2 });
+    return response('status fixture');
+  }, { onStatus: observer, onProgress: event => progress.push(event) });
+  const first = await c.call('critic', 'PRIVATE fixture prompt');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].stage, 'discussion');
+  assert.equal(calls[0].onStatus, observer);
+  assert.equal(calls[0].pass, 'discussion:critic');
+  assert.equal(progress.length, 2);
+  assert.ok(progress.every(event => event.message === 'Verifying the draft…'));
+  assert.deepEqual(await c.call('critic', 'PRIVATE fixture prompt'), first);
+  assert.equal(calls.length, 1, 'saved results must not fabricate another observed provider call');
+  assert.match(progress.at(-1).message, /using saved result/);
+});
+
 test('Original execution uses a stage deadline extension and retains all completed call caches', async t => {
   const deadlines = [];
   const c = context(t, async (_prompt, options) => {

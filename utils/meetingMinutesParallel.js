@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {STAGES, hash, runSpecialists} = require('./meetingMinutesParallelEngine');
+const {mergeMeetingAgentProgress} = require('./meetingMinutesAgentGeneration');
 const PROVIDER = 'parallel-specialists-v1';
 const isParallel = draft => draft?.generationProvider === PROVIDER;
 const clone = value => structuredClone(value);
@@ -116,27 +117,54 @@ function resultChanges(draft, result) {
     qualityState,pendingProposal:null,generation:null,staleStages:[],currentStep:Math.max(2,draft.currentStep || 0)};
 }
 const active = new Map();
-function createRunner({getDraft,saveDraft,execute=runSpecialists,config=configuration,bootId='parallel'}) {
+function createRunner({getDraft,saveDraft,execute=runSpecialists,config=configuration,bootId='parallel',
+  serialWrite=(_draftId,task)=>Promise.resolve().then(task)}) {
   async function run(source,userId) {
     const requestId = source.generation.requestId, startedHash = inputHash(source);
+    const progressWrites = [];
+    const onProgress = (event) => {
+      let write;
+      try {
+        write = Promise.resolve(serialWrite(source.draftId,async () => {
+          for (let attempt=0;attempt<3;attempt++) {
+            const fresh = await getDraft(source.draftId,userId,{includeTranscript:true});
+            const generation = fresh?.generation;
+            if (!generation || generation.status!=='running' || generation.requestId!==requestId
+              || generation.bootId!==source.generation.bootId || generation.startedAt!==source.generation.startedAt) return;
+            if (event.code==='saving' && inputHash(fresh)!==startedHash) return;
+            const progress = mergeMeetingAgentProgress(generation.progress,event);
+            try { await saveDraft(fresh,userId,{generation:{...generation,progress}});return; }
+            catch (error) { if (error.statusCode!==409 || attempt===2) throw error; }
+          }
+        })).catch(() => {});
+      } catch { write = Promise.resolve(); }
+      progressWrites.push(write);
+      return write;
+    };
     let result = null, failure = null;
-    try { result = await execute(packet(source),config(),{requestId}); }
+    try { result = await execute(packet(source),config(),{requestId,onProgress}); }
     catch { failure = problem('The minutes service could not complete this request. Your saved content is unchanged. Try again.',502); }
-    // Revision retries concern database contention only; they never rerun Microsoft.
-    for (let attempt=0;attempt<4;attempt++) {
-      const fresh = await getDraft(source.draftId,userId,{includeTranscript:true});
-      if (!fresh || fresh.generation?.requestId!==requestId) return;
-      let changes;
-      if (failure || result?.status!=='completed' || inputHash(fresh)!==startedHash) {
-        changes = {generation:{...fresh.generation,status:'failed',
-          error:inputHash(fresh)!==startedHash
-            ? 'The meeting content changed during generation. Your edits were kept. Generate a new draft to use them.'
-            : failure?.message || 'One or more sections failed. Your saved content is unchanged. Try again.'},
-          qualityState:{...fresh.qualityState,parallelAttempt:{requestId,result}}};
-      } else changes = resultChanges(fresh,result);
-      try { return await saveDraft(fresh,userId,changes); }
-      catch (error) { if (error.statusCode!==409 || attempt===3) throw error; }
-    }
+    // Observer writes must settle before the final save; provider execution
+    // never waits for them. The injected existing draft queue owns ordering.
+    await Promise.all(progressWrites);
+    if (!failure && result?.status==='completed') await onProgress({code:'saving'});
+    return serialWrite(source.draftId,async () => {
+      // Revision retries concern database contention only; they never rerun Microsoft.
+      for (let attempt=0;attempt<4;attempt++) {
+        const fresh = await getDraft(source.draftId,userId,{includeTranscript:true});
+        if (!fresh || fresh.generation?.requestId!==requestId) return;
+        let changes;
+        if (failure || result?.status!=='completed' || inputHash(fresh)!==startedHash) {
+          changes = {generation:{...fresh.generation,status:'failed',
+            error:inputHash(fresh)!==startedHash
+              ? 'The meeting content changed during generation. Your edits were kept. Generate a new draft to use them.'
+              : failure?.message || 'One or more sections failed. Your saved content is unchanged. Try again.'},
+            qualityState:{...fresh.qualityState,parallelAttempt:{requestId,result}}};
+        } else changes = resultChanges(fresh,result);
+        try { return await saveDraft(fresh,userId,changes); }
+        catch (error) { if (error.statusCode!==409 || attempt===3) throw error; }
+      }
+    });
   }
   async function start(draft,userId) {
     if (active.has(String(draft.draftId))) return getDraft(draft.draftId,userId,{includeTranscript:true});

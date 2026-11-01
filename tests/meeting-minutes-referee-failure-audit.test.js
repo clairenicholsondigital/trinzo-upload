@@ -11,6 +11,9 @@ function createOriginalExecution(services) {
 const A=require('../routes/api').stagedEvaluation;
 const source=fs.readFileSync(require.resolve('../utils/meetingMinutesGenerationLifecycle'),'utf8');
 const transportSource=fs.readFileSync(require.resolve('../utils/meetingMinutesAgentTransport'),'utf8');
+const {meetingAgentResultCounts}=require('../utils/meetingMinutesAgentGeneration');
+const statusSource=transportSource.slice(transportSource.indexOf('function notifyMeetingAgentStatus('),
+  transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})'));
 const payload=prompt=>JSON.parse(prompt.split('refereePayload:\n')[1]);
 const child={candidateId:'child',recordType:'discussion_point',text:'The supplier requires oversight.',evidenceIds:['T0001']};
 const parent={candidateId:'parent',targetId:'approved-parent',recordType:'discussion_point',text:'The supplier oversight remains unresolved.',evidenceIds:['T0010']};
@@ -48,7 +51,7 @@ test('empty-target discussion and action prompts do not acquire extra catalogue 
 
 // Execute the actual retry function with an isolated provider stub. No network,
 // real transcripts, credentials, library, timers or database writes are used.
-function retryHarness(ask, reportedError = () => null) {
+function retryHarness(ask, reportedError = () => null, overrides = {}) {
   const from=transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgentWithRetry(');
   const to=transportSource.indexOf('\n}\n',from)+2;
   assert.ok(from>=0&&to>from);
@@ -58,8 +61,9 @@ function retryHarness(ask, reportedError = () => null) {
     meetingMinutesAgentText:(v,n)=>String(v||'').slice(0,n),
     askPowerAutomateMeetingMinutesAgent:ask,meetingAgentResultError:reportedError,
     meetingAgentFailureClass:A.meetingAgentFailureClass,refereeFailureSnapshot:audit.refereeFailureSnapshot,
-    console:{warn:value=>warnings.push(value)}};
-  vm.runInNewContext(transportSource.slice(from,to)+'\nthis.run=askPowerAutomateMeetingMinutesAgentWithRetry;',context);
+    meetingAgentResultCounts,meetingAgentCallContext:{getStore:()=>undefined},
+    console:{warn:value=>warnings.push(value)},...overrides};
+  vm.runInNewContext(statusSource+transportSource.slice(from,to)+'\nthis.run=askPowerAutomateMeetingMinutesAgentWithRetry;',context);
   return {run:context.run,warnings};
 }
 test('a rejected reply is captured before adapters mutate it, with its actual repair prompt',async()=>{
@@ -181,16 +185,18 @@ test('the production referee call actually wires rejection capture to the durabl
  }
 });
 
-function transportHarness(body, status = 200) {
+function transportHarness(body, status = 200, control = {}) {
   const helper=transportSource.indexOf('function meetingAgentHasTypedError(');
   const start=helper>=0?helper:transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})');
   const transport=transportSource.indexOf('async function askPowerAutomateMeetingMinutesAgent(prompt, options = {})',start);
   const end=transportSource.indexOf('\n}\n',transport)+3;
   assert.ok(start>=0&&end>start,'transport source boundaries must exist');let calls=0;
   const state={timeoutCleared:false,slotReleased:false};let beforeBodyRead;
-  const context={URL,AbortController,Number,Math,JSON,Set,process:{env:{}},
+  const context={URL,AbortController,Number,Math,JSON,Set,Promise,process:{env:{}},
+    meetingAgentResultCounts,meetingAgentCallContext:{getStore:()=>control.context},
     setTimeout:()=>0,clearTimeout:()=>{state.timeoutCleared=true;},meetingAgentFlowUrlFor:()=> 'https://example.invalid/referee',
-    acquireMeetingAgentCallSlot:async()=>()=>{state.slotReleased=true;},parseJsonLenient:A.parseJsonLenient,meetingAgentResultError:A.meetingAgentResultError,
+    acquireMeetingAgentCallSlot:async()=>{if(control.acquireSlot)await control.acquireSlot();return ()=>{state.slotReleased=true;};},
+    parseJsonLenient:A.parseJsonLenient,meetingAgentResultError:A.meetingAgentResultError,
     fetch:async()=>{calls++;return {ok:status>=200&&status<300,status,text:async()=>{beforeBodyRead={...state};return typeof body==='function'?body():body;}};}};
   vm.runInNewContext(transportSource.slice(start,end)+'\nthis.ask=askPowerAutomateMeetingMinutesAgent;',context);
   return {ask:context.ask,get calls(){return calls;},get state(){return state;},get beforeBodyRead(){return beforeBodyRead;}};
@@ -266,6 +272,104 @@ test('direct generation and audit calls cannot normalise typed provider errors i
   const t=transportHarness(JSON.stringify(envelope));
   await assert.rejects(t.ask('request'),e=>e.code==='microsoft_route_failure'&&e.retryable===true);
   assert.equal(t.calls,1);
+});
+
+test('status distinguishes waiting for a paced slot from dispatch and the full response body',async()=>{
+  const events=[];let releaseSlot,releaseBody;
+  const body=new Promise(resolve=>{releaseBody=resolve;});
+  const slot=new Promise(resolve=>{releaseSlot=resolve;});
+  const t=transportHarness(()=>body,200,{acquireSlot:()=>slot});
+  const pending=t.ask('PRIVATE prompt',{paced:true,stage:'discussion',onStatus:event=>events.push(event)});
+  await new Promise(setImmediate);
+  assert.deepEqual(events.map(event=>event.code),['queued']);assert.equal(t.calls,0);
+  releaseSlot();await new Promise(setImmediate);
+  assert.deepEqual(events.map(event=>event.code),['queued','request_sent']);assert.equal(t.calls,1);
+  releaseBody('{"discussion":[{"points":["PRIVATE point"]}],"actions":[{}],"actionProposals":[{}],"reviewFlags":[{}]}');
+  await pending;await new Promise(setImmediate);
+  assert.deepEqual(events.map(event=>event.code),['queued','request_sent','response_received','validating','validated']);
+  assert.ok(events.every(event=>event.stage==='discussion'));
+  assert.deepEqual(JSON.parse(JSON.stringify(events.at(-1).counts)),{records:3,proposals:1,flags:1});
+  assert.ok(!JSON.stringify(events).includes('PRIVATE'));
+  assert.ok(events.slice(0,-1).every(event=>event.counts===undefined));
+});
+
+test('validated status counts describe recognized output shapes only and remain unused without an observer',async()=>{
+  for(const [stage,result,expected]of [
+    ['summary',{executiveSummary:'A useful summary.',meetingObjectives:[{text:'Review the report.'}]},{records:2,proposals:0,flags:0}],
+    ['summary',{executiveSummary:'  ',meetingObjectives:[]},{records:0,proposals:0,flags:0}],
+    ['summary',{discussion:[],actions:[]},undefined],
+    ['discussion',{candidateDispositions:[{disposition:'publish'}]},undefined],
+    ['actions',{actionResults:[{actions:[{}]}]},undefined]
+  ]){
+    const events=[],h=retryHarness(async()=>result);
+    const actual=await h.run('PRIVATE request',{stage,onStatus:event=>events.push(event)});
+    assert.equal(actual.result,result);
+    assert.equal(events.at(-1).code,'validated');
+    assert.deepEqual(events.at(-1).counts===undefined?undefined:JSON.parse(JSON.stringify(events.at(-1).counts)),expected);
+  }
+  let calls=0,countReads=0;
+  const result={discussion:[],actions:[]};
+  const h=retryHarness(async()=>{calls++;return result;},()=>null,
+    {meetingAgentResultCounts:()=>{countReads++;throw Error('No observation work expected');}});
+  const actual=await h.run('request',{stage:'discussion',maxAttempts:2});
+  assert.equal(actual.result,result);assert.equal(actual.timings.length,1);
+  assert.equal(calls,1);assert.equal(countReads,0);
+});
+
+test('status observers cannot delay completion or replace successful or failed provider outcomes',{timeout:1000},async()=>{
+  for(const onStatus of [()=>{throw Error('observer failed');},()=>Promise.reject(Error('observer rejected')),()=>new Promise(()=>{})]){
+    const t=transportHarness('{"discussion":[],"actions":[]}');
+    const h=retryHarness(t.ask,A.meetingAgentResultError);
+    const result=await h.run('PRIVATE prompt',{stage:'actions',onStatus,maxAttempts:2});
+    assert.equal(t.calls,1);assert.equal(result.timings.length,1);assert.equal(result.timings[0].ok,true);
+    assert.deepEqual(JSON.parse(JSON.stringify(result.result)),{discussion:[],actions:[]});
+    const broken=transportHarness('PRIVATE malformed');
+    await assert.rejects(retryHarness(broken.ask,A.meetingAgentResultError).run('PRIVATE prompt',
+      {stage:'actions',onStatus,maxAttempts:1}),error=>error.code==='power_automate_invalid_structure');
+    assert.equal(broken.calls,1);
+  }
+  await new Promise(setImmediate);
+});
+
+test('retry status is emitted only for an existing retry wait and validated follows semantic validation',async()=>{
+  const events=[];let calls=0;
+  const t=transportHarness('{"discussion":[],"actions":[]}');
+  const h=retryHarness(t.ask,A.meetingAgentResultError);
+  const error=Object.assign(Error('Fixture semantic rejection'),{retryable:true});
+  const result=await h.run('request',{stage:'discussion',onStatus:event=>events.push(event),maxAttempts:2,
+    validateResult:()=>++calls===1?error:null});
+  await new Promise(setImmediate);
+  assert.equal(t.calls,2);assert.equal(result.timings.length,2);assert.equal(result.timings[0].ok,false);
+  assert.deepEqual(events.map(event=>event.code),[
+    'queued','request_sent','response_received','validating','retrying',
+    'queued','request_sent','response_received','validating','validated']);
+  assert.equal(events.filter(event=>event.counts).length,1);
+  let now=0;const noWait=[];
+  class Clock extends Date {static now(){return now;}}
+  const limited=retryHarness(async()=>{now=4500;throw error;},()=>null,{Date:Clock});
+  await assert.rejects(limited.run('request',{stage:'discussion',deadlineAt:5000,maxAttempts:2,
+    onStatus:event=>noWait.push(event)}),failure=>failure===error);
+  assert.equal(error.callTimings.length,1);assert.deepEqual(noWait,[]);
+});
+
+test('direct calls inherit only scoped status metadata and invalid replies never report validation success',async()=>{
+  const inherited=[];
+  const t=transportHarness('{"discussion":[],"actions":[]}',200,
+    {context:{stage:'summary',onStatus:event=>inherited.push(event),background:true,draftId:'PRIVATE draft'}});
+  await t.ask('PRIVATE request');await new Promise(setImmediate);
+  assert.deepEqual(inherited.map(event=>event.code),['request_sent','response_received','validating','validated']);
+  assert.ok(inherited.every(event=>event.stage==='summary'));
+  assert.ok(!JSON.stringify(inherited).includes('PRIVATE'));
+  const explicit=[];
+  await t.ask('request',{stage:'actions',onStatus:event=>explicit.push(event)});
+  assert.equal(inherited.length,4);assert.ok(explicit.every(event=>event.stage==='actions'));
+  for(const [body,code]of [['PRIVATE invalid','power_automate_invalid_structure'],
+    ['{"error":{"code":"fixture_failure","message":"PRIVATE failure"}}','fixture_failure']]){
+    const events=[],bad=transportHarness(body);
+    await assert.rejects(bad.ask('request',{stage:'discussion',onStatus:event=>events.push(event)}),error=>error.code===code);
+    assert.ok(!events.some(event=>event.code==='validated'));
+    assert.ok(!JSON.stringify(events).includes('PRIVATE'));
+  }
 });
 
 test('the attempt deadline and active-call slot cover reading the full response body',async()=>{

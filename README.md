@@ -54,6 +54,35 @@ Removing tracked Node dependencies does not claim those services are recreated.
 Browser tests require the Playwright Chromium revision matching the lockfile;
 install it with `npx playwright install chromium` if it is not already available.
 
+## Meeting minutes progress API
+
+The existing authenticated `GET /api/meeting-minutes-agent/drafts/:draftId/generation`
+also returns an additive `progress` snapshot. The draft must belong to the caller.
+Existing `generation`, draft, preview and error fields keep their contracts; the
+current frontend continues to use those fields.
+
+`progress` is null before any generation or saved completion marker exists.
+Otherwise it contains `status` (`running`, `failed` or `ready`), a stable `code`,
+a safe `message`, `stage` (`summary`, `discussion`, `actions` or Beta's `all`),
+`startedAt`, `updatedAt`, `elapsedMs` and `sections`. Section states are
+`waiting`, `running`, `received`, `validated`, `failed` or `saved`.
+Validated responses may include provisional record/proposal/flag counts.
+A checked response is not a published result: `ready` requires saved completion
+markers and no active or failed newer attempt.
+
+Codes report observed milestones: `preparing`, `queued`, `request_sent`,
+`response_received`, `validating`, `validated`, `retrying`, `saving`, `ready`,
+`failed` or `interrupted`. Existing Original passes can also project
+`extracting`, `checking` or `arranging`. Original and Beta keep their processing
+and retry policies. Microsoft still returns a complete JSON response per call;
+these snapshots describe observable work, not upstream internal progress.
+
+Poll this endpoint to read the latest snapshot; polling does not start work,
+write a draft or create history. There is no event history or stream in this
+version. Progress observations are bounded metadata in the existing run record,
+exclude transcript/provider content, and cannot fail generation.
+A timestamp changes when an actual milestone is saved, rather than on each poll.
+
 ## Deployment
 
 `deploy.sh` installs locked Node dependencies with `npm ci --include=dev`, builds, runs the
