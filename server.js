@@ -22,7 +22,8 @@ if (runtimeIdentity.sandbox) {
   // Testing shares processing agents, but cannot register subscriptions, send
   // client deliveries, or reset shared inference caches.
   app.use(['/api/meeting-agent', '/api/meeting-minutes-agent/testing',
-    '/api/agent/finalise', '/api/jobs/run-once'], (req, res) => {
+    '/api/agent/finalise', '/api/jobs/run-once',
+    '/api/auth/forgot-password', '/api/auth/reset-password'], (req, res) => {
     res.status(403).json({ ok: false, error: 'This integration is disabled on the testing site.' });
   });
 }

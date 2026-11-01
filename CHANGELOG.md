@@ -4,6 +4,7 @@ One line per change in behaviour, newest first. Detail belongs in the PR, not he
 
 | Date | Change | PR |
 | --- | --- | --- |
+| 2026-11-01 | Disable public password-reset endpoints on the isolated testing site so knowing its login email cannot reveal a reset token; normal site authentication stays unchanged. | — |
 | 2026-11-01 | Add optional private live-runtime checks and an isolated testing-site sync command; testing pauses on code/configuration drift while normal site behaviour stays unchanged. | — |
 | 2026-11-01 | Beta distinguishes Microsoft service failures from unreadable replies, keeps bounded correlation details private, and shows current section failures on Details and after reload without adding retries. | — |
 | 2026-11-01 | Beta retries a section once after malformed JSON within its existing time budget, keeps checked sections, and identifies retries in the progress panel; safe response-shape diagnostics remain private. | [#241](https://github.com/clairenicholsondigital/trinzo-upload/pull/241) |
