@@ -28,7 +28,9 @@ function loadServer({blocked = false, sandbox = false, env = {}} = {}) {
     api[method](route, (req, res) => {calls.push(name); res.json({ok: true, owner: name});});
   }
   const auth = router('session', '/session');
-  auth.post('/login', (req, res) => {calls.push('login'); res.json({ok: true, owner: 'login'});});
+  for (const [route, owner] of [['/login', 'login'], ['/forgot-password', 'forgot-password'], ['/reset-password', 'reset-password']]) {
+    auth.post(route, (req, res) => {calls.push(owner); res.json({ok: true, owner});});
+  }
   auth.requireAuth = (req, res, next) => next();
   const feedback = express.Router();
   feedback.summaryHandler = (req, res) => {calls.push('feedback'); res.json({ok: true});};
@@ -119,11 +121,12 @@ test('the actual server preserves normal API parsing and honors the configured l
   assert.deepEqual(loadServer().listen, [[3978, '0.0.0.0']], 'unconfigured live listening behavior is retained');
 });
 
-test('a ready sandbox blocks integrations while minutes, project and login APIs retain their normal dispatch', async t => {
+test('a ready sandbox blocks integrations and password resets while minutes, project and login APIs retain their normal dispatch', async t => {
   const {app, calls} = loadServer({sandbox: true});
   const base = await localServer(t, app);
   for (const route of ['/api/meeting-agent/transcript-subscription',
-    '/api/meeting-minutes-agent/testing/reset-memory-cache', '/api/agent/finalise', '/api/jobs/run-once']) {
+    '/api/meeting-minutes-agent/testing/reset-memory-cache', '/api/agent/finalise', '/api/jobs/run-once',
+    '/api/auth/forgot-password', '/api/auth/reset-password']) {
     const before = calls.length;
     const response = await fetch(base + route, {method: 'POST',
       headers: {'Content-Type': 'application/json', Connection: 'close'}, body: '{invalid JSON'});
@@ -140,12 +143,13 @@ test('a ready sandbox blocks integrations while minutes, project and login APIs 
   }
 });
 
-test('normal production retains each integration endpoint without the sandbox-only block', async t => {
+test('normal production retains integration and password-reset endpoints without the sandbox-only block', async t => {
   const {app, calls} = loadServer();
   const base = await localServer(t, app);
   for (const [route, owner] of [['/api/meeting-agent/transcript-subscription', 'graph'],
     ['/api/meeting-minutes-agent/testing/reset-memory-cache', 'baseline'],
-    ['/api/agent/finalise', 'delivery'], ['/api/jobs/run-once', 'manual-worker']]) {
+    ['/api/agent/finalise', 'delivery'], ['/api/jobs/run-once', 'manual-worker'],
+    ['/api/auth/forgot-password', 'forgot-password'], ['/api/auth/reset-password', 'reset-password']]) {
     const before = calls.length;
     const response = await fetch(base + route, {method: 'POST',
       headers: {'Content-Type': 'application/json', Connection: 'close'}, body: '{}'});

@@ -59,7 +59,9 @@ again after smoke checks; a host timer also recovers testing after restarts.
 The admission check protects the gap. Keep
 manifests and live attestations unwritable by the testing service account.
 Processing credentials are intentionally shared; ordinary delivery webhooks,
-Microsoft subscriptions and baseline reset are disabled in testing. Shared
+Microsoft subscriptions, baseline reset and public password-reset endpoints
+are disabled in testing. The existing reset API returns tokens directly; the
+testing account's password is therefore managed outside those public endpoints. Shared
 stateless inference services and upstream provider quotas/logging remain shared.
 No production records are copied. Bulk deletion stays inside the test database.
 
