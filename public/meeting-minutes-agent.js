@@ -2852,7 +2852,7 @@
           : '';
         return '<li' + (docMode ? ' class="doc-point"' : '') + '><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div>' + menu + '</li>'; }).join('') + '</ul>' : '');
     }).join('');
-    var actionsHtml = (draft.actions || []).map(function (action) {
+    var actionsHtml = docMode ? (draft.actions || []).map(docActionRowHtml).join('') || '<tr><td colspan="4">No actions recorded.</td></tr>' : (draft.actions || []).map(function (action) {
       var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', actionOccurrence(action), field); })[0] || '';
       var cell = function (field, html) { return '<td' + (editing === field ? ' class="final-editing-cell"' : '') + '>' + html + '</td>'; };
       return '<tr' + (editing ? ' class="is-editing"' : '') + '>'
@@ -2867,8 +2867,11 @@
       ? (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
       : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
     var headingsSwitch = docMode ? '<label class="doc-topic-headings doc-only"><input type="checkbox" data-doc-topic-headings' + (topicHeadingsShown() ? ' checked' : '') + '> Show topic titles in minutes</label>' : '';
-    var actionsHead = '<tr><th>Action</th><th>Owners</th><th>Timing</th>' + (docMode ? '<th class="doc-only doc-row-menu"><span class="visually-hidden">Options</span></th>' : '') + '</tr>';
-    document.getElementById('finalDocument').innerHTML = documentHead + (docMode ? '<section class="final-attendees"><h3>Attendees</h3>' + docAttendeesHtml(details) + '<div class="preview-only">' + finalAttendeesHtml(details) + '</div></section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + headingsSwitch + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead>' + actionsHead + '</thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    var actionsHead = docMode
+      ? '<tr><th class="doc-col-action">Action</th><th class="doc-col-owner">Owner</th><th class="doc-col-due">Due</th><th class="doc-only doc-row-menu"><span class="visually-hidden">Options</span></th></tr>'
+      : '<tr><th>Action</th><th>Owners</th><th>Timing</th></tr>';
+    var addAction = docMode ? '<button class="quiet doc-add doc-only" data-doc-add-action type="button">Add action</button>' : '';
+    document.getElementById('finalDocument').innerHTML = documentHead + (docMode ? '<section class="final-attendees"><h3>Attendees</h3>' + docAttendeesHtml(details) + '<div class="preview-only">' + finalAttendeesHtml(details) + '</div></section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + headingsSwitch + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table' + (docMode ? ' doc-actions-table' : '') + '"><thead>' + actionsHead + '</thead><tbody>' + actionsHtml + '</tbody></table></div>' + addAction + '</section>';
     renderPageHeading();
     var meta = document.getElementById('documentMeta');
     if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
@@ -2882,6 +2885,206 @@
     element.rows = 1;
     element.style.height = 'auto';
     element.style.height = (element.scrollHeight + 2) + 'px';
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Actions table in the document: Action (edited in place), Owner (picked
+   * from the attendees), Due (Date, Relative, Dependent or None) and a menu.
+   * ------------------------------------------------------------------ */
+  var RELATIVE_DUE = ['This week', 'Next week', 'Before next meeting'];
+  var docPickerOpen = '';
+  var docDueMode = {};
+
+  // Reads the stored timing as one of the four Due kinds. Wording that is not
+  // a short due phrase (often a sentence lifted from the transcript) is shown
+  // as a note under the action, and Due reads as None until it is set.
+  function dueState(timing) {
+    timing = timing || {};
+    var kind = timing.kind || 'not_stated';
+    var wording = String(timing.wording || '').replace(/\s+/g, ' ').trim();
+    var date = String(timing.exactDate || '').trim();
+    if (kind === 'not_stated' || (!wording && !date)) return { mode:'none', note:'' };
+    if (date) return { mode:'date', date:date, label:formatUkDate(date) || date, note:wording.length > 32 ? wording : '' };
+    if (kind === 'dependency') return wording.length <= 40 ? { mode:'dependent', text:wording, label:'Depends on: ' + wording, note:'' } : { mode:'none', note:wording };
+    var preset = RELATIVE_DUE.filter(function (item) { return item.toLowerCase() === wording.toLowerCase(); })[0];
+    if (preset) return { mode:'relative', text:preset, label:preset, note:'' };
+    if (kind !== 'stated' && wording.length <= 32) return { mode:'relative', text:wording, custom:true, label:wording, note:'' };
+    return { mode:'none', note:wording };
+  }
+
+  function amberMarker(text) {
+    return '<span class="amber-flag"><span class="amber-dot" aria-hidden="true"></span>' + escapeHtml(text) + '</span>';
+  }
+
+  function docActionRowHtml(action) {
+    var occ = actionOccurrence(action);
+    var kept = isActionKept(action);
+    var due = dueState(action.timing);
+    var note = due.note ? '<button type="button" class="due-note" data-due-note aria-expanded="false" title="Show the full note">From transcript: “' + escapeHtml(due.note) + '”</button>' : '';
+    var reviewed = kept ? '<span class="row-reviewed doc-reviewed doc-only" title="Marked reviewed">' + icon('check') + '<span class="visually-hidden">Reviewed</span></span>' : '';
+    var menu = rowMenu('Action options', transcriptMenuItem(action).replace(/(?:View|Check) transcript/, 'View source')
+      + '<button class="secondary quiet" data-doc-keep-action="' + escapeHtml(occ) + '" aria-pressed="' + (kept ? 'true' : 'false') + '" type="button">' + (kept ? 'Reviewed ✓' : 'Mark reviewed') + '</button>'
+      + '<button class="delete quiet" data-doc-remove-action="' + escapeHtml(occ) + '" type="button">Remove action</button>');
+    return '<tr data-doc-action="' + escapeHtml(occ) + '"' + (kept ? ' class="is-reviewed"' : '') + '>'
+      + '<td class="doc-action-cell">' + reviewed + finalTextEditor('action', occ, 'action', action.action, {block:true,label:'Edit action',empty:'New action'}) + note + '</td>'
+      + '<td class="doc-owner-cell">' + ownerPickerHtml(action, occ) + '</td>'
+      + '<td class="doc-due-cell">' + duePickerHtml(action, occ, due) + '</td>'
+      + '<td class="doc-only doc-row-menu">' + menu + '</td></tr>';
+  }
+
+  function ownerPickerHtml(action, occ) {
+    var details = (state.draft && state.draft.details) || {};
+    var owners = action.owners || [];
+    var lower = owners.map(function (name) { return name.toLowerCase(); });
+    var shown = owners.length
+      ? '<span class="owner-chips-static">' + owners.map(function (name) { return '<span class="owner-chip-static">' + escapeHtml(name) + '</span>'; }).join('') + '</span>'
+      : amberMarker('No owner assigned');
+    var option = function (name) {
+      var on = lower.indexOf(name.toLowerCase()) >= 0;
+      return '<button type="button" class="secondary quiet picker-option" role="menuitemcheckbox" aria-checked="' + on + '" data-owner-toggle="' + escapeHtml(name) + '" data-occ="' + escapeHtml(occ) + '"><span class="picker-tick" aria-hidden="true">' + (on ? '✓' : '') + '</span>' + escapeHtml(name) + '</button>';
+    };
+    var internal = (details.internalAttendees || []).filter(Boolean);
+    var client = (details.clientAttendees || []).filter(Boolean);
+    var known = internal.concat(client).map(function (name) { return name.toLowerCase(); });
+    var others = owners.filter(function (name) { return known.indexOf(name.toLowerCase()) < 0; });
+    var group = function (label, names) { return names.length ? '<div class="record-menu-label">' + escapeHtml(label) + '</div>' + names.map(option).join('') : ''; };
+    var key = 'owner:' + occ;
+    return '<details class="doc-picker owner-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
+      + '<summary aria-label="Owner: ' + escapeHtml(owners.join(', ') || 'none') + '. Change owner" title="Change owner">' + shown + '</summary>'
+      + '<div class="record-menu-popover doc-picker-popover" data-menu-popover role="menu">'
+      + group('Internal', internal) + group(attendeeGroupLabel('client', details), client) + group('Other', others)
+      + '<div class="picker-add"><input data-owner-new data-occ="' + escapeHtml(occ) + '" placeholder="Add new…" aria-label="Add a new owner"><button type="button" class="secondary" data-owner-add="' + escapeHtml(occ) + '">Add</button></div>'
+      + '<button type="button" class="secondary quiet picker-option" data-owner-none="' + escapeHtml(occ) + '"' + (owners.length ? '' : ' aria-checked="true"') + ' role="menuitemradio"><span class="picker-tick" aria-hidden="true">' + (owners.length ? '' : '✓') + '</span>No owner</button>'
+      + '</div></details>';
+  }
+
+  function duePickerHtml(action, occ, due) {
+    var key = 'due:' + occ;
+    var mode = docDueMode[occ] || due.mode;
+    var shown = due.mode === 'none' ? amberMarker('No date agreed') : '<span class="due-label">' + escapeHtml(due.label) + '</span>';
+    var segment = function (value, label) {
+      return '<button type="button" class="segment" data-due-mode="' + value + '" data-occ="' + escapeHtml(occ) + '" aria-pressed="' + (mode === value) + '">' + label + '</button>';
+    };
+    var body = '';
+    if (mode === 'date') body = '<label class="picker-field"><span class="visually-hidden">Due date</span><input type="date" data-due-date data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'date' ? due.date : '') + '"></label>';
+    else if (mode === 'relative') {
+      var custom = due.mode === 'relative' && due.custom;
+      body = '<label class="picker-field"><span class="visually-hidden">When</span><select data-due-relative data-occ="' + escapeHtml(occ) + '"><option value="">Choose…</option>'
+        + RELATIVE_DUE.map(function (item) { return '<option' + (due.mode === 'relative' && due.text === item ? ' selected' : '') + '>' + item + '</option>'; }).join('')
+        + '<option value="__custom"' + (custom || docDueMode[occ + ':custom'] ? ' selected' : '') + '>Custom…</option></select></label>'
+        + (custom || docDueMode[occ + ':custom'] ? '<div class="picker-add"><input data-due-text="relative" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(custom ? due.text : '') + '" placeholder="e.g. end of month" aria-label="Custom due"><button type="button" class="secondary" data-due-save="relative" data-occ="' + escapeHtml(occ) + '">Save</button></div>' : '');
+    } else if (mode === 'dependent') {
+      body = '<div class="picker-add"><input data-due-text="dependent" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'dependent' ? due.text : '') + '" placeholder="e.g. before we pay" aria-label="Depends on"><button type="button" class="secondary" data-due-save="dependent" data-occ="' + escapeHtml(occ) + '">Save</button></div>';
+    }
+    return '<details class="doc-picker due-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
+      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
+      + '<div class="record-menu-popover doc-picker-popover due-popover" data-menu-popover>'
+      + '<div class="segmented" role="group" aria-label="Due type">' + segment('date', 'Date') + segment('relative', 'Relative') + segment('dependent', 'Dependent') + segment('none', 'None') + '</div>'
+      + body + '</div></details>';
+  }
+
+  function setActionDue(occ, mode, value) {
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    var prior = action.timing || {};
+    var next = mode === 'none' ? { kind:'not_stated', wording:'', exactDate:'' }
+      : mode === 'date' ? { kind:prior.kind === 'deadline' ? 'deadline' : 'target', wording:'', exactDate:value }
+      : mode === 'relative' ? { kind:'target', wording:value, exactDate:'' }
+      : { kind:'dependency', wording:value, exactDate:'' };
+    delete action.timingDecision;
+    action.timing = window.MeetingMinutesTiming.normaliseTimingValue(next, {
+      mode:'preserve', reviewerAuthored:true, meetingDate:((state.draft || {}).details || {}).meetingDate || ''
+    });
+    action.reviewerAuthored = true;
+    delete docDueMode[occ]; delete docDueMode[occ + ':custom'];
+    docPickerOpen = '';
+    markFieldEdited('action', occ, 'timing');
+    commitDocumentChange(mode === 'none' ? 'Action due cleared' : 'Action due set');
+    var summary = document.querySelector('[data-picker="due:' + occ + '"] > summary');
+    if (summary) summary.focus({ preventScroll:true });
+  }
+
+  function setActionOwners(occ, owners, focusSelector) {
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    action.owners = owners;
+    action.reviewerAuthored = true;
+    markFieldEdited('action', occ, 'owners');
+    docPickerOpen = 'owner:' + occ;
+    commitDocumentChange('Action owners edited');
+    var focus = focusSelector && document.querySelector(focusSelector);
+    if (focus) focus.focus({ preventScroll:true });
+  }
+
+  function onDocumentPickerClick(event) {
+    var target;
+    if ((target = event.target.closest('[data-due-note]'))) {
+      var open = target.classList.toggle('expanded');
+      target.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-toggle]'))) {
+      var occ = target.dataset.occ, name = target.dataset.ownerToggle;
+      var action = state.draft.actions[actionIndexForOccurrence(occ)];
+      if (!action) return true;
+      var owners = (action.owners || []).slice();
+      var at = owners.map(function (owner) { return owner.toLowerCase(); }).indexOf(name.toLowerCase());
+      if (at >= 0) owners.splice(at, 1); else owners.push(name);
+      setActionOwners(occ, owners, '[data-picker="owner:' + occ + '"] [data-owner-toggle="' + name.replace(/"/g, '\\"') + '"]');
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-none]'))) {
+      setActionOwners(target.dataset.ownerNone, []);
+      docPickerOpen = '';
+      var ownerSummary = document.querySelector('[data-picker="owner:' + target.dataset.ownerNone + '"]');
+      if (ownerSummary) { ownerSummary.open = false; ownerSummary.querySelector('summary').focus({ preventScroll:true }); }
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-add]'))) { addNewOwner(target.dataset.ownerAdd); return true; }
+    if ((target = event.target.closest('[data-due-mode]'))) {
+      if (target.dataset.dueMode === 'none') { setActionDue(target.dataset.occ, 'none', ''); return true; }
+      docDueMode[target.dataset.occ] = target.dataset.dueMode;
+      docPickerOpen = 'due:' + target.dataset.occ;
+      renderFinal();
+      var field = document.querySelector('[data-picker="due:' + target.dataset.occ + '"] .picker-field input, [data-picker="due:' + target.dataset.occ + '"] .picker-field select, [data-picker="due:' + target.dataset.occ + '"] [data-due-text]');
+      if (field) field.focus({ preventScroll:true });
+      return true;
+    }
+    if ((target = event.target.closest('[data-due-save]'))) { saveDueText(target.dataset.occ, target.dataset.dueSave); return true; }
+    return false;
+  }
+
+  function addNewOwner(occ) {
+    var input = document.querySelector('[data-owner-new][data-occ="' + occ + '"]');
+    var name = input ? input.value.replace(/\s+/g, ' ').trim() : '';
+    if (!name) return;
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    var owners = (action.owners || []).slice();
+    if (owners.map(function (owner) { return owner.toLowerCase(); }).indexOf(name.toLowerCase()) < 0) owners.push(name);
+    setActionOwners(occ, owners, '[data-owner-new][data-occ="' + occ + '"]');
+  }
+
+  function saveDueText(occ, mode) {
+    var input = document.querySelector('[data-due-text="' + mode + '"][data-occ="' + occ + '"]');
+    var value = input ? input.value.replace(/\s+/g, ' ').trim() : '';
+    if (value) setActionDue(occ, mode, value);
+  }
+
+  function onDocumentPickerChange(event) {
+    var target = event.target;
+    if (target.matches('[data-due-date]')) { if (target.value) setActionDue(target.dataset.occ, 'date', target.value); return true; }
+    if (target.matches('[data-due-relative]')) {
+      if (target.value === '__custom') {
+        docDueMode[target.dataset.occ + ':custom'] = true;
+        docPickerOpen = 'due:' + target.dataset.occ;
+        renderFinal();
+        var custom = document.querySelector('[data-due-text="relative"][data-occ="' + target.dataset.occ + '"]');
+        if (custom) custom.focus({ preventScroll:true });
+      } else if (target.value) setActionDue(target.dataset.occ, 'relative', target.value);
+      return true;
+    }
+    return false;
   }
 
   function attendeeGroupLabel(key, details) {
@@ -4725,6 +4928,9 @@
       var parts = String(edit.id).split(':');
       var list = (state.draft.details || {})[parts[0] + 'Attendees'] || [];
       if (!String(list[Number(parts[1])] || '').trim()) list.splice(Number(parts[1]), 1);
+    } else if (edit.kind === 'action') {
+      var placeholderIndex = actionIndexForOccurrence(edit.id);
+      if (placeholderIndex >= 0 && !String(state.draft.actions[placeholderIndex].action || '').trim()) state.draft.actions.splice(placeholderIndex, 1);
     } else if (edit.kind === 'objective') {
       state.draft.meetingObjectives = (state.draft.meetingObjectives || []).filter(function (item) {
         return !(item && typeof item === 'object' && item.id === edit.id && !String(item.text || '').trim());
@@ -4829,7 +5035,7 @@
       var previousAction = actionEditFingerprint(action);
       if (edit.field === 'action') {
         if (!value) { cancelFinalEdit(options); return false; }
-        action.action = value; label = 'Action edited';
+        action.action = value; label = edit.isNew ? 'Action added' : 'Action edited';
       } else if (edit.field === 'owners') {
         action.owners = (edit.ownerSelection || action.owners || []).slice();
         label = 'Action owners edited';
@@ -4873,6 +5079,30 @@
 
   function onDocumentEditClick(event) {
     var target;
+    if (onDocumentPickerClick(event)) return true;
+    if ((target = event.target.closest('[data-doc-keep-action]'))) {
+      closeMenus();
+      var keptRow = state.draft.actions[actionIndexForOccurrence(target.dataset.docKeepAction)];
+      if (!keptRow) return true;
+      var wasKept = isActionKept(keptRow);
+      var ids = keptActionOccurrenceIds();
+      var keyAt = ids.indexOf(actionOccurrence(keptRow));
+      if (keyAt !== -1) ids.splice(keyAt, 1);
+      var legacy = unambiguousLegacyActionId(keptRow);
+      var legacyAt = legacy ? keptActionIds().indexOf(legacy) : -1;
+      if (legacyAt !== -1) keptActionIds().splice(legacyAt, 1);
+      if (!wasKept) ids.push(actionOccurrence(keptRow));
+      commitDocumentChange(wasKept ? 'Action marked as not reviewed' : 'Action marked as reviewed');
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-action]'))) {
+      var newAction = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[],reviewerAuthored:true};
+      state.draft.actions.push(newAction);
+      ensureActionOccurrences(state.draft);
+      activeFinalEdit = { kind:'action', id:actionOccurrence(newAction), field:'action', isNew:true };
+      renderFinal();
+      return true;
+    }
     if ((target = event.target.closest('[data-doc-remove-record]'))) { closeMenus(); removeDocumentRecord(target.dataset.docRemoveRecord); return true; }
     if ((target = event.target.closest('[data-doc-remove-action]'))) {
       closeMenus();
@@ -4974,6 +5204,22 @@
     state.draft.details.meetingType = meetingTypeValue(select.value);
     commitDocumentChange('Meeting type changed');
   });
+  document.getElementById('finalDocument').addEventListener('change', function (event) {
+    if (state.draft && inDocumentMode()) onDocumentPickerChange(event);
+  });
+  document.getElementById('finalDocument').addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') return;
+    if (event.target.matches('[data-owner-new]')) { event.preventDefault(); addNewOwner(event.target.dataset.occ); }
+    else if (event.target.matches('[data-due-text]')) { event.preventDefault(); saveDueText(event.target.dataset.occ, event.target.dataset.dueText); }
+  });
+  // A picker closed by Esc or a click elsewhere stays closed on the next render.
+  document.getElementById('finalDocument').addEventListener('toggle', function (event) {
+    var picker = event.target;
+    if (!picker.matches || !picker.matches('[data-picker]') || picker.open) return;
+    if (docPickerOpen === picker.dataset.picker) docPickerOpen = '';
+    var occ = picker.dataset.picker.replace(/^due:/, '');
+    if (picker.dataset.picker.indexOf('due:') === 0) { delete docDueMode[occ]; delete docDueMode[occ + ':custom']; }
+  }, true);
   document.getElementById('finalDocument').addEventListener('input', function (event) {
     if (event.target.matches('textarea[data-final-editor-value]')) fitFinalTextarea(event.target);
   });

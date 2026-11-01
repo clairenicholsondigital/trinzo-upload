@@ -167,14 +167,16 @@ test('final wording, owners and timing edit exactly one colliding occurrence', {
     await page.fill('#finalDocument [data-final-editor-value]', 'Prepare the reviewed second package.');
     await h.mutation(() => page.click('#finalDocument [data-final-save]'));
     assert.deepEqual(h.saved().actions.map((action) => action.action), ['Prepare the first review package.', 'Prepare the reviewed second package.']);
-    await fields('owners').nth(1).click();
-    await page.selectOption('#finalDocument [data-final-add-owner]', 'Sam Okoro');
-    await h.mutation(() => page.click('#finalDocument [data-final-save]'));
+    // Owner is picked from the attendees; Due is set from its own picker.
+    const docRow = (index) => page.locator('#finalDocument .doc-actions-table tbody tr').nth(index);
+    await docRow(1).locator('.owner-picker>summary').click();
+    await h.mutation(() => docRow(1).locator('[data-owner-toggle="Sam Okoro"]').click());
     assert.deepEqual(h.saved().actions.map((action) => action.owners), [['Alex Reed'], ['Alex Reed', 'Sam Okoro']]);
-    await fields('timing').nth(1).click();
-    await page.fill('#finalDocument [data-final-timing-wording]', 'after approval');
-    await page.selectOption('#finalDocument [data-final-timing-kind]', 'dependency');
-    await h.mutation(() => page.click('#finalDocument [data-final-save]'));
+    await page.keyboard.press('Escape');
+    await docRow(1).locator('.due-picker>summary').click();
+    await docRow(1).locator('[data-due-mode="dependent"]').click();
+    await page.fill('#finalDocument [data-due-text="dependent"]', 'after approval');
+    await h.mutation(() => page.click('#finalDocument [data-due-save="dependent"]'));
     const saved = h.saved();
     assert.equal(saved.actions[0].timing.wording, 'this week');
     assert.equal(saved.actions[1].timing.wording, 'after approval');

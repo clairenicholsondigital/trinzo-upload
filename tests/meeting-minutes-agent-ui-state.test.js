@@ -320,6 +320,7 @@ function startStubServer() {
     { id: 'discussion-3', text: 'The distributor holds the stock.', evidenceIds: ['T0001'], reviewFlagIds: [] });
   documentEditing.actions.push({ id: 'action-2', action: 'Confirm the distributor.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] });
   documentEditing.meetingObjectives = ['Agree the report'];
+  documentEditing.actions[0].timing = { kind: 'target', wording: 'hoping by early July, assuming the printer can turn it around, but it depends on whether the distributor confirms the stock position first', exactDate: '' };
   drafts.set('document-editing', documentEditing);
   const layout = baseDraft('layout', false);
   layout.currentStep = 5;
@@ -3822,6 +3823,108 @@ test('every text in the document edits the same way and removals can be undone',
     assert.equal(await actionRows.count(), actionCount - 1);
     await page.click('#undoToastButton');
     await page.waitForFunction((count) => document.querySelectorAll('#finalDocument .actions-table tbody tr').length === count, actionCount);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the actions table picks owners from attendees and keeps Due structured', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1024, height: 1400 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH');
+    const table = page.locator('#finalDocument .doc-actions-table');
+    const row = (index) => table.locator('tbody tr').nth(index);
+    assert.deepEqual((await table.locator('thead th').allTextContents()).slice(0, 3).map((text) => text.trim()), ['Action', 'Owner', 'Due']);
+    const widths = await table.locator('thead th').evaluateAll((cells) => cells.map((cell) => Math.round(cell.getBoundingClientRect().width)));
+    assert.ok(widths[0] >= 320, JSON.stringify(widths));
+    assert.equal(widths[1], 180); assert.equal(widths[2], 160);
+
+    // A transcript sentence is a note under the action, not the Due value.
+    assert.match(await row(0).locator('.due-note').textContent(), /^From transcript: “hoping by early July/);
+    assert.match(await row(0).locator('.due-picker>summary').textContent(), /No date agreed/);
+    const lineHeight = await row(0).locator('.due-note').evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
+    const clamped = await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height);
+    assert.ok(clamped <= lineHeight * 2 + 2, 'note clamped to two lines');
+    await row(0).locator('.due-note').click();
+    assert.ok(await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height) > clamped, 'note expands on click');
+    // No other cell runs past two lines.
+    const tall = await table.locator('tbody td').evaluateAll((cells) => cells.filter((cell) => !cell.querySelector('.due-note')).filter((cell) => {
+      const line = parseFloat(getComputedStyle(cell).lineHeight) || 24;
+      const inner = cell.querySelector('summary, [data-final-edit]');
+      return inner && inner.getBoundingClientRect().height > line * 2 + 12;
+    }).length);
+    assert.equal(tall, 0);
+
+    // Owner comes from a picker of attendees, grouped.
+    assert.match(await row(1).locator('.owner-picker>summary').textContent(), /No owner assigned/);
+    await row(1).locator('.owner-picker>summary').click();
+    assert.deepEqual(await row(1).locator('.doc-picker-popover .record-menu-label').allTextContents(), ['Internal', 'Client']);
+    let saved = patch();
+    await row(1).locator('[data-owner-toggle="Sam Okoro"]').click();
+    let body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].owners, ['Sam Okoro']);
+    assert.equal(await row(1).locator('.owner-picker').getAttribute('open'), '', 'picker stays open for more owners');
+    await page.fill('[data-owner-new][data-occ="' + body.actions[1].occurrenceId + '"]', 'Pat Lee');
+    saved = patch();
+    await page.keyboard.press('Enter');
+    body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].owners, ['Sam Okoro', 'Pat Lee']);
+    await page.keyboard.press('Escape');
+
+    // Due: a relative choice replaces the sentence and the note goes.
+    await row(0).locator('.due-picker>summary').click();
+    await row(0).locator('[data-due-mode="relative"]').click();
+    saved = patch();
+    await row(0).locator('[data-due-relative]').selectOption('Next week');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[0].timing.kind, 'target');
+    assert.equal(body.actions[0].timing.wording, 'Next week');
+    assert.equal(await row(0).locator('.due-note').count(), 0);
+    assert.equal((await row(0).locator('.due-picker>summary').textContent()).trim(), 'Next week');
+    // A date.
+    await row(1).locator('.due-picker>summary').click();
+    await row(1).locator('[data-due-mode="date"]').click();
+    saved = patch();
+    await row(1).locator('[data-due-date]').fill('2026-10-02');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.exactDate, '2026-10-02');
+    // None clears it.
+    await row(1).locator('.due-picker>summary').click();
+    saved = patch();
+    await row(1).locator('[data-due-mode="none"]').click();
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.kind, 'not_stated');
+
+    // Mark reviewed shows a check at the row's edge.
+    await row(0).hover();
+    await row(0).locator('.doc-row-menu .row-menu>summary').click();
+    assert.deepEqual((await row(0).locator('.doc-row-menu [data-menu-popover] button').allTextContents()).map((text) => text.replace(/ \(.*\)$/, '').trim()), ['View source', 'Mark reviewed', 'Remove action']);
+    saved = patch();
+    await row(0).locator('[data-doc-keep-action]').click();
+    await saved;
+    assert.equal(await row(0).locator('.doc-reviewed').count(), 1);
+
+    // Add action opens an empty row with the cursor in the Action cell.
+    const count = await table.locator('tbody tr').count();
+    await page.click('[data-doc-add-action]');
+    assert.equal(await table.locator('tbody tr').count(), count + 1);
+    assert.equal(await page.evaluate(() => document.activeElement.matches('.doc-actions-table [data-final-editor-value]')), true);
+    await page.keyboard.type('Book the review call.');
+    saved = patch();
+    await page.keyboard.press('Control+Enter');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[body.actions.length - 1].action, 'Book the review call.');
+    // An empty new row is dropped when cancelled.
+    await page.click('[data-doc-add-action]');
+    await page.keyboard.press('Escape');
+    assert.equal(await table.locator('tbody tr').count(), count + 1);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

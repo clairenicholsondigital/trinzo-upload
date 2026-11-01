@@ -1259,6 +1259,43 @@
 @media (hover:none){.meeting-agent-page .doc-point>.row-menu>summary,.meeting-agent-page .doc-row-menu .row-menu>summary,.meeting-agent-page .doc-topic-head .row-menu>summary{opacity:1}}
 .meeting-agent-page .actions-table th.doc-row-menu,.meeting-agent-page .actions-table td.doc-row-menu{width:40px;padding-left:0;padding-right:0;text-align:center}
 .meeting-agent-page.doc-preview .doc-point>.row-menu{display:none}
+/* Slice 5: the actions table in the document. Fixed columns; Owner is
+   picked from the attendees and Due is one of Date, Relative, Dependent or
+   None. Nothing in a cell runs past two lines unless it is opened. */
+.meeting-agent-page .doc-actions-table{table-layout:fixed;width:100%}
+.meeting-agent-page .actions-wrap:has(.doc-actions-table){overflow:visible}
+.meeting-agent-page .doc-actions-table th.doc-col-owner{width:180px}
+.meeting-agent-page .doc-actions-table th.doc-col-due{width:160px}
+.meeting-agent-page .doc-actions-table td{vertical-align:top}
+.meeting-agent-page .doc-action-cell{position:relative}
+.meeting-agent-page .doc-reviewed{position:absolute;left:-1.35rem;top:.55rem;width:1.1rem;height:1.1rem}
+.meeting-agent-page .due-note{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  margin-top:.3rem;padding:0;border:0;background:transparent;text-align:left;font-size:var(--fs-sm);color:#5b6470;cursor:pointer;font-style:italic;line-height:1.45}
+.meeting-agent-page .due-note.expanded{display:block;-webkit-line-clamp:unset}
+.meeting-agent-page .doc-picker{position:relative}
+.meeting-agent-page .doc-picker>summary{list-style:none;cursor:pointer;border:1px dashed transparent;border-radius:var(--radius-sm);padding:.12rem .25rem;margin:-.12rem -.25rem;min-height:28px}
+.meeting-agent-page .doc-picker>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .doc-picker>summary:hover,.meeting-agent-page .doc-picker[open]>summary{border-color:#8a949f;box-shadow:inset 2px 0 0 var(--accent)}
+.meeting-agent-page .due-label,.meeting-agent-page .owner-chips-static{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meeting-agent-page .owner-chip-static{display:inline-block;margin:0 .25rem .2rem 0;padding:0 .45rem;border:1px solid var(--border);border-radius:999px;font-size:var(--fs-sm);line-height:1.6;background:#fff}
+.meeting-agent-page .amber-flag{display:inline-flex;align-items:center;gap:.35rem;color:#8a5a00;font-size:var(--fs-sm)}
+.meeting-agent-page .amber-dot{width:.5rem;height:.5rem;border-radius:50%;background:#d39a12;flex:none}
+.meeting-agent-page .doc-picker-popover{left:0;right:auto;min-width:220px;padding:.35rem}
+.meeting-agent-page .due-picker .doc-picker-popover{left:auto;right:0}
+.meeting-agent-page .doc-picker-popover .picker-option{display:flex;align-items:center;gap:.4rem;width:100%;justify-content:flex-start;border:0;white-space:nowrap}
+.meeting-agent-page .picker-tick{display:inline-block;width:1rem;color:var(--accent);font-weight:700}
+.meeting-agent-page .picker-add{display:flex;gap:.35rem;padding:.35rem .25rem}
+.meeting-agent-page .picker-add input{flex:1;min-width:0;min-height:32px}
+.meeting-agent-page .picker-add button,.meeting-agent-page .picker-field select,.meeting-agent-page .picker-field input{min-height:32px}
+.meeting-agent-page .picker-field{display:block;padding:.35rem .25rem}
+.meeting-agent-page .picker-field select,.meeting-agent-page .picker-field input{width:100%;box-sizing:border-box}
+.meeting-agent-page .segmented{display:grid;grid-template-columns:repeat(4,auto);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin:.15rem .25rem .3rem}
+.meeting-agent-page .segmented .segment{border:0;border-radius:0;background:#fff;font-size:var(--fs-sm);padding:.3rem .55rem;min-height:30px;color:var(--heading)}
+.meeting-agent-page .segmented .segment+.segment{border-left:1px solid var(--border)}
+.meeting-agent-page .segmented .segment[aria-pressed="true"]{background:var(--brand-050);color:var(--accent);font-weight:var(--fw-bold)}
+.meeting-agent-page .doc-actions-table+.doc-add,.meeting-agent-page .actions-wrap+.doc-add{margin-top:.4rem}
+.meeting-agent-page.doc-preview .doc-picker>summary{pointer-events:none;border-color:transparent;box-shadow:none}
+.meeting-agent-page.doc-preview .due-note{cursor:default;pointer-events:none}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
