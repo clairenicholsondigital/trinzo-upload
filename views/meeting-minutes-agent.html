@@ -1083,6 +1083,37 @@
     background:#fff!important;border:0;box-shadow:none;padding:0;margin:0}
   .meeting-agent-page .screen[data-screen="5"]{display:block}
 }
+
+/* ------------------------------------------------------- menus, drawer -- */
+/* Menus size to their longest item, so nothing wraps or is cut off. */
+.meeting-agent-page .topic-menu-popover{
+  width:max-content;min-width:200px;max-width:min(22rem,calc(100vw - 2rem));box-sizing:border-box;z-index:30}
+.meeting-agent-page .topic-menu-popover>button{white-space:nowrap}
+.meeting-agent-page .record-menu-popover{
+  width:max-content;min-width:220px;max-width:min(22rem,calc(100vw - 2rem));box-sizing:border-box;z-index:30}
+.meeting-agent-page .record-menu-popover>button{white-space:nowrap}
+.meeting-agent-page details[data-menu].opens-up>[data-menu-popover]{top:auto;bottom:calc(100% + .25rem)}
+/* The topic title keeps its width while it is edited; the count and menu stay put. */
+.meeting-agent-page .card-head .topic-field textarea:focus{flex:1 1 0}
+.meeting-agent-page .side-drawer{
+  position:fixed;z-index:60;top:0;right:0;bottom:0;display:flex;flex-direction:column;
+  width:min(400px,100vw);box-sizing:border-box;border-left:1px solid var(--border);
+  background:var(--surface);box-shadow:var(--shadow-lg);animation:side-drawer-in .18s ease-out}
+.meeting-agent-page .side-drawer[hidden]{display:none}
+@keyframes side-drawer-in{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.meeting-agent-page .side-drawer{animation:none}}
+.meeting-agent-page .side-drawer-head{
+  display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+  padding:.75rem 1rem;border-bottom:1px solid var(--border)}
+.meeting-agent-page .side-drawer-head h2{margin:0;font-size:var(--fs-md)}
+.meeting-agent-page .side-drawer-close{
+  display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:var(--radius-sm);
+  background:transparent;color:var(--heading);font-size:1.4rem;line-height:1;cursor:pointer}
+.meeting-agent-page .side-drawer-close:hover{background:var(--soft-2)}
+.meeting-agent-page .side-drawer-pinned{
+  margin:0;padding:.75rem 1rem;border-bottom:1px solid var(--border);background:var(--soft);
+  font-size:var(--fs-sm);color:var(--heading)}
+.meeting-agent-page .side-drawer-body{flex:1;overflow:auto;padding:.75rem 1rem;margin:0;border:0;border-radius:0;max-height:none}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
@@ -1250,7 +1281,7 @@
     <div class="screen-actions final-actions">
       <button class="secondary quiet" data-back="4" type="button"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to summary</button>
       <span class="spacer"></span>
-      <details class="export-menu"><summary class="secondary"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Export</summary><div class="export-menu-body"><label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button><button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download PDF</button><button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download Word</button></div></details>
+      <details class="export-menu" data-menu><summary class="secondary"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Export</summary><div class="export-menu-body"><label class="evidence-choice"><input id="includeEvidence" type="checkbox"> Include evidence appendix</label><button id="printMinutes" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg>Print</button><button id="downloadPdf" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download PDF</button><button id="downloadWord" class="secondary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download Word</button></div></details>
       <button id="saveMinutes" class="button" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save final minutes</button>
     </div>
     <div id="finalSaveConfirmation" class="message success final-save-confirmation" role="status" aria-live="polite" hidden>
@@ -1280,6 +1311,11 @@
       <div class="dialog-actions"><button id="duplicateUploadCancel" class="secondary" value="cancel" type="submit">Cancel upload</button><button id="duplicateUploadProceed" class="button" value="proceed" type="submit">Upload anyway</button></div>
     </form>
   </dialog>
+  <aside id="sideDrawer" class="side-drawer" role="dialog" aria-modal="false" aria-labelledby="sideDrawerTitle" hidden>
+    <div class="side-drawer-head"><h2 id="sideDrawerTitle">Transcript</h2><button id="sideDrawerClose" class="side-drawer-close" type="button" aria-label="Close panel" title="Close (Esc)">&times;</button></div>
+    <p id="sideDrawerPinned" class="side-drawer-pinned" hidden></p>
+    <div id="sideDrawerBody" class="side-drawer-body evidence-panel"></div>
+  </aside>
   <div id="undoToast" class="undo-toast" role="status" aria-live="polite" hidden><span id="undoToastMessage"></span><button id="undoToastButton" class="secondary" type="button">Undo</button></div>
 </main>
 </body>

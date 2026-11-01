@@ -1212,17 +1212,16 @@ test('an opened transcript panel survives a re-render, and each step remembers i
     await page.click('[data-step="2"]');
     await page.waitForSelector('#discussionList .discussion-card');
 
-    // Open a transcript panel, then force the list to be rebuilt.
-    const panel = page.locator('#discussionList [data-keep-open]').first();
-    await panel.evaluate((node) => { node.open = true; });
-    const key = await panel.getAttribute('data-keep-open');
+    // Open a point's transcript in the side drawer, then force the list to be rebuilt.
+    await page.locator('#discussionList .record-menu>summary').first().click();
+    await page.locator('#discussionList .record-menu[open] [data-view-transcript]').click();
+    await page.waitForSelector('#sideDrawer:not([hidden])');
     await page.evaluate(() => { const t = document.querySelector('[data-topic]'); if (t) { t.value = t.value + ' edited'; t.dispatchEvent(new Event('input', { bubbles: true })); } });
     await page.waitForTimeout(600);
-    assert.equal(
-      await page.locator('#discussionList [data-keep-open="' + key + '"]').evaluate((node) => node.open),
-      true,
-      'the panel a reviewer opened to read a passage stays open across a re-render'
-    );
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true,
+      'the passage a reviewer opened to read stays open across a re-render');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), false);
 
     // Use native keyboard activation without first scrolling the off-screen
     // step button into view. locator.click() does that implicitly, changing
@@ -2967,13 +2966,13 @@ test('step navigation wins over an in-flight autosave scroll restore', { timeout
         top: Math.round(screen.getBoundingClientRect().top),
         scrollY: Math.round(window.scrollY),
         maxScroll: Math.round(document.documentElement.scrollHeight - window.innerHeight),
-        activeInsideScreen: screen.contains(document.activeElement),
         activeTag: document.activeElement.tagName
       };
     });
     assert.ok(position.top <= 16 || Math.abs(position.scrollY - position.maxScroll) <= 2, JSON.stringify(position));
-    assert.equal(position.activeInsideScreen, true, JSON.stringify(position));
-    assert.equal(position.activeTag, 'H2');
+    // Headings never take focus; on a phone it lands on the step picker.
+    assert.equal(position.activeTag, 'SELECT', JSON.stringify(position));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'mobileStepSelect');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -3540,4 +3539,54 @@ for (const kind of ['prefix', 'question']) test('document review ' + kind + ' is
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(),0);
     assert.deepEqual(errors,[]);
   }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
+});
+
+test('row and topic menus: one open at a time, Esc and outside clicks close them, transcript opens in the drawer', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'editor'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    const openMenus = () => page.locator('details[data-menu][open]').count();
+    const pointMenu = page.locator('#discussionList .record-menu>summary').first();
+    const topicMenu = page.locator('#discussionList .topic-menu>summary').first();
+
+    await pointMenu.click();
+    await page.keyboard.press('Escape');
+    assert.equal(await openMenus(), 0, 'Esc closes the point menu');
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), 'SUMMARY', 'focus returns to the menu button');
+
+    await pointMenu.click();
+    await page.click('#discussionScreen h2');
+    assert.equal(await openMenus(), 0, 'a click elsewhere closes the menu');
+
+    await pointMenu.click();
+    await topicMenu.click();
+    assert.equal(await openMenus(), 1, 'opening a second menu closes the first');
+    assert.equal(await page.locator('.topic-menu[open]').count(), 1);
+    const clipped = await page.locator('.topic-menu[open] .topic-menu-popover').evaluate((node) =>
+      node.scrollHeight > node.clientHeight + 1 || [...node.querySelectorAll('button')].some((b) => b.scrollWidth > b.clientWidth + 1));
+    assert.equal(clipped, false, 'every topic menu item is shown in full');
+    await page.keyboard.press('Escape');
+
+    const before = await page.evaluate(() => window.scrollY);
+    await pointMenu.click();
+    const item = page.locator('#discussionList .record-menu[open] [data-view-transcript]');
+    assert.match(await item.textContent(), /transcript \(1 line\)/);
+    await item.click();
+    assert.equal(await openMenus(), 0);
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true);
+    assert.match(await page.textContent('#sideDrawerPinned'), /revised report is ready/);
+    assert.match(await page.textContent('#sideDrawerBody'), /revised report/);
+    assert.equal(await page.evaluate(() => window.scrollY), before, 'opening the drawer does not move the page');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), false);
+
+    const headingFocus = await page.evaluate(() => [...document.querySelectorAll('h1,h2,h3')].filter((h) => h.hasAttribute('tabindex')).length);
+    assert.equal(headingFocus, 0, 'no heading is focusable');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

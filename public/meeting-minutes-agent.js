@@ -382,9 +382,12 @@
         var remembered = navigationScrollRestore ? stepScrollMemory[state.currentStep] : null;
         window.scrollTo({ top: typeof remembered === 'number' ? remembered : 0, behavior: 'auto' });
         if (!focusHeading) return;
-        var heading = screen.querySelector('h2') || screen;
-        if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-        heading.focus({ preventScroll: true });
+        // Headings are not focusable. Keyboard focus goes to the current
+        // step's tab, so it is not lost when the button pressed is hidden.
+        // On a phone the tabs are replaced by the step picker.
+        var tab = document.querySelector('.step[data-step="' + state.currentStep + '"]');
+        if (!tab || !tab.getClientRects().length) tab = document.getElementById('mobileStepSelect');
+        if (tab && tab.getClientRects().length) tab.focus({ preventScroll: true });
       });
     });
   }
@@ -538,11 +541,142 @@
     return (record.reviewFlagIds || []).some(function (id) { return open.has(id); });
   }
 
-  function recordMenu(record, actions) {
-    var sourceLabel = recordNeedsReview(record) ? 'Check transcript' : 'View transcript';
-    var ownerKey = String((record && record.id) || '');
-    return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds, ownerKey) + actions + '</div></details>';
+  // The transcript used to expand inside this menu and cover the rows below
+  // it. The menu now holds a plain item that opens the side drawer instead.
+  function transcriptMenuItem(record) {
+    var ids = (record && record.evidenceIds) || [];
+    var count = ids.length;
+    if (!count) return '<button class="secondary quiet" type="button" disabled>No transcript linked</button>';
+    var label = (recordNeedsReview(record) ? 'Check transcript' : 'View transcript') + ' (' + count + (count === 1 ? ' line)' : ' lines)');
+    return '<button class="secondary quiet" data-view-transcript="' + escapeHtml(ids.join(',')) + '" data-transcript-pin="' + escapeHtml(record.text || record.action || '') + '" type="button">' + label + '</button>';
   }
+
+  function recordMenu(record, actions) {
+    return '<details class="record-menu" data-menu><summary class="secondary quiet" aria-label="Item options" title="Item options">•••</summary><div class="record-menu-popover" data-menu-popover>' + transcriptMenuItem(record) + actions + '</div></details>';
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Menus.
+   * Every row and topic menu is a <details>. Only one may be open at a
+   * time; Esc, a click elsewhere and scrolling the page all close it.
+   * ------------------------------------------------------------------ */
+  var MENU_SELECTOR = 'details[data-menu]';
+
+  function openMenus() { return Array.prototype.slice.call(document.querySelectorAll(MENU_SELECTOR + '[open]')); }
+
+  function closeMenus(except, options) {
+    var closed = false;
+    openMenus().forEach(function (menu) {
+      if (menu === except) return;
+      menu.open = false;
+      closed = true;
+      if (options && options.focus) {
+        var summary = menu.querySelector('summary');
+        if (summary) summary.focus({ preventScroll: true });
+      }
+    });
+    return closed;
+  }
+
+  // A menu near the bottom of the window opens upwards, so its last item is
+  // never hidden behind the sticky save bar or the window edge.
+  function placeMenu(menu) {
+    var popover = menu.querySelector('[data-menu-popover]');
+    if (!popover) return;
+    menu.classList.remove('opens-up');
+    var bar = document.getElementById('saveStrip');
+    var floor = window.innerHeight - (bar && !bar.hidden ? bar.getBoundingClientRect().height + 12 : 8);
+    var rect = popover.getBoundingClientRect();
+    var roomAbove = menu.getBoundingClientRect().top;
+    if (rect.bottom > floor && roomAbove > rect.height + 8) menu.classList.add('opens-up');
+  }
+
+  document.addEventListener('toggle', function (event) {
+    var menu = event.target;
+    if (!menu || !menu.matches || !menu.matches(MENU_SELECTOR) || !menu.open) return;
+    closeMenus(menu);
+    placeMenu(menu);
+  }, true);
+
+  document.addEventListener('pointerdown', function (event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    closeMenus(inside || null);
+  }, true);
+
+  document.addEventListener('focusin', function (event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    if (!inside) closeMenus(null);
+  });
+
+  // Scrolling the page by wheel or touch closes a menu. Scrolls the browser
+  // makes itself, to bring a focused menu item into view, do not.
+  function closeMenusOnUserScroll(event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    if (!inside) closeMenus(null);
+  }
+  window.addEventListener('wheel', closeMenusOnUserScroll, { passive: true });
+  window.addEventListener('touchmove', closeMenusOnUserScroll, { passive: true });
+
+  /* ------------------------------------------------------------------ *
+   * Side drawer.
+   * A panel over the right edge for transcript passages. It never moves the
+   * document underneath it, and Esc closes it.
+   * ------------------------------------------------------------------ */
+  var drawerTrigger = null;
+
+  function openDrawer(options) {
+    var drawer = document.getElementById('sideDrawer');
+    if (!drawer) return;
+    drawerTrigger = options.trigger || document.activeElement;
+    document.getElementById('sideDrawerTitle').textContent = options.title || '';
+    var pinned = document.getElementById('sideDrawerPinned');
+    pinned.hidden = !options.pinned;
+    pinned.textContent = options.pinned || '';
+    document.getElementById('sideDrawerBody').innerHTML = options.html || '';
+    drawer.hidden = false;
+    document.body.classList.add('has-side-drawer');
+    document.getElementById('sideDrawerClose').focus({ preventScroll: true });
+  }
+
+  function closeDrawer() {
+    var drawer = document.getElementById('sideDrawer');
+    if (!drawer || drawer.hidden) return false;
+    drawer.hidden = true;
+    document.body.classList.remove('has-side-drawer');
+    var trigger = drawerTrigger;
+    drawerTrigger = null;
+    // The menu that opened the drawer has closed, so focus goes back to the
+    // menu's own button rather than an item that is no longer visible.
+    var menu = trigger && trigger.closest && trigger.closest(MENU_SELECTOR);
+    var target = menu ? menu.querySelector('summary') : trigger;
+    if (target && document.contains(target)) target.focus({ preventScroll: true });
+    return true;
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest && event.target.closest('[data-view-transcript]');
+    if (button) {
+      var ids = button.dataset.viewTranscript.split(',').filter(Boolean);
+      closeMenus(null);
+      openDrawer({
+        title: 'Transcript (' + ids.length + (ids.length === 1 ? ' line)' : ' lines)'),
+        pinned: button.dataset.transcriptPin || '',
+        html: evidenceHtml(ids),
+        trigger: button
+      });
+      return;
+    }
+    if (event.target.closest && event.target.closest('#sideDrawerClose')) closeDrawer();
+  });
+
+  // Esc closes the innermost thing first: an open menu, then the drawer.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (closeMenus(null, { focus: true }) || (!activeFinalEdit && closeDrawer())) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
@@ -1536,7 +1670,7 @@
       var headingToggle = showHeadings
         ? '<button class="secondary quiet" data-toggle-topic-heading="' + index + '" type="button">' + (topic.hideHeading ? 'Show title in minutes' : 'Hide title in minutes') + '</button>'
         : '';
-      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover">' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu" data-menu><summary class="secondary quiet" aria-label="Topic actions" title="Topic actions">•••</summary><div class="topic-menu-popover" data-menu-popover>' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
     restoreDisclosures(document.getElementById('omittedDetailsReview'));
