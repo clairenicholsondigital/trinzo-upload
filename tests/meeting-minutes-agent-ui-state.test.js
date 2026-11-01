@@ -312,6 +312,15 @@ function startStubServer() {
   documentDraft.staleStages = ['actions'];
   documentDraft.executiveSummary = 'The team agreed the revised report is ready.';
   drafts.set('document', documentDraft);
+  // The same document with enough text to move between and remove.
+  const documentEditing = JSON.parse(JSON.stringify(documentDraft));
+  documentEditing.draftId = 'document-editing';
+  documentEditing.discussion[0].points.push(
+    { id: 'discussion-2', text: 'Translations are still outstanding.', evidenceIds: ['T0001'], reviewFlagIds: [] },
+    { id: 'discussion-3', text: 'The distributor holds the stock.', evidenceIds: ['T0001'], reviewFlagIds: [] });
+  documentEditing.actions.push({ id: 'action-2', action: 'Confirm the distributor.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] });
+  documentEditing.meetingObjectives = ['Agree the report'];
+  drafts.set('document-editing', documentEditing);
   const layout = baseDraft('layout', false);
   layout.currentStep = 5;
   layout.selectedStep = 4;
@@ -1426,11 +1435,11 @@ test('edit confirmations and history labels use sentence capitalisation', { time
     await page.click('[data-step="4"]');
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH'
-      && response.request().postDataJSON().reviewDecisionLabel === 'Remove objective');
+      && /^Removed “.+”$/.test(response.request().postDataJSON().reviewDecisionLabel || ''));
     await clickMenuItem(page, '[data-remove-objective]');
     await saved;
-    assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Remove objective.');
-    assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Remove objective');
+    assert.match((await page.locator('#undoToastMessage').textContent()).trim(), /^Removed “.+”\.$/);
+    assert.match(await page.locator('#undoLastDecision').getAttribute('aria-label'), /^Undo: Removed “.+”$/);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -2446,10 +2455,11 @@ test('final minutes edit source records in place and the finishing bar remains a
     const discussionEditorLayout = await page.locator('#finalDocument .final-proposition-content.is-editing').evaluate((node) => ({
       contentWidth: node.getBoundingClientRect().width,
       editorWidth: node.querySelector('[data-final-editor]').getBoundingClientRect().width,
-      rows: node.querySelector('textarea').getAttribute('rows')
+      // The textarea is sized to its text rather than a fixed number of rows.
+      fits: node.querySelector('textarea').scrollHeight <= node.querySelector('textarea').clientHeight + 2
     }));
     assert.ok(discussionEditorLayout.editorWidth >= discussionEditorLayout.contentWidth * 0.95, JSON.stringify(discussionEditorLayout));
-    assert.equal(discussionEditorLayout.rows, '3');
+    assert.equal(discussionEditorLayout.fits, true);
     await page.fill('#finalDocument [data-final-editor-value]', 'The final report is ready to circulate.');
     let saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Meeting sentence edited');
@@ -3708,6 +3718,110 @@ test('a processed draft has one filled button, no red trash icons and regenerate
       .filter((node) => node.getClientRects().length && /^[•…×]+$/.test(node.textContent.trim()))
       .filter((node) => !node.getAttribute('aria-label') || !node.getAttribute('title')).length);
     assert.equal(unlabeled, 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('every text in the document edits the same way and removals can be undone', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1024, height: 1400 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = (test) => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH' && test(response.request().postDataJSON().reviewDecisionLabel || ''));
+
+    // A point opens as a textarea with its text selected; Save is secondary.
+    const points = page.locator('#finalDocument .doc-point [data-final-edit]');
+    const secondText = (await points.nth(1).textContent()).trim();
+    await points.first().click();
+    const editor = page.locator('#finalDocument [data-final-editor-value]');
+    assert.equal(await editor.evaluate((node) => node.tagName), 'TEXTAREA');
+    assert.equal(await editor.evaluate((node) => node === document.activeElement && node.selectionEnd - node.selectionStart === node.value.length), true);
+    assert.equal(await page.locator('#finalDocument [data-final-save]').getAttribute('class'), 'secondary');
+    // Esc cancels without saving.
+    await page.keyboard.type('Thrown away');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#finalDocument [data-final-editor]').count(), 0);
+    assert.equal((await page.locator('#finalDocument').textContent()).includes('Thrown away'), false);
+
+    // Tab saves and opens the next piece of text.
+    await points.first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' Confirmed.');
+    let saved = patch((label) => label === 'Meeting sentence edited');
+    await page.keyboard.press('Tab');
+    await saved;
+    assert.equal((await page.locator('#finalDocument [data-final-editor-value]').inputValue()).trim(), secondText);
+    await page.keyboard.press('Escape');
+    const edited = page.locator('#finalDocument .final-editable.user-edited');
+    assert.equal(await edited.count(), 1);
+    assert.equal(await edited.getAttribute('title'), 'Edited by you');
+
+    // Clicking outside an unchanged field just closes it.
+    await points.nth(1).click();
+    await page.mouse.click(4, 400);
+    assert.equal(await page.locator('#finalDocument [data-final-editor]').count(), 0);
+
+    // The topic title edits in place without moving its count or menu.
+    const head = page.locator('#finalDocument .doc-topic-head').first();
+    const metaOffset = () => head.evaluate((node) => {
+      const meta = node.querySelector('.topic-meta').getBoundingClientRect(), box = node.getBoundingClientRect();
+      return [Math.round(meta.left - box.left), Math.round(meta.top - box.top)];
+    });
+    const before = await metaOffset();
+    await head.locator('[data-final-edit]').click();
+    assert.equal(await page.locator('#finalDocument .doc-topic-head input[data-final-editor-value]').count(), 1);
+    assert.deepEqual(await metaOffset(), before);
+    await page.keyboard.press('Escape');
+
+    // Removing a point shows an Undo toast, and Undo puts it back.
+    const thirdText = (await points.nth(2).textContent()).trim();
+    const pointRow = page.locator('#finalDocument .doc-point').nth(2);
+    await pointRow.hover();
+    await pointRow.locator('.row-menu>summary').click();
+    saved = patch((label) => label.startsWith('Removed “'));
+    await pointRow.locator('[data-doc-remove-record]').click();
+    await saved;
+    assert.match(await page.locator('#undoToastMessage').textContent(), /^Removed “.+”\. $/);
+    assert.equal((await page.locator('#finalDocument').textContent()).includes(thirdText), false);
+    await page.click('#undoToastButton');
+    await page.waitForFunction((text) => document.getElementById('finalDocument').textContent.includes(text), thirdText);
+
+    // Attendees are chips: add one with Enter, remove one with undo.
+    await page.click('[data-doc-add-attendee="client"]');
+    await page.keyboard.type('Pat Lee');
+    saved = patch((label) => label === 'Attendee added');
+    await page.keyboard.press('Enter');
+    await saved;
+    assert.ok((await page.locator('.doc-attendee-chip').allTextContents()).some((text) => text.includes('Pat Lee')));
+    const patChip = page.locator('.doc-attendee-chip', { hasText: 'Pat Lee' });
+    saved = patch((label) => label === 'Removed “Pat Lee”');
+    await patChip.hover();
+    await patChip.locator('.chip-remove').click();
+    await saved;
+    assert.equal(await page.locator('.doc-attendee-chip', { hasText: 'Pat Lee' }).count(), 0);
+
+    // An empty new objective is dropped, not saved.
+    await page.click('[data-doc-add-objective]');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#finalDocument .final-objectives [data-final-edit].is-empty').count(), 0);
+
+    // Removing an action needs no confirmation and can be undone.
+    const actionRows = page.locator('#finalDocument .actions-table tbody tr');
+    const actionCount = await actionRows.count();
+    await actionRows.first().hover();
+    await actionRows.first().locator('.row-menu>summary').click();
+    saved = patch((label) => label.startsWith('Removed “'));
+    await actionRows.first().locator('[data-doc-remove-action]').click();
+    await saved;
+    assert.equal(await actionRows.count(), actionCount - 1);
+    await page.click('#undoToastButton');
+    await page.waitForFunction((count) => document.querySelectorAll('#finalDocument .actions-table tbody tr').length === count, actionCount);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

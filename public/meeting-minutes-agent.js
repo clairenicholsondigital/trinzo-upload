@@ -215,7 +215,30 @@
     var formatted = formatReviewDecisionLabel(label);
     message.textContent = formatted + (/[.!?]$/.test(formatted) ? ' ' : '. ');
     toast.hidden = false;
-    undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 10000);
+    undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 8000);
+  }
+
+  // Every removal says what went, so the toast's Undo is clearly about it.
+  function removedLabel(text) {
+    var value = String(text || '').replace(/\s+/g, ' ').trim();
+    if (value.length > 48) value = value.slice(0, 45).trim() + '…';
+    return 'Removed “' + (value || 'empty item') + '”';
+  }
+
+  /* Fields the reviewer changed in the document keep a grey bar until the
+     minutes are finalised. Kept in this browser only. */
+  function editedStoreKey() { return 'mma-edited:' + ((state.draft && state.draft.draftId) || ''); }
+  function editedFields() {
+    if (!state.draft || state.draft.status === 'complete') return [];
+    try { return JSON.parse(window.localStorage.getItem(editedStoreKey()) || '[]'); } catch (error) { return []; }
+  }
+  function fieldEditKey(kind, id, field) { return kind + '|' + id + '|' + field; }
+  function markFieldEdited(kind, id, field) {
+    var list = editedFields();
+    var key = fieldEditKey(kind, id, field);
+    if (list.indexOf(key) >= 0) return;
+    list.push(key);
+    try { window.localStorage.setItem(editedStoreKey(), JSON.stringify(list.slice(-500))); } catch (error) { /* private mode */ }
   }
 
   /* ------------------------------------------------------------------ *
@@ -1360,11 +1383,20 @@
       return '<span class="meta-chip">' + finalTextEditor('details', 'meeting-details', field, value, options) + '</span>';
     };
     var typeLabel = meetingTypeLabel(details.meetingType) || 'Meeting type not set';
+    var typeControl = '<span class="meta-chip">' + escapeHtml(typeLabel) + '</span>';
+    if (editable) {
+      var current = meetingTypeLabel(details.meetingType || '');
+      var source = document.getElementById('meetingType');
+      var labels = source ? Array.from(source.options).map(function (option) { return option.value; }).filter(Boolean) : [];
+      if (current && labels.indexOf(current) < 0) labels.push(current);
+      typeControl = '<span class="meta-chip"><select class="meta-select" data-doc-meeting-type aria-label="Meeting type"><option value="">Meeting type not set</option>'
+        + labels.map(function (label) { return '<option' + (label === current ? ' selected' : '') + '>' + escapeHtml(label) + '</option>'; }).join('') + '</select></span>';
+    }
     return chip('meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Date not set'})
       + '<span class="meta-sep" aria-hidden="true">·</span>'
       + chip('meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Location not set'})
       + '<span class="meta-sep" aria-hidden="true">·</span>'
-      + '<span class="meta-chip">' + escapeHtml(typeLabel) + '</span>';
+      + typeControl;
   }
 
   function setEditStructure(on) {
@@ -2725,12 +2757,13 @@
       var actionIndex = kind === 'action' ? actionIndexForOccurrence(id) : -1;
       var recordId = actionIndex >= 0 ? state.draft.actions[actionIndex].id : id;
       var occurrenceAttribute = kind === 'action' ? ' data-action-occurrence-id="' + escapeHtml(id) + '"' : '';
-      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
+      var edited = editedFields().indexOf(fieldEditKey(kind, id, field)) >= 0;
+      return '<button class="final-editable' + (options.block ? ' block' : '') + (edited ? ' user-edited' : '') + (displayValue ? '' : ' is-empty') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="' + (edited ? 'Edited by you' : 'Click to edit') + '">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
       : '<textarea data-final-editor-value rows="' + (options.rows || 2) + '" aria-label="' + escapeHtml(options.label || 'Edit text') + '">' + escapeHtml(value || '') + '</textarea>';
-    return '<span class="final-inline-editor' + (options.block ? ' block' : '') + '" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+    return '<span class="final-inline-editor' + (options.block ? ' block' : '') + '" data-final-editor data-original="' + escapeHtml(value || '') + '">' + control + finalEditButtons() + '</span>';
   }
 
   function finalTimingDisplay(action) {
@@ -2738,7 +2771,7 @@
   }
 
   function finalEditButtons() {
-    return '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span>';
+    return '<span class="final-edit-actions"><button class="quiet" data-final-cancel type="button">Cancel</button><button class="secondary" data-final-save type="button">Save</button></span>';
   }
 
   // The editor for an action's field, laid out in a row of its own under the
@@ -2780,7 +2813,7 @@
         + '<textarea data-final-editor-value rows="3" aria-label="Edit action">' + escapeHtml(action.action || '') + '</textarea>'
         + finalEditButtons() + '</span>';
     }
-    return '<tr class="final-editor-row"><td colspan="3">' + body + '</td></tr>';
+    return '<tr class="final-editor-row"><td colspan="' + (inDocumentMode() ? 4 : 3) + '">' + body + '</td></tr>';
   }
 
   // A meeting nobody from the client side attended is an internal meeting, not
@@ -2800,15 +2833,24 @@
   function renderFinal() {
     var draft = state.draft || {}; var details = draft.details || {};
     var include = includedSectionState();
-    var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
-    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
+    var docMode = inDocumentMode();
+    var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && (item.text || finalEditMatches('objective', item.id, 'text'));}) : [];
+    var addObjective = docMode ? '<button class="quiet doc-add doc-only" data-doc-add-objective type="button">Add objective</button>' : '';
+    var summaryHtml = (objectives.length || (docMode && include.meetingObjectives) ? '<section><h3>Meeting objectives</h3>' + (objectives.length ? '<ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {singleLine:docMode,label:'Edit meeting objective',empty:'New objective'}) + '</li>'; }).join('') + '</ul>' : '') + addObjective + '</section>' : '')
       + (include.executiveSummary && draft.executiveSummary ? '<section>' + sectionHeading('Executive summary', 'summary', summaryTranscriptItem()) + staleLinkHtml('summary') + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+    var topicCount = (draft.discussion || []).length;
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
-      var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
-        .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text}; }); });
-      var heading = topicHeadingsShown() && !topic.hideHeading ? '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' : '';
-      return heading + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
+      var rows = [{key:'points',label:'',noun:'point'}, {key:'decisions',label:'Decision:',noun:'decision'}, {key:'openQuestions',label:'Open question:',noun:'question'}]
+        .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text,record:item,field:group.key,index:itemIndex,noun:group.noun}; }); });
+      var heading;
+      if (docMode) heading = docTopicHeading(topic, topicIndex, topicId, rows.length, topicCount);
+      else heading = topicHeadingsShown() && !topic.hideHeading ? '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' : '';
+      return heading + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) {
+        var menu = docMode && !finalEditMatches('discussion', item.id, 'text')
+          ? rowMenu(item.noun.charAt(0).toUpperCase() + item.noun.slice(1) + ' options', transcriptMenuItem(item.record) + '<button class="delete quiet" data-doc-remove-record="' + topicIndex + '|' + item.field + '|' + item.index + '" type="button">Remove ' + item.noun + '</button>')
+          : '';
+        return '<li' + (docMode ? ' class="doc-point"' : '') + '><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div>' + menu + '</li>'; }).join('') + '</ul>' : '');
     }).join('');
     var actionsHtml = (draft.actions || []).map(function (action) {
       var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', actionOccurrence(action), field); })[0] || '';
@@ -2816,18 +2858,69 @@
       return '<tr' + (editing ? ' class="is-editing"' : '') + '>'
         + cell('action', finalTextEditor('action', actionOccurrence(action), 'action', action.action, {block:true,label:'Edit action',deferred:true}))
         + cell('owners', finalTextEditor('action', actionOccurrence(action), 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
-        + cell('timing', finalTimingDisplay(action)) + '</tr>'
+        + cell('timing', finalTimingDisplay(action))
+        + (docMode ? '<td class="doc-only doc-row-menu">' + rowMenu('Action options', transcriptMenuItem(action) + '<button class="delete quiet" data-doc-remove-action="' + escapeHtml(actionOccurrence(action)) + '" type="button">Remove action</button>') + '</td>' : '')
+        + '</tr>'
         + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
     var documentHead = inDocumentMode()
       ? (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
       : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
-    document.getElementById('finalDocument').innerHTML = documentHead + (inDocumentMode() ? '<section class="final-attendees"><h3>Attendees</h3>' + finalAttendeesHtml(details) + '</section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    var headingsSwitch = docMode ? '<label class="doc-topic-headings doc-only"><input type="checkbox" data-doc-topic-headings' + (topicHeadingsShown() ? ' checked' : '') + '> Show topic titles in minutes</label>' : '';
+    var actionsHead = '<tr><th>Action</th><th>Owners</th><th>Timing</th>' + (docMode ? '<th class="doc-only doc-row-menu"><span class="visually-hidden">Options</span></th>' : '') + '</tr>';
+    document.getElementById('finalDocument').innerHTML = documentHead + (docMode ? '<section class="final-attendees"><h3>Attendees</h3>' + docAttendeesHtml(details) + '<div class="preview-only">' + finalAttendeesHtml(details) + '</div></section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + headingsSwitch + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead>' + actionsHead + '</thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
     renderPageHeading();
     var meta = document.getElementById('documentMeta');
     if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
-    if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
+    if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); fitFinalTextarea(editor); }
+  }
+
+  // A textarea in the document grows with its text instead of scrolling.
+  function fitFinalTextarea(element) {
+    if (!element || element.tagName !== 'TEXTAREA') return;
+    element.rows = 1;
+    element.style.height = 'auto';
+    element.style.height = (element.scrollHeight + 2) + 'px';
+  }
+
+  function attendeeGroupLabel(key, details) {
+    return key === 'internal' ? 'Internal' : (details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
+  }
+
+  // Attendees in the document: one chip per person with the name (edited in
+  // place), a toggle for the group and a remove button.
+  function docAttendeesHtml(details) {
+    var group = function (key) {
+      var label = attendeeGroupLabel(key, details);
+      var other = attendeeGroupLabel(key === 'internal' ? 'client' : 'internal', details);
+      var names = details[key + 'Attendees'] || [];
+      var chips = names.map(function (name, index) {
+        var id = key + ':' + index;
+        var editing = finalEditMatches('attendee', id, 'name');
+        var tools = editing ? '' : '<button class="chip-toggle" data-doc-attendee-move="' + id + '" type="button" title="Move to ' + other + '" aria-label="' + escapeHtml(name) + ' is ' + label.toLowerCase() + '. Move to ' + other.toLowerCase() + '">' + label + '</button>'
+          + '<button class="chip-remove" data-doc-remove-attendee="' + id + '" type="button" title="Remove ' + escapeHtml(name) + '" aria-label="Remove ' + escapeHtml(name) + '">&times;</button>';
+        return '<span class="doc-attendee-chip' + (editing ? ' is-editing' : '') + '">' + finalTextEditor('attendee', id, 'name', name, {singleLine:true,label:'Edit attendee name',empty:'New attendee'}) + tools + '</span>';
+      }).join('');
+      return '<div class="doc-attendee-group" data-group="' + key + '"><span class="doc-attendee-label">' + label + '</span><div class="doc-attendee-chips">' + chips
+        + '<button class="quiet doc-add" data-doc-add-attendee="' + key + '" type="button">Add attendee</button></div></div>';
+    };
+    return '<div class="doc-attendees doc-only">' + group('internal') + group('client') + '</div>';
+  }
+
+  // A topic's header line in the document: title, point count and a menu.
+  // The count and menu sit on the right and never move while the title is
+  // being edited.
+  function docTopicHeading(topic, topicIndex, topicId, count, topicCount) {
+    var globalOn = topicHeadingsShown();
+    var hidden = !globalOn || topic.hideHeading === true;
+    var headingItem = '<button class="secondary quiet" data-doc-topic-heading="' + topicIndex + '" type="button"' + (globalOn ? '' : ' disabled title="Topic titles are hidden for the whole document. Turn on Show topic titles in minutes first."') + '>' + (topic.hideHeading ? 'Show title in minutes' : 'Hide title in minutes') + '</button>';
+    var moves = (topicIndex > 0 ? '<button class="secondary quiet" data-doc-topic-move="' + topicIndex + '" data-dir="-1" type="button">Move up</button>' : '')
+      + (topicIndex < topicCount - 1 ? '<button class="secondary quiet" data-doc-topic-move="' + topicIndex + '" data-dir="1" type="button">Move down</button>' : '');
+    var menu = rowMenu('Topic options', headingItem + moves + '<button class="delete quiet" data-doc-remove-topic="' + topicIndex + '" type="button">Remove topic</button>');
+    return '<div class="doc-topic-head' + (hidden ? ' is-hidden' : '') + '"><h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading',empty:'Untitled topic'}) + '</h4>'
+      + (hidden ? '<span class="hidden-tag doc-only" title="Not shown in the minutes">hidden</span>' : '')
+      + '<span class="topic-meta doc-only">' + count + (count === 1 ? ' point' : ' points') + '</span><span class="doc-only">' + menu + '</span></div>';
   }
 
   // A section heading in the document, with its own "…" menu.
@@ -3799,11 +3892,16 @@
       document.getElementById(destination + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip(input ? input.value : '', destination));
       chip.remove();
     } else if (remove) {
-      remove.closest('.attendee-chip').remove();
+      var removedChip = remove.closest('.attendee-chip');
+      var removedInput = removedChip && removedChip.querySelector('[data-attendee-name]');
+      var removedName = removedInput ? removedInput.value.trim() : '';
+      removedChip.remove();
     }
     if (move || remove) {
       setClientAttendeeVisibility(attendeeNames('client').length > 0);
-      readDetails(); rerenderActions(); scheduleSave();
+      readDetails(); rerenderActions();
+      // A named person is undoable from the toast; an empty chip just goes.
+      if (remove && removedName) queueReviewDecision(removedLabel(removedName)); else scheduleSave();
     }
   });
 
@@ -3849,10 +3947,9 @@
     var button = event.target.closest('[data-remove-objective]');
     if (!button) return;
     readSummary();
-    state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1);
-    markUndoStep('remove objective', '');
+    var removedObjective = state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1)[0];
     renderSummary();
-    scheduleSave();
+    queueReviewDecision(removedLabel(typeof removedObjective === 'string' ? removedObjective : removedObjective && removedObjective.text));
   });
   document.getElementById('generateActions').addEventListener('click', function () { requestBackgroundStage('actions'); });
   document.getElementById('regenerationDialog').addEventListener('close', function (event) {
@@ -4202,12 +4299,7 @@
         movedTopicIndex=sourceIndex+1;
       }
     }
-    // Removing a topic with content deletes all its rows at once: ask first.
-    var topicToRemove=topicButton && state.draft.discussion[Number(topicButton.dataset.deleteTopic)];
-    if(topicButton && discussionTopicHasContent(topicToRemove)){
-      var rowCount=['points','decisions','openQuestions'].reduce(function(total,key){return total+((topicToRemove[key]||[]).length);},0);
-      if(!window.confirm('Remove the topic "'+(topicToRemove.topic||'Untitled')+'" and its '+rowCount+' row'+(rowCount===1?'':'s')+'?')) topicButton=null;
-    }
+    // Removing a topic needs no confirmation: the toast's Undo puts it back.
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
       material = material || discussionTopicHasContent(removedTopic);
@@ -4232,8 +4324,8 @@
       if(addedField){var editor=addedField.querySelector('textarea');if(editor)editor.focus({preventScroll:true});}
       return;
     }
-    if (remove && removedReviewContent) queueReviewDecision('Discussion item removed');
-    else if (topicButton && removedReviewContent) queueReviewDecision('Discussion topic removed');
+    if (remove && removedReviewContent) queueReviewDecision(removedLabel(removedRecord.text));
+    else if (topicButton && removedReviewContent) queueReviewDecision(removedLabel(removedTopic.topic || 'Untitled topic'));
     else { if (remove || topicButton) markUndoStep(remove ? 'remove discussion item' : 'remove discussion topic', ''); scheduleSave(); }
   });
 
@@ -4410,6 +4502,14 @@
     var removedElement = button.closest('[data-action-occurrence-id]');
     var removedIndex = actionIndexForOccurrence(removedElement && removedElement.dataset.actionOccurrenceId);
     if (removedIndex < 0) return;
+    var removedText = state.draft.actions[removedIndex].action;
+    removeActionAt(removedIndex);
+    renderActions(); queueReviewDecision(removedLabel(removedText));
+  });
+
+  // Takes an action out of the list, keeping it under Removed so it can be put
+  // back, and closes any review checks that pointed at it.
+  function removeActionAt(removedIndex) {
     var actionToRemove = state.draft.actions[removedIndex];
     var removedLegacyId = unambiguousLegacyActionId(actionToRemove);
     var inferredFlagIds = flagsTargetingAction(actionToRemove, removedIndex);
@@ -4431,8 +4531,8 @@
       delete actionEditorState.editingOwners[removedKey];
       delete actionEditorState.editingTiming[removedKey];
     }
-    renderActions(); queueReviewDecision('Action removed');
-  });
+    return removedAction;
+  }
 
   // Merging is mechanical: every row moves, in its own kind, and the emptied
   // topic goes. Nothing is inferred, so nothing can be inferred wrongly.
@@ -4587,42 +4687,148 @@
     return null;
   }
 
-  function applyFinalEdit() {
+  function finalEditKey(edit) { return edit ? fieldEditKey(edit.kind, edit.id, edit.field) : ''; }
+  function editableKeyOf(element) {
+    var data = element.dataset;
+    return fieldEditKey(data.kind, data.kind === 'action' ? data.actionOccurrenceId || '' : data.recordId || '', data.field);
+  }
+  function documentEditables() {
+    return Array.from(document.querySelectorAll('#documentHeader [data-final-edit], #finalDocument [data-final-edit]')).filter(function (element) {
+      return element.offsetParent !== null;
+    });
+  }
+  function findEditable(key) {
+    return documentEditables().filter(function (element) { return editableKeyOf(element) === key; })[0] || null;
+  }
+  function focusEditable(key) {
+    var element = key && findEditable(key);
+    if (element) element.focus({ preventScroll: true });
+  }
+
+  function openFinalEditable(editable) {
+    if (!editable || !state.draft) return;
+    activeFinalEdit = { kind:editable.dataset.kind,
+      id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
+      field:editable.dataset.field };
+    if (activeFinalEdit.kind === 'action' && actionIndexForOccurrence(activeFinalEdit.id) < 0) { activeFinalEdit = null; return; }
+    if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
+      var action = state.draft.actions[actionIndexForOccurrence(activeFinalEdit.id)];
+      activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
+    }
+    renderFinal();
+  }
+
+  // Drops a just-added empty attendee or objective that was never filled in.
+  function discardNewPlaceholder(edit) {
+    if (!edit || !edit.isNew || !state.draft) return;
+    if (edit.kind === 'attendee') {
+      var parts = String(edit.id).split(':');
+      var list = (state.draft.details || {})[parts[0] + 'Attendees'] || [];
+      if (!String(list[Number(parts[1])] || '').trim()) list.splice(Number(parts[1]), 1);
+    } else if (edit.kind === 'objective') {
+      state.draft.meetingObjectives = (state.draft.meetingObjectives || []).filter(function (item) {
+        return !(item && typeof item === 'object' && item.id === edit.id && !String(item.text || '').trim());
+      });
+    }
+  }
+
+  function cancelFinalEdit(options) {
+    if (!activeFinalEdit) return;
+    var edit = activeFinalEdit;
+    discardNewPlaceholder(edit);
+    activeFinalEdit = null;
+    renderFinal();
+    if (!options || options.focus !== false) focusEditable(finalEditKey(edit));
+  }
+
+  // Clicking away keeps what was typed; an untouched field simply closes.
+  function finalEditChanged() {
+    var editor = document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]');
+    if (!editor) return false;
+    var control = editor.querySelector('[data-final-editor-value]');
+    if (!control || editor.dataset.original == null) return true;
+    return control.value.trim() !== String(editor.dataset.original).trim();
+  }
+
+  // Applies a change made directly in the document: keeps the step screens in
+  // step with it and saves straight away with an undoable label.
+  function commitDocumentChange(label) {
+    activeFinalEdit = null;
+    renderDetails(); renderDiscussion(); renderActions(); renderSummary(); renderFinal();
+    queueReviewDecision(label);
+  }
+
+  function applyFinalEdit(options) {
+    options = options || {};
     if (!activeFinalEdit || !state.draft) return false;
     var edit = activeFinalEdit;
     var editor = document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]');
     if (!editor) return false;
     var valueControl = editor.querySelector('[data-final-editor-value]');
     var value = valueControl ? valueControl.value.trim() : '';
+    if (valueControl && editor.dataset.original != null && value === String(editor.dataset.original).trim() && !edit.isNew) {
+      cancelFinalEdit(options);
+      return false;
+    }
     var label = 'Final minutes updated';
+    var editedKey = finalEditKey(edit);
+    var removed = false;
     if (edit.kind === 'details') {
+      // A title is required: clearing it keeps the previous one.
+      if (edit.field === 'meetingTitle' && !value) { cancelFinalEdit(options); return false; }
       state.draft.details[edit.field] = value;
       label = edit.field === 'meetingTitle' ? 'Meeting title edited' : edit.field === 'meetingDate' ? 'Meeting date edited' : 'Meeting location edited';
+    } else if (edit.kind === 'attendee') {
+      var attendeeParts = String(edit.id).split(':');
+      var attendees = state.draft.details[attendeeParts[0] + 'Attendees'] || (state.draft.details[attendeeParts[0] + 'Attendees'] = []);
+      var attendeeIndex = Number(attendeeParts[1]);
+      var previousName = String(attendees[attendeeIndex] || '');
+      if (!value) {
+        if (edit.isNew) { cancelFinalEdit(options); return false; }
+        attendees.splice(attendeeIndex, 1);
+        label = removedLabel(previousName); removed = true;
+      } else {
+        attendees[attendeeIndex] = value;
+        // An owner who was renamed keeps owning their actions.
+        if (previousName) (state.draft.actions || []).forEach(function (action) {
+          action.owners = (action.owners || []).map(function (owner) { return owner === previousName ? value : owner; });
+        });
+        label = edit.isNew ? 'Attendee added' : 'Attendee renamed';
+        editedKey = fieldEditKey('attendee', value, 'name');
+      }
+      state.draft.details.allAttendees = (state.draft.details.internalAttendees || []).concat(state.draft.details.clientAttendees || []).filter(Boolean);
     } else if (edit.kind === 'topic') {
       var topic = (state.draft.discussion || []).find(function (item, index) { return String(item.id || 'topic-'+index) === String(edit.id); });
-      if (!topic || !value) return false;
+      if (!topic || !value) { cancelFinalEdit(options); return false; }
       if (topic.topic !== value) topic.reviewerAuthored = true;
       topic.topic = value; label = 'Topic heading edited';
     } else if (edit.kind === 'discussion') {
       var record = findFinalDiscussionRecord(edit.id);
-      if (!record || !value) return false;
+      if (!record || !value) { cancelFinalEdit(options); return false; }
       if (record.text !== value) record.reviewerAuthored = true;
       record.text = value; label = 'Meeting sentence edited';
     } else if (edit.kind === 'objective') {
       var objectiveIndex = (state.draft.meetingObjectives || []).findIndex(function (item, index) { return String(typeof item === 'string' ? 'objective-'+index : item.id) === String(edit.id); });
-      if (objectiveIndex < 0 || !value) return false;
+      if (objectiveIndex < 0) return false;
       var objective = state.draft.meetingObjectives[objectiveIndex];
-      state.draft.meetingObjectives[objectiveIndex] = typeof objective === 'string' ? value : Object.assign({}, objective, {text:value});
-      label = 'Meeting objective edited';
+      if (!value) {
+        // Saving an empty objective removes it.
+        if (edit.isNew) { cancelFinalEdit(options); return false; }
+        state.draft.meetingObjectives.splice(objectiveIndex, 1);
+        label = removedLabel(typeof objective === 'string' ? objective : objective.text); removed = true;
+      } else {
+        state.draft.meetingObjectives[objectiveIndex] = typeof objective === 'string' ? value : Object.assign({}, objective, {text:value});
+        label = edit.isNew ? 'Meeting objective added' : 'Meeting objective edited';
+      }
     } else if (edit.kind === 'summary') {
-      if (!value) return false;
+      if (!value) { cancelFinalEdit(options); return false; }
       state.draft.executiveSummary = value; label = 'Executive summary edited';
     } else if (edit.kind === 'action') {
       var action = state.draft.actions[actionIndexForOccurrence(edit.id)];
       if (!action) return false;
       var previousAction = actionEditFingerprint(action);
       if (edit.field === 'action') {
-        if (!value) return false;
+        if (!value) { cancelFinalEdit(options); return false; }
         action.action = value; label = 'Action edited';
       } else if (edit.field === 'owners') {
         action.owners = (edit.ownerSelection || action.owners || []).slice();
@@ -4634,14 +4840,112 @@
           editor.querySelector('[data-final-timing-date]'));
         label = 'Action timing edited';
       }
-      if (previousAction !== actionEditFingerprint(action)) action.reviewerAuthored = true;
+      if (previousAction === actionEditFingerprint(action)) { cancelFinalEdit(options); return false; }
+      action.reviewerAuthored = true;
     }
-    activeFinalEdit = null;
+    if (!removed) markFieldEdited.apply(null, editedKey.split('|'));
     // saveDraftNow reads the hidden stage editors before sending. Refresh them
     // so an edit made on the final document cannot be replaced by stale fields.
-    renderDetails(); renderDiscussion(); renderActions(); renderSummary(); renderFinal();
-    queueReviewDecision(label);
+    commitDocumentChange(label);
+    if (options.focus !== false) focusEditable(editedKey);
     return true;
+  }
+
+  // Tab saves and moves to the next piece of text (Shift+Tab, the previous).
+  function moveToAdjacentEditable(key, direction) {
+    var list = documentEditables();
+    var at = list.findIndex(function (element) { return editableKeyOf(element) === key; });
+    var next = at >= 0 ? list[at + direction] : null;
+    if (next) openFinalEditable(next);
+  }
+
+  function removeDocumentRecord(spec) {
+    var parts = String(spec).split('|');
+    var topic = state.draft.discussion[Number(parts[0])];
+    var list = topic && topic[parts[1]];
+    var removedRecord = list && list.splice(Number(parts[2]), 1)[0];
+    if (!removedRecord) return;
+    forgetPendingDiscussion(removedRecord);
+    resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
+    if (discussionRecordHasContent(removedRecord)) markDownstreamStale();
+    commitDocumentChange(removedLabel(removedRecord.text));
+  }
+
+  function onDocumentEditClick(event) {
+    var target;
+    if ((target = event.target.closest('[data-doc-remove-record]'))) { closeMenus(); removeDocumentRecord(target.dataset.docRemoveRecord); return true; }
+    if ((target = event.target.closest('[data-doc-remove-action]'))) {
+      closeMenus();
+      var actionIndex = actionIndexForOccurrence(target.dataset.docRemoveAction);
+      if (actionIndex < 0) return true;
+      var removedText = state.draft.actions[actionIndex].action;
+      removeActionAt(actionIndex);
+      commitDocumentChange(removedLabel(removedText));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-remove-topic]'))) {
+      closeMenus();
+      var removedTopic = state.draft.discussion.splice(Number(target.dataset.docRemoveTopic), 1)[0];
+      if (!removedTopic) return true;
+      forgetPendingDiscussion(removedTopic);
+      resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
+      if (discussionTopicHasContent(removedTopic)) markDownstreamStale();
+      commitDocumentChange(removedLabel(removedTopic.topic || 'Untitled topic'));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-topic-move]'))) {
+      closeMenus();
+      var from = Number(target.dataset.docTopicMove), to = from + Number(target.dataset.dir);
+      var topics = state.draft.discussion;
+      if (!topics[from] || !topics[to]) return true;
+      var moved = topics.splice(from, 1)[0];
+      topics.splice(to, 0, moved);
+      commitDocumentChange('Moved “' + (moved.topic || 'Untitled topic') + '” ' + (to < from ? 'up' : 'down'));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-topic-heading]'))) {
+      closeMenus();
+      var headingTopic = state.draft.discussion[Number(target.dataset.docTopicHeading)];
+      if (!headingTopic) return true;
+      headingTopic.hideHeading = !headingTopic.hideHeading;
+      commitDocumentChange(headingTopic.hideHeading ? 'Topic title hidden' : 'Topic title shown');
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-remove-attendee]'))) {
+      var removeParts = target.dataset.docRemoveAttendee.split(':');
+      var removeList = state.draft.details[removeParts[0] + 'Attendees'] || [];
+      var removedName = removeList.splice(Number(removeParts[1]), 1)[0];
+      state.draft.details.allAttendees = (state.draft.details.internalAttendees || []).concat(state.draft.details.clientAttendees || []);
+      commitDocumentChange(removedLabel(removedName));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-attendee-move]'))) {
+      var moveParts = target.dataset.docAttendeeMove.split(':');
+      var destination = moveParts[0] === 'internal' ? 'client' : 'internal';
+      var source = state.draft.details[moveParts[0] + 'Attendees'] || [];
+      var movedName = source.splice(Number(moveParts[1]), 1)[0];
+      (state.draft.details[destination + 'Attendees'] || (state.draft.details[destination + 'Attendees'] = [])).push(movedName);
+      commitDocumentChange('Moved ' + movedName + ' to ' + attendeeGroupLabel(destination, state.draft.details).toLowerCase() + ' attendees');
+      var toggle = Array.from(document.querySelectorAll('[data-doc-attendee-move^="' + destination + ':"]')).pop();
+      if (toggle) toggle.focus({ preventScroll: true });
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-attendee]'))) {
+      var group = target.dataset.docAddAttendee;
+      var groupList = state.draft.details[group + 'Attendees'] || (state.draft.details[group + 'Attendees'] = []);
+      groupList.push('');
+      activeFinalEdit = { kind:'attendee', id:group + ':' + (groupList.length - 1), field:'name', isNew:true };
+      renderFinal();
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-objective]'))) {
+      var objectiveId = 'objective-new-' + Date.now();
+      state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat([{ id:objectiveId, text:'' }]);
+      activeFinalEdit = { kind:'objective', id:objectiveId, field:'text', isNew:true };
+      renderFinal();
+      return true;
+    }
+    return false;
   }
 
   function onFinalDocumentClick(event) {
@@ -4654,28 +4958,49 @@
       return;
     }
     var editable = event.target.closest('[data-final-edit]');
-    if (editable) {
-      activeFinalEdit = { kind:editable.dataset.kind,
-        id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
-        field:editable.dataset.field };
-      if (activeFinalEdit.kind === 'action' && actionIndexForOccurrence(activeFinalEdit.id) < 0) { activeFinalEdit = null; return; }
-      if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
-        var action = state.draft.actions[actionIndexForOccurrence(activeFinalEdit.id)];
-        activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
-      }
-      renderFinal();
-      return;
-    }
-    if (event.target.closest('[data-final-cancel]')) { activeFinalEdit = null; renderFinal(); return; }
-    if (event.target.closest('[data-final-save]')) applyFinalEdit();
+    if (editable) { openFinalEditable(editable); return; }
+    if (event.target.closest('[data-final-cancel]')) { cancelFinalEdit(); return; }
+    if (event.target.closest('[data-final-save]')) { applyFinalEdit(); return; }
+    if (state.draft && inDocumentMode()) onDocumentEditClick(event);
   }
   // The document header (title, date, location) edits the same way as the body.
   document.getElementById('finalDocument').addEventListener('click', onFinalDocumentClick);
   document.getElementById('documentHeader').addEventListener('click', function (event) {
     if (event.target.closest('[data-final-edit],[data-final-cancel],[data-final-save]')) onFinalDocumentClick(event);
   });
+  document.getElementById('documentHeader').addEventListener('change', function (event) {
+    var select = event.target.closest('[data-doc-meeting-type]');
+    if (!select || !state.draft) return;
+    state.draft.details.meetingType = meetingTypeValue(select.value);
+    commitDocumentChange('Meeting type changed');
+  });
+  document.getElementById('finalDocument').addEventListener('input', function (event) {
+    if (event.target.matches('textarea[data-final-editor-value]')) fitFinalTextarea(event.target);
+  });
+  // Clicking outside an open field saves it (or just closes it when nothing
+  // changed). Clicking another piece of text opens that one straight away.
+  document.addEventListener('pointerdown', function (event) {
+    if (!activeFinalEdit || !state.draft) return;
+    if (event.target.closest('[data-final-editor], .final-editor-row, #sideDrawer, #undoToast')) return;
+    if (!document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]')) return;
+    var target = event.target.closest('[data-final-edit]');
+    var nextKey = target ? editableKeyOf(target) : '';
+    if (finalEditChanged()) applyFinalEdit({ focus: false }); else cancelFinalEdit({ focus: false });
+    if (nextKey) {
+      var next = findEditable(nextKey);
+      if (next) { event.preventDefault(); openFinalEditable(next); }
+    }
+  }, true);
 
   document.getElementById('finalDocument').addEventListener('change', function (event) {
+    var headings = event.target.closest('[data-doc-topic-headings]');
+    if (headings && state.draft) {
+      var include = includedSectionState();
+      include.topicHeadings = headings.checked;
+      state.draft.includeSections = include;
+      commitDocumentChange(headings.checked ? 'Topic titles shown' : 'Topic titles hidden');
+      return;
+    }
     var select = event.target.closest('[data-final-add-owner]');
     if (!select || !select.value || !activeFinalEdit || activeFinalEdit.field !== 'owners') return;
     var selected = activeFinalEdit.ownerSelection || (activeFinalEdit.ownerSelection = []);
@@ -4686,11 +5011,21 @@
     renderFinal();
   });
 
+  // One set of keys for every field: Esc cancels, Cmd/Ctrl+Enter saves, Enter
+  // saves a single-line field, Tab saves and moves to the next field.
   function onFinalDocumentKeydown(event) {
-    if (event.key === 'Escape' && activeFinalEdit) { event.preventDefault(); activeFinalEdit = null; renderFinal(); }
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && activeFinalEdit) { event.preventDefault(); applyFinalEdit(); }
-    // A single-line field in the header saves on Enter.
-    if (event.key === 'Enter' && !event.shiftKey && activeFinalEdit && event.target.matches('#documentHeader input[data-final-editor-value]')) { event.preventDefault(); applyFinalEdit(); }
+    if (!activeFinalEdit) return;
+    if (event.key === 'Escape') { event.preventDefault(); cancelFinalEdit(); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); applyFinalEdit(); return; }
+    var inValue = event.target.matches('[data-final-editor-value]');
+    if (event.key === 'Enter' && !event.shiftKey && inValue && event.target.tagName === 'INPUT') { event.preventDefault(); applyFinalEdit(); return; }
+    if (event.key === 'Tab' && inValue) {
+      event.preventDefault();
+      var key = finalEditKey(activeFinalEdit);
+      applyFinalEdit({ focus: false });
+      // A new attendee saved by Tab is followed by its own toggle, not the next field.
+      moveToAdjacentEditable(key, event.shiftKey ? -1 : 1);
+    }
   }
   document.getElementById('finalDocument').addEventListener('keydown', onFinalDocumentKeydown);
   document.getElementById('documentHeader').addEventListener('keydown', onFinalDocumentKeydown);

@@ -1201,6 +1201,64 @@
 .meeting-agent-page .section-menu[open]>summary{opacity:1}
 @media (hover:none){.meeting-agent-page .section-menu>summary{opacity:1}}
 .meeting-agent-page.doc-preview .section-menu{display:none}
+/* Slice 4: one way to edit text in the document. At rest it is plain text;
+   hover shows a dashed outline and a teal accent on the left. */
+.meeting-agent-page .preview-only{display:none}
+.meeting-agent-page.doc-preview .preview-only{display:block}
+.meeting-agent-page.doc-preview .doc-only{display:none!important}
+@media print{.meeting-agent-page .doc-only{display:none!important}.meeting-agent-page .preview-only{display:block!important}}
+.meeting-agent-page.doc-mode .final-editable{border:1px dashed transparent;background:transparent}
+.meeting-agent-page.doc-mode .final-editable:hover,
+.meeting-agent-page.doc-mode .final-editable:focus-visible{border-color:#8a949f;background:transparent;box-shadow:inset 2px 0 0 var(--accent)}
+.meeting-agent-page.doc-mode .final-editable.is-empty{color:var(--muted);font-style:italic}
+.meeting-agent-page.doc-mode .final-editable.user-edited{box-shadow:inset 4px 0 0 #b3bbc4;padding-left:.55rem;border-top-left-radius:0;border-bottom-left-radius:0}
+.meeting-agent-page.doc-mode .final-editable.user-edited:hover{box-shadow:inset 4px 0 0 var(--accent)}
+.meeting-agent-page.doc-preview .final-editable.user-edited{box-shadow:none;padding-left:.2rem}
+.meeting-agent-page.doc-mode .final-inline-editor{padding:0;border:0;background:transparent;gap:.4rem}
+.meeting-agent-page.doc-mode .final-inline-editor [data-final-editor-value]{
+  width:100%;box-sizing:border-box;border:1px solid var(--accent);border-radius:var(--radius-sm);
+  padding:.35rem .5rem;font:inherit;line-height:1.5;background:#fff;resize:none;overflow:hidden}
+.meeting-agent-page.doc-mode .final-inline-editor [data-final-editor-value]:focus{outline:2px solid var(--accent);outline-offset:1px}
+.meeting-agent-page .final-edit-actions button{min-height:32px;padding:.2rem .8rem;font-size:var(--fs-sm)}
+.meeting-agent-page .meta-select{field-sizing:content;border:1px dashed transparent;background:transparent;font:inherit;color:inherit;padding:0 .2rem;min-height:0;height:auto;width:auto;border-radius:var(--radius-sm);cursor:pointer}
+.meeting-agent-page .meta-select:hover{border-color:#8a949f}
+/* Attendees as chips: name, group toggle and remove. */
+.meeting-agent-page .doc-attendees{display:grid;gap:.5rem}
+.meeting-agent-page .doc-attendee-group{display:grid;grid-template-columns:5.5rem minmax(0,1fr);gap:.5rem;align-items:start}
+.meeting-agent-page .doc-attendee-label{font-weight:var(--fw-bold);color:var(--heading);padding-top:.3rem}
+.meeting-agent-page .doc-attendee-chips{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.meeting-agent-page .doc-attendee-chip{display:inline-flex;align-items:center;gap:.15rem;border:1px solid var(--border);border-radius:999px;padding:.1rem .2rem .1rem .55rem;background:#fff}
+.meeting-agent-page .doc-attendee-chip.is-editing{border-radius:var(--radius-sm);padding:.3rem;flex-basis:100%}
+.meeting-agent-page .doc-attendee-chip.is-editing .final-inline-editor{width:100%}
+.meeting-agent-page .doc-attendee-chip .final-editable{margin:0}
+.meeting-agent-page .doc-attendee-chip .chip-toggle{border:0;background:var(--soft);color:var(--muted);font-size:var(--fs-cap);border-radius:999px;padding:.1rem .45rem;min-height:24px}
+.meeting-agent-page .doc-attendee-chip .chip-toggle:hover{color:var(--heading)}
+.meeting-agent-page .doc-attendee-chip .chip-remove{border:0;background:transparent;color:var(--muted);width:24px;height:24px;padding:0;border-radius:999px;opacity:0;font-size:1rem;line-height:1}
+.meeting-agent-page .doc-attendee-chip:hover .chip-remove,.meeting-agent-page .doc-attendee-chip .chip-remove:focus-visible{opacity:1}
+.meeting-agent-page .doc-attendee-chip .chip-remove:hover{background:var(--soft);color:var(--heading)}
+@media (hover:none){.meeting-agent-page .doc-attendee-chip .chip-remove{opacity:1}}
+.meeting-agent-page .doc-add{font-size:var(--fs-sm);color:var(--accent);padding:.2rem .5rem;min-height:28px}
+.meeting-agent-page .final-objectives+.doc-add{margin-top:.1rem}
+/* Topic header line: title, count and menu; the count and menu never move. */
+.meeting-agent-page .doc-topic-headings{display:inline-flex;align-items:center;gap:.4rem;font-size:var(--fs-sm);color:var(--muted);margin:.2rem 0 .4rem}
+.meeting-agent-page .doc-topic-head{display:flex;align-items:flex-start;gap:.5rem;margin-top:1rem}
+.meeting-agent-page .doc-topic-head>.hidden-tag,.meeting-agent-page .doc-topic-head>.topic-meta{margin-top:.3rem}
+.meeting-agent-page .doc-topic-head h4{flex:1 1 auto;min-width:0;margin:0}
+.meeting-agent-page .doc-topic-head h4 .final-editable{display:block;width:100%}
+.meeting-agent-page .doc-topic-head .topic-meta{flex:none;font-size:var(--fs-cap);color:#5b6470;white-space:nowrap}
+.meeting-agent-page .doc-topic-head.is-hidden h4 .final-editable{color:#7a838d;font-weight:var(--fw-semibold,600)}
+.meeting-agent-page .hidden-tag{flex:none;font-size:var(--fs-cap);color:#5b6470;border:1px solid var(--border);border-radius:999px;padding:0 .4rem}
+.meeting-agent-page.doc-preview .doc-topic-head.is-hidden{display:none}
+.meeting-agent-page .doc-topic-head .record-menu-popover,.meeting-agent-page .doc-point .record-menu-popover,.meeting-agent-page .doc-row-menu .record-menu-popover{left:auto;right:0}
+/* Point and action menus show on hover or focus, like the section menus. */
+.meeting-agent-page .doc-point{position:relative;padding-right:2.4rem}
+.meeting-agent-page .doc-point>.row-menu{position:absolute;top:-.1rem;right:0}
+.meeting-agent-page .doc-point>.row-menu>summary,.meeting-agent-page .doc-row-menu .row-menu>summary,.meeting-agent-page .doc-topic-head .row-menu>summary{opacity:0;transition:opacity .12s}
+.meeting-agent-page .doc-point:hover>.row-menu>summary,.meeting-agent-page tr:hover .doc-row-menu .row-menu>summary,.meeting-agent-page .doc-topic-head:hover .row-menu>summary,
+.meeting-agent-page .row-menu>summary:focus-visible,.meeting-agent-page .row-menu[open]>summary{opacity:1}
+@media (hover:none){.meeting-agent-page .doc-point>.row-menu>summary,.meeting-agent-page .doc-row-menu .row-menu>summary,.meeting-agent-page .doc-topic-head .row-menu>summary{opacity:1}}
+.meeting-agent-page .actions-table th.doc-row-menu,.meeting-agent-page .actions-table td.doc-row-menu{width:40px;padding-left:0;padding-right:0;text-align:center}
+.meeting-agent-page.doc-preview .doc-point>.row-menu{display:none}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
