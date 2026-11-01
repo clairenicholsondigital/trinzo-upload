@@ -92,6 +92,15 @@ async function runSpecialists(packet, configuration, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const now = options.now || (() => Date.now());
   const timeoutMs = options.timeoutMs || 180000;
+  const report = (stage, code, counts) => {
+    if (typeof options.onProgress !== 'function') return;
+    // Start all provider requests before observers can do work; observation
+    // failures and unresolved observer promises never affect provider results.
+    queueMicrotask(() => {
+      try { Promise.resolve(options.onProgress({stage,code,...(counts ? {counts} : {})})).catch(() => {}); }
+      catch { /* Progress is advisory. */ }
+    });
+  };
   const packetHash = hash(packet);
   const prompt = JSON.stringify({requestId: options.requestId, schemaVersion:1, task:'Generate your specialist section from the following shared evidence packet. Return your exact specialist JSON schema only.', ...packet});
   const startedAt = now();
@@ -101,12 +110,21 @@ async function runSpecialists(packet, configuration, options = {}) {
     try {
       const url = configuration[stage]?.webhookUrl;
       if (!url || new URL(url).protocol !== 'https:') throw fail('NOT_CONFIGURED', 'The specialist webhook is not configured.');
+      report(stage,'request_sent');
       const response = await fetchImpl(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt}), signal:AbortSignal.timeout(timeoutMs)});
       const raw = await response.text();
+      report(stage,'response_received');
       if (!response.ok) throw fail(`PROVIDER_HTTP_${response.status}`, `Microsoft returned HTTP ${response.status}.`);
       if (Buffer.byteLength(raw) > 4 * 1024 * 1024) throw fail('RESPONSE_TOO_LARGE', 'The provider response exceeds the prototype limit.');
+      report(stage,'validating');
       const decoded = decodeReply(raw);
       const result = validateResult(stage, decoded, packet.evidence);
+      const records = stage === 'summary'
+        ? result.meetingObjectives.length + (result.executiveSummary.text.trim() ? 1 : 0)
+        : stage === 'discussion'
+          ? (result.items ? result.items.length : result.discussion.reduce((total, topic) => total + topic.points.length + topic.decisions.length + topic.openQuestions.length, 0))
+          : result.actions.length;
+      report(stage,'validated',{records,proposals:stage === 'actions' ? result.actionProposals.length : 0,flags:result.reviewFlags.length});
       const timingCompatibility = stage === 'actions'
         ? ['actions','actionProposals'].flatMap(key => result[key].flatMap((item,index) =>
           decoded[key][index].timing.kind === 'not_stated' && item.timing.kind === 'stated'
@@ -115,6 +133,7 @@ async function runSpecialists(packet, configuration, options = {}) {
       return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result,
         ...(timingCompatibility.length ? {timingCompatibility:{version:1,records:timingCompatibility}} : {})};
     } catch (error) {
+      report(stage,'failed');
       return {...detail, status:'failed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, error:{code:error.code || (error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNAVAILABLE'), message: error.code ? error.message : 'The specialist could not complete its request.'}};
     }
   });

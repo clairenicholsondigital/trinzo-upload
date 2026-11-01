@@ -17,6 +17,7 @@ const { meetingAgentStaleStagesAfterGeneration, normaliseMeetingAgentGeneration 
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
 const { normaliseMeetingAgentPassCache } = require('./meetingMinutesPassCache');
 const parallelMinutes = require('./meetingMinutesParallel');
+const { mergeMeetingAgentProgress, publicMeetingAgentProgress } = require('./meetingMinutesAgentGeneration');
 const { preselectRequestedProposal } = require('./meetingMinutesProposalSelection');
 const { privateStagedCandidateQueueState } = require('./meetingMinutesCandidatePrewarm');
 const { publicMeetingAgentDraft } = require('./meetingMinutesDraftView');
@@ -47,12 +48,6 @@ const meetingAgentObservedGenerationCompletions = new Set();
 // polling, not the queued work itself.
 const parallelMinutesCopies = new Map();
 
-const parallelMinutesRunner = parallelMinutes.createRunner({
-  getDraft: getMeetingMinutesAgentDraft,
-  saveDraft: (draft, userId, changes) => saveMeetingAgentDraft(draft, {authUser:{userId}}, changes),
-  bootId: MEETING_AGENT_BOOT_ID
-});
-
 // Runs after the response has already gone back to the reviewer. Same in-process
 // pattern as launchQueuedStagedMeetingMinutesStage: this app is a single pm2
 // process, so there is no other executor to hand it to.
@@ -60,6 +55,12 @@ let activeMeetingAgentBackgroundStages = 0;
 
 // These two functions execute the existing complete generation pipelines.
 function createMeetingMinutesGenerationLifecycle(generateHybridMeetingAgentStage, generateMeetingAgentStage) {
+const parallelMinutesRunner = parallelMinutes.createRunner({
+  getDraft: getMeetingMinutesAgentDraft,
+  saveDraft: (draft, userId, changes) => saveMeetingAgentDraft(draft, {authUser:{userId}}, changes),
+  bootId: MEETING_AGENT_BOOT_ID,
+  serialWrite: meetingAgentSerialDraftWrite
+});
 // Pass results from any speculation of this stage, whatever its fingerprint.
 // Entries are keyed by prompt hash, so a real run reuses only identical calls.
 function meetingAgentSpeculationPassCacheSeed(draftId, stage) {
@@ -296,12 +297,23 @@ function meetingAgentSerialDraftWrite(draftId, task) {
   return tracked;
 }
 
-async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}) {
+async function updateMeetingAgentHybridProgress(draftId, userId, stage, patch = {}, expectedGeneration) {
   return meetingAgentSerialDraftWrite(draftId, async () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
-      const { passCache, refereeFailureAudit, ...generationPatch } = patch;
+      if (expectedGeneration && (meetingAgentGenerationState(fresh.generation)?.status !== 'running'
+        || fresh.generation.stage !== stage || fresh.generation.bootId !== expectedGeneration.bootId
+        || fresh.generation.startedAt !== expectedGeneration.startedAt)) return;
+      const { passCache, refereeFailureAudit, progress, ...generationPatch } = patch;
+      if (progress) generationPatch.progress = mergeMeetingAgentProgress(fresh.generation?.progress, { ...progress, stage });
+      else if (generationPatch.pass) {
+        const code = generationPatch.completedPasses?.includes(generationPatch.pass) ? 'validated'
+          : /referee|check/.test(generationPatch.pass) ? 'checking'
+          : generationPatch.pass === 'topic-arranger' ? 'arranging'
+          : /primary|recovery/.test(generationPatch.pass) ? 'extracting' : 'preparing';
+        generationPatch.progress = mergeMeetingAgentProgress(fresh.generation?.progress, { stage, code });
+      }
       if (stage === 'actions' && Array.isArray(generationPatch.previewActions)) {
         const visible = meetingAgentPreviewSavedActions(
           generationPatch.previewActions, fresh.actions, fresh.sourceUnits
@@ -410,7 +422,7 @@ async function adoptStageSpeculation(fresh, stage, draftId, userId) {
   if (entry.status === 'running') {
     const forward = async () => {
       try {
-        await updateMeetingAgentHybridProgress(draftId, userId, stage, { ...(entry.progress || {}), ...(entry.preview || {}) });
+        await updateMeetingAgentHybridProgress(draftId, userId, stage, { ...(entry.progress || {}), ...(entry.preview || {}) }, fresh.generation);
       } catch (error) { /* progress is best effort */ }
     };
     await forward();
@@ -434,6 +446,10 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
   let failure = null;
   let sourceDraft = null;
   let speculationAdopted = false;
+  let expectedGeneration;
+  const onStatus = (event) => expectedGeneration?.status === 'running'
+    ? updateMeetingAgentHybridProgress(draftId, userId, stage,
+      { progress: event }, expectedGeneration).catch(() => {}) : Promise.resolve();
   const hybrid = meetingMinutesAgentHybridEnabled();
   const stageRetryDelays = hybrid ? [] : MEETING_AGENT_RETRY_MS;
   for (let attempt = 0; attempt <= stageRetryDelays.length; attempt += 1) {
@@ -441,6 +457,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       const fresh = await getMeetingMinutesAgentDraft(draftId, userId, { includeTranscript: true });
       if (!fresh) return;
       sourceDraft = fresh;
+      expectedGeneration ||= fresh.generation && { ...fresh.generation };
       let adopted = null;
       if (hybrid && meetingMinutesAgentSpeculativePipelineEnabled()) {
         adopted = await adoptStageSpeculation(fresh, stage, draftId, userId);
@@ -456,12 +473,14 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
         ? adopted.result
         : hybrid
           ? await generateHybridMeetingAgentStage(fresh, stage, {
-            onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress),
-            onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }),
-            onRefereeFailure: (refereeFailureAudit) => updateMeetingAgentHybridProgress(draftId, userId, stage, { refereeFailureAudit }),
-            onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview)
+            onProgress: (progress) => updateMeetingAgentHybridProgress(draftId, userId, stage, progress, expectedGeneration),
+            onCheckpoint: (passCache) => updateMeetingAgentHybridProgress(draftId, userId, stage, { passCache }, expectedGeneration),
+            onRefereeFailure: (refereeFailureAudit) => updateMeetingAgentHybridProgress(draftId, userId, stage, { refereeFailureAudit }, expectedGeneration),
+            onPreview: (preview) => updateMeetingAgentHybridProgress(draftId, userId, stage, preview, expectedGeneration),
+            onStatus
           })
-          : await generateMeetingAgentStage(fresh, stage, '');
+          : await meetingAgentCallContext.run({ ...(meetingAgentCallContext.getStore() || {}), stage, onStatus },
+            () => generateMeetingAgentStage(fresh, stage, ''));
       failure = null;
       break;
     } catch (error) {
@@ -470,6 +489,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       // has no browser, so without repeating it here this path would be strictly
       // less reliable than the button it replaces.
       if (!error.retryable || attempt === stageRetryDelays.length) break;
+      onStatus({ code: 'retrying' });
       await new Promise((resolve) => setTimeout(resolve, stageRetryDelays[attempt]));
     }
   }
@@ -482,6 +502,7 @@ async function runMeetingAgentBackgroundStage(draftId, userId, stage) {
       processingElapsedMs
     };
   }
+  if (result && !failure) onStatus({ code: 'saving' });
   const persistenceStartedAt = Date.now();
   const persistence = await persistMeetingAgentBackgroundStage({
     draftId, userId, stage, sourceDraft: sourceDraft || {}, result, failure
@@ -623,6 +644,7 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     return res.json({
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
+      progress: publicMeetingAgentProgress(draft, generation),
       actionsPrewarm: meetingAgentActionsPrewarmState(draft),
       speculation: meetingAgentSpeculationState(draft),
       // Carry the draft only once the run is over, so completion is one round trip.

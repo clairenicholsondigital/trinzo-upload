@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 const { meetingAgentResultError } = require('./meetingMinutesResponseContracts');
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
 const { refereeFailureSnapshot } = require('./meetingMinutesRefereeFailureAudit');
-const { meetingAgentFailureClass } = require('./meetingMinutesAgentGeneration');
+const { meetingAgentFailureClass, meetingAgentResultCounts } = require('./meetingMinutesAgentGeneration');
 
 // Models on some AI Builder prompts wrap an otherwise valid JSON reply in a
 // Markdown fence. Accept that shape quietly; anything that is still not JSON
@@ -106,6 +106,30 @@ function meetingAgentHasTypedError(value) {
     && typeof error.message === 'string' && error.message.trim());
 }
 
+// Observations never join the provider promise chain. Only bounded metadata is
+// passed to an observer, and a failed or pending observer cannot alter a call.
+function notifyMeetingAgentStatus(options, code, result) {
+  const context = meetingAgentCallContext.getStore();
+  const onStatus = typeof options.onStatus === 'function' ? options.onStatus : context?.onStatus;
+  const stage = options.stage || context?.stage;
+  if (typeof onStatus !== 'function' || !['summary', 'discussion', 'actions'].includes(stage)) return;
+  Promise.resolve().then(() => {
+    const event = { stage, code };
+    if (code === 'validated' && result) {
+      if (stage === 'summary' && (typeof result.executiveSummary === 'string' || Array.isArray(result.meetingObjectives))) {
+        event.counts = { records: Number(typeof result.executiveSummary === 'string' && Boolean(result.executiveSummary.trim()))
+          + (Array.isArray(result.meetingObjectives) ? result.meetingObjectives.length : 0),
+          proposals: 0, flags: Array.isArray(result.reviewFlags) ? result.reviewFlags.length : 0 };
+      } else if (stage !== 'summary' && (Array.isArray(result.discussion)
+        || Array.isArray(result.actions) || Array.isArray(result.actionProposals))) {
+        const counts = meetingAgentResultCounts(result);
+        event.counts = { records: counts.outputRecordCount, proposals: counts.proposalCount, flags: counts.reviewFlagCount };
+      }
+    }
+    return onStatus(event);
+  }).catch(() => {});
+}
+
 async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
   const webhookUrl = meetingAgentFlowUrlFor(prompt, options);
   if (!webhookUrl) {
@@ -128,12 +152,14 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
 
+  if (options.paced === true) notifyMeetingAgentStatus(options, 'queued');
   const release = options.paced === true ? await acquireMeetingAgentCallSlot() : () => {};
   const controller = new AbortController();
   const timeoutMs = Math.max(10000, Number(options.timeoutMs || process.env.POWER_AUTOMATE_AGENT_TIMEOUT_MS || 120000));
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response, rawBody;
   try {
+    notifyMeetingAgentStatus(options, 'request_sent');
     response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,6 +169,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     // Headers alone are not a completed call. Keep the deadline and active
     // slot until the full response body has arrived.
     rawBody = await response.text();
+    notifyMeetingAgentStatus(options, 'response_received');
   } catch (error) {
     if (error?.name === 'AbortError') {
       const timeoutError = new Error('The meeting-minutes agent did not reply in time.');
@@ -182,6 +209,7 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     throw error;
   }
 
+  notifyMeetingAgentStatus(options, 'validating');
   const parsed = parseJsonLenient(rawBody);
   const queue = [parsed];
   const seen = new Set();
@@ -270,6 +298,9 @@ async function askPowerAutomateMeetingMinutesAgent(prompt, options = {}) {
     error.code = 'power_automate_invalid_structure';
     throw error;
   }
+  if (!options.deferValidationStatus && !meetingAgentHasTypedError(parsedResult)) {
+    notifyMeetingAgentStatus(options, 'validated', parsedResult);
+  }
   return parsedResult;
 }
 
@@ -283,6 +314,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
       const delay = MEETING_AGENT_RETRY_MS[attempt - 1];
       const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
       if (remaining <= delay + 1000) break;
+      notifyMeetingAgentStatus(options, 'retrying');
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
     const remaining = options.deadlineAt ? options.deadlineAt - Date.now() : Infinity;
@@ -307,6 +339,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         : configuredAttemptTimeoutMs;
       const freshResult = await askPowerAutomateMeetingMinutesAgent(attemptPrompt, {
         paced: true, timeoutMs: attemptTimeoutMs, responseKind: options.responseKind, pass: options.pass,
+        onStatus: options.onStatus, stage: options.stage, deferValidationStatus: true,
         ...(typeof options.onFailure === 'function' ? {
           onRawResponse: (body) => { wireReply = refereeFailureSnapshot(body); }
         } : {})
@@ -327,6 +360,7 @@ async function askPowerAutomateMeetingMinutesAgentWithRetry(prompt, options = {}
         throw validationError;
       }
       timings.push({ ...attemptInfo, elapsedMs: Date.now() - started, ok: true });
+      notifyMeetingAgentStatus(options, 'validated', result);
       return { result, timings };
     } catch (error) {
       lastError = error;

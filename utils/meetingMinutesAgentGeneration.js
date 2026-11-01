@@ -32,6 +32,105 @@ function meetingAgentPassTimingPolicy(callOptions = {}, isRefereeCall = false, s
   return { deadlineAt, attemptTimeoutMs };
 }
 
+const PROGRESS_STAGES = ['summary', 'discussion', 'actions'];
+const PROGRESS_CODES = ['preparing', 'queued', 'request_sent', 'response_received',
+  'validating', 'validated', 'retrying', 'extracting', 'checking', 'arranging', 'saving', 'failed'];
+
+function normaliseMeetingAgentProgress(value) {
+  if (!value || typeof value !== 'object' || !PROGRESS_CODES.includes(value.code)) return null;
+  const date = (input) => typeof input === 'string' && Number.isFinite(Date.parse(input))
+    ? new Date(input).toISOString() : '';
+  const sections = {};
+  for (const stage of PROGRESS_STAGES) {
+    const section = value.sections?.[stage];
+    if (!section || !PROGRESS_CODES.includes(section.code)) continue;
+    const counts = {};
+    for (const key of ['records', 'proposals', 'flags']) {
+      if (Number.isFinite(section.counts?.[key])) counts[key] = Math.min(100000, Math.max(0, Math.floor(section.counts[key])));
+    }
+    sections[stage] = { code: section.code, updatedAt: date(section.updatedAt),
+      ...(Object.keys(counts).length ? { counts } : {}) };
+  }
+  return { code: value.code, updatedAt: date(value.updatedAt), sections };
+}
+
+// A bounded snapshot in the existing generation record; never provider text or history.
+function mergeMeetingAgentProgress(prior, event = {}) {
+  const progress = normaliseMeetingAgentProgress(prior);
+  if (!PROGRESS_CODES.includes(event.code)) return progress;
+  const updatedAt = new Date().toISOString();
+  const sections = { ...(progress?.sections || {}) };
+  if (PROGRESS_STAGES.includes(event.stage)) {
+    sections[event.stage] = { code: event.code, updatedAt,
+      ...(event.code === 'validated' && event.counts ? { counts: event.counts } : {}) };
+  }
+  return normaliseMeetingAgentProgress({ code: event.code, updatedAt, sections });
+}
+
+function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.now()) {
+  const parallel = draft.generationProvider === 'parallel-specialists-v1';
+  const completed = PROGRESS_STAGES.map(stage => ({ ...draft.qualityState?.[stage], stage }))
+    .filter(item => Number.isFinite(Date.parse(item.completedAt || '')))
+    .sort((left, right) => Date.parse(right.completedAt) - Date.parse(left.completedAt))[0];
+  if (!generation && !completed) return null;
+  const active = Boolean(generation);
+  const failed = generation?.status === 'failed';
+  const interrupted = failed && draft.generation?.status === 'running';
+  const progress = normaliseMeetingAgentProgress(generation?.progress);
+  const stage = parallel ? 'all' : PROGRESS_STAGES.includes(generation?.stage) ? generation.stage : completed?.stage || 'discussion';
+  const timestamp = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : '';
+  const parallelStartedAt = parallel && !active ? PROGRESS_STAGES
+    .map(key => timestamp(draft.qualityState?.parallel?.branches?.[key]?.startedAt)).filter(Boolean).sort()[0] : '';
+  const startedAt = timestamp(active ? generation.startedAt : parallelStartedAt || completed.backgroundStartedAt);
+  const updatedAt = active ? progress?.updatedAt || startedAt : timestamp(completed.completedAt);
+  const elapsedMs = Number.isFinite(Date.parse(startedAt))
+    ? Math.max(0, (active ? now : Date.parse(updatedAt)) - Date.parse(startedAt)) : 0;
+  const fallback = /referee|check/.test(generation?.pass || '') ? 'checking'
+    : generation?.pass === 'topic-arranger' ? 'arranging'
+    : /primary|recovery/.test(generation?.pass || '') ? 'extracting' : 'preparing';
+  const code = !active ? 'ready' : failed ? (interrupted ? 'interrupted' : 'failed') : progress?.code || fallback;
+  const subject = parallel ? 'meeting minutes' : stage || 'meeting minutes';
+  const messages = {
+    preparing: 'Preparing the ' + subject + ' request.',
+    queued: 'Waiting for an available processing slot.',
+    request_sent: 'Waiting for the ' + subject + ' response from Microsoft.',
+    response_received: 'Received the ' + subject + ' response.',
+    validating: 'Checking the response structure and source references.',
+    validated: 'The response has passed its checks.',
+    retrying: 'Waiting to retry a temporary service failure.',
+    extracting: 'Finding the main ' + subject + ' content.',
+    checking: 'Checking the ' + subject + ' evidence.',
+    arranging: 'Arranging related discussion topics.',
+    saving: 'Saving the generated draft.',
+    failed: 'Generation did not complete. Your saved content has been kept.',
+    interrupted: 'Generation was interrupted. Start generation again to continue.',
+    ready: parallel ? 'The draft is saved and ready to review.' : 'The generated section is saved and ready to review.'
+  };
+  const sections = {};
+  for (const sectionStage of PROGRESS_STAGES) {
+    const savedAt = timestamp(draft.qualityState?.[sectionStage]?.completedAt);
+    if (!active && savedAt) { sections[sectionStage] = { state: 'saved', updatedAt: savedAt }; continue; }
+    const section = progress?.sections[sectionStage];
+    if (!section) continue;
+    const state = section.code === 'validated' ? 'validated' : section.code === 'failed' ? 'failed'
+      : ['response_received', 'validating'].includes(section.code) ? 'received'
+      : ['preparing', 'queued', 'retrying'].includes(section.code) ? 'waiting' : 'running';
+    sections[sectionStage] = { state, updatedAt: section.updatedAt,
+      ...(section.counts ? { counts: section.counts } : {}) };
+  }
+  let message = messages[code];
+  if (parallel && active && !failed && code !== 'saving') {
+    const checked = PROGRESS_STAGES.filter(key => sections[key]?.state === 'validated');
+    const pending = PROGRESS_STAGES.filter(key => !['validated', 'failed'].includes(sections[key]?.state));
+    const unsuccessful = PROGRESS_STAGES.filter(key => sections[key]?.state === 'failed');
+    if (unsuccessful.length) message = 'A section could not complete. Waiting for the remaining requests to finish.';
+    else if (checked.length === 3) message = 'All three responses checked. Preparing to save the draft.';
+    else if (checked.length) message = checked.join(' and ') + ' received and checked. Still waiting for ' + pending.join(' and ') + '.';
+  }
+  return { status: !active ? 'ready' : failed ? 'failed' : 'running', code, message, stage,
+    startedAt, updatedAt, elapsedMs, sections };
+}
+
 function normaliseMeetingAgentGeneration(generation, stageSteps) {
   if (!generation || typeof generation !== 'object') return null;
   const status = ['running', 'failed'].includes(generation.status) ? generation.status : null;
@@ -74,7 +173,8 @@ function normaliseMeetingAgentGeneration(generation, stageSteps) {
       evidenceIds: (Array.isArray(item?.evidenceIds) ? item.evidenceIds : []).map((id) => meetingMinutesAgentText(id, 30)).filter(Boolean).slice(0, 12),
       reviewFlagIds: []
     })).filter((item) => item.action).slice(0, 60) } : {}),
-    previewUpdatedAt: meetingMinutesAgentText(generation.previewUpdatedAt, 40)
+    previewUpdatedAt: meetingMinutesAgentText(generation.previewUpdatedAt, 40),
+    ...(normaliseMeetingAgentProgress(generation.progress) ? { progress: normaliseMeetingAgentProgress(generation.progress) } : {})
   };
 }
 
@@ -244,6 +344,9 @@ module.exports = {
   meetingAgentGenerationState,
   meetingAgentPassTimingPolicy,
   normaliseMeetingAgentGeneration,
+  normaliseMeetingAgentProgress,
+  mergeMeetingAgentProgress,
+  publicMeetingAgentProgress,
   normaliseMeetingAgentExecutionTelemetry,
   meetingAgentFailureClass,
   meetingAgentResultCounts,

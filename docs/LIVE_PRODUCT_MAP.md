@@ -86,7 +86,11 @@ direct shared imports. API retains composition adapters and compatibility export
 The retained V2 facade and `utils/canonicalMinutes/` remain live dependencies.
 
 Background work in the main editor runs in the web process independently of the
-browser connection. Queue jobs use the separate worker below.
+browser connection. The existing owned-draft `/generation` endpoint adds a bounded
+`progress` snapshot for observed Original/Beta milestones and provisional section
+counts. Existing UI fields remain unchanged; ready requires a saved result, and
+advisory writes share the draft queue and preserve run identity and reviewer edits.
+Queue jobs use the separate worker below.
 
 ## Draft review, publication and exports
 

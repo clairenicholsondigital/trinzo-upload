@@ -86,3 +86,68 @@ test('independent discussion edits do not mark the transcript-grounded summary a
  reset();const discussion=structuredClone(saved.discussion);discussion[0].points[0].text+=' Reviewer clarification.';
  const r=await request('patch','',{discussion});assert.equal(r.statusCode,200);assert.deepEqual(saved.staleStages,[]);
 });
+
+for (const provider of ['legacy', P.PROVIDER]) test(provider+' polling adds safe progress without changing legacy generation or saved content',async()=>{
+ reset();saved.generationProvider=provider;
+ const startedAt=new Date(Date.now()-1000).toISOString();
+ const legacy={stage:'actions',status:'running',startedAt,error:'',pass:'referee',message:'Existing generation status.',completedPasses:[],callTimings:[]};
+ saved.generation={...legacy,bootId:A.MEETING_AGENT_BOOT_ID,progress:{
+  code:'validated',updatedAt:startedAt,providerResponse:'private-progress-sentinel',
+  sections:{summary:{code:'validated',updatedAt:startedAt,counts:{records:2,proposals:0,flags:1,raw:'private-progress-sentinel'}},
+   discussion:{code:'request_sent',updatedAt:startedAt},actions:{code:'queued',updatedAt:startedAt},
+   privateStage:{code:'validated',raw:'private-progress-sentinel'}}
+ }};
+ const before=structuredClone(saved);
+ const r=await request('get','/generation');
+ assert.equal(r.statusCode,200);assert.deepEqual(r.body.generation,legacy);
+ assert.equal(r.body.draft,undefined,'running polls keep the existing one-copy response contract');
+ assert.deepEqual(Object.keys(r.body.progress).sort(),['status','code','message','stage','startedAt','updatedAt','elapsedMs','sections'].sort());
+ assert.equal(r.body.progress.status,'running');assert.equal(r.body.progress.stage,provider===P.PROVIDER?'all':'actions');
+ assert.equal(r.body.progress.startedAt,startedAt);assert.ok(r.body.progress.elapsedMs>=1000);
+ assert.deepEqual(r.body.progress.sections.summary,{state:'validated',updatedAt:startedAt,counts:{records:2,proposals:0,flags:1}});
+ assert.equal(r.body.progress.sections.discussion.state,'running');assert.equal(r.body.progress.sections.actions.state,'waiting');
+ assert.equal(r.body.progress.sections.privateStage,undefined);
+ assert.equal(JSON.stringify(r.body).includes('private-progress-sentinel'),false);
+ assert.equal(Object.hasOwn(r.body.generation,'progress'),false);
+ const reopened=(await request('get')).body.draft;
+ assert.equal(Object.hasOwn(reopened.generation,'progress'),false,'ordinary draft reads also keep internal progress private');
+ assert.deepEqual(saved,before);assert.equal(writes,0,'polling does not save metadata or create history');
+});
+
+test('polling never calls an active or failed newer attempt ready because older results exist',async()=>{
+ for (const provider of ['legacy',P.PROVIDER]) for (const status of ['running','failed']) {
+  reset();saved.generationProvider=provider;
+  const completedAt=new Date(Date.now()-5000).toISOString(),startedAt=new Date(Date.now()-1000).toISOString();
+  saved.qualityState=Object.fromEntries(['summary','discussion','actions'].map(stage=>[stage,{completedAt}]));
+  saved.generation={stage:'discussion',status,bootId:A.MEETING_AGENT_BOOT_ID,startedAt,error:status==='failed'?'Controlled failure':''};
+  const r=await request('get','/generation');
+  assert.equal(r.body.progress.status,status);assert.notEqual(r.body.progress.code,'ready');
+  assert.equal(r.body.generation.status,status);assert.equal(writes,0);
+ }
+});
+
+test('polling infers legacy completion only from saved quality markers and leaves the draft unchanged',async()=>{
+ reset();saved.generation=null;saved.qualityState={};
+ const legacy=structuredClone(saved);
+ let r=await request('get','/generation');
+ assert.equal(r.body.generation,null);assert.equal(r.body.progress,null,'content alone does not prove generation completed');
+ assert.deepEqual(saved,legacy);assert.ok(r.body.draft);
+ const completedAt=new Date(Date.now()-1000).toISOString();
+ saved.qualityState={discussion:{completedAt,backgroundStartedAt:new Date(Date.now()-3000).toISOString()}};
+ const completed=structuredClone(saved);
+ r=await request('get','/generation');
+ assert.equal(r.body.progress.status,'ready');assert.equal(r.body.progress.code,'ready');
+ assert.equal(r.body.progress.updatedAt,completedAt);assert.equal(r.body.generation,null);
+ assert.deepEqual(saved,completed);assert.equal(writes,0);
+});
+
+test('generation progress remains owner-scoped and does not leak through failed reads',async()=>{
+ reset();saved.generation={stage:'discussion',status:'running',bootId:A.MEETING_AGENT_BOOT_ID,startedAt:new Date().toISOString(),
+  progress:{code:'request_sent',updatedAt:new Date().toISOString(),sections:{}}};
+ const before=structuredClone(saved);
+ for (const user of ['other',null]) {
+  const r=await request('get','/generation',{},user);
+  assert.equal(r.statusCode,404);assert.equal(r.body.progress,undefined);assert.equal(r.body.generation,undefined);
+ }
+ assert.deepEqual(saved,before);assert.equal(writes,0);
+});
