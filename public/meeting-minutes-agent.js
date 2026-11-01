@@ -101,7 +101,7 @@
     var saveStrip = document.getElementById('saveStrip');
     if (saveStrip) {
       saveStrip.classList.toggle('is-final-review', finalReview);
-      saveStrip.hidden = finalComplete;
+      saveStrip.hidden = finalComplete && !inDocumentMode();
     }
     document.body.classList.toggle('final-complete', finalComplete);
     // Both controls name the change they act on, so the reviewer can tell what
@@ -142,6 +142,22 @@
     // The document has one bar: save state and checks on the left, Preview
     // and Finalise on the right.
     var doc = inDocumentMode();
+    var finalised = doc && documentFinalised();
+    document.body.classList.toggle('doc-finalised', finalised);
+    if (finalised) document.body.classList.add('doc-preview');
+    var finalisedNote = document.getElementById('finalisedNote');
+    if (finalisedNote) {
+      finalisedNote.hidden = !finalised;
+      finalisedNote.textContent = finalised ? 'Finalised ' + (formatUkDate(String(state.draft.updatedAt || '').slice(0, 10)) || '') : '';
+    }
+    ['copyDraftLink', 'reopenMinutes'].forEach(function (id) { var control = document.getElementById(id); if (control) control.hidden = !finalised; });
+    var finalisedExport = document.getElementById('finalisedExport');
+    var exportMenu = document.querySelector('.export-menu');
+    if (finalisedExport && exportMenu) {
+      finalisedExport.hidden = !finalised;
+      if (finalised && exportMenu.parentElement !== finalisedExport) finalisedExport.appendChild(exportMenu);
+      if (!finalised && exportMenu.parentElement === finalisedExport) renderDocumentMode();
+    }
     var finalise = document.getElementById('finaliseMinutes');
     if (finalise) finalise.hidden = !documentReady() || finalComplete;
     if (documentReady() && download) download.hidden = true;
@@ -166,6 +182,15 @@
         preview.querySelector('.ic use').setAttribute('href', previewing ? '#i-arrow-left' : '#i-eye');
       }
     }
+    if (finalised) {
+      if (preview) preview.hidden = true;
+      var pill = document.getElementById('reviewQueueToggle');
+      if (pill) pill.hidden = true;
+    }
+  }
+
+  function documentFinalised() {
+    return Boolean(state.draft && state.draft.status === 'complete' && documentReady());
   }
 
   function generationStageLabel(stage) {
@@ -628,6 +653,8 @@
       if (menu === except) return;
       menu.open = false;
       closed = true;
+      // A document picker that is closed stays closed when the table re-renders.
+      if (menu.dataset && menu.dataset.picker && menu.dataset.picker === docPickerOpen) docPickerOpen = '';
       if (options && options.focus) {
         var summary = menu.querySelector('summary');
         if (summary) summary.focus({ preventScroll: true });
@@ -701,6 +728,7 @@
     if (!drawer || drawer.hidden) return false;
     drawer.hidden = true;
     document.body.classList.remove('has-side-drawer');
+    restoreFlagList();
     var trigger = drawerTrigger;
     drawerTrigger = null;
     // The menu that opened the drawer has closed, so focus goes back to the
@@ -1374,6 +1402,182 @@
       if (doc && exportMenu.parentElement !== home) home.appendChild(exportMenu);
       if (!doc && exportMenu.previousElementSibling !== home) home.insertAdjacentElement('afterend', exportMenu);
     }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Checks: one counter, one drawer.
+   * ------------------------------------------------------------------ */
+  function openCheckItems() {
+    var draft = state.draft || {};
+    var details = draft.details || {};
+    var items = { flagged: [], owner: [], due: [], details: [], total: 0 };
+    (draft.reviewFlags || []).forEach(function (flag) {
+      if (flag.status === 'open' && !proposalChangeForFlag(flag)) items.flagged.push(flag);
+    });
+    (draft.actions || []).forEach(function (action) {
+      if (!(action.owners || []).length) items.owner.push(action);
+      if (dueState(action.timing).mode === 'none') items.due.push(action);
+    });
+    if (!String(details.meetingTitle || '').trim()) items.details.push({ field:'meetingTitle', label:'Meeting title' });
+    if (!String(details.meetingDate || '').trim()) items.details.push({ field:'meetingDate', label:'Meeting date' });
+    if (!(details.internalAttendees || []).concat(details.clientAttendees || []).filter(function (name) { return String(name || '').trim(); }).length) {
+      items.details.push({ field:'attendees', label:'At least one attendee' });
+    }
+    items.total = items.flagged.length + items.owner.length + items.due.length + items.details.length;
+    return items;
+  }
+
+  function plural(count, one, many) { return count + ' ' + (count === 1 ? one : many); }
+
+  function checksSummaryText(items) {
+    return [items.flagged.length ? plural(items.flagged.length, 'model check', 'model checks') : '',
+      items.owner.length ? plural(items.owner.length, 'missing owner', 'missing owners') : '',
+      items.due.length ? plural(items.due.length, 'missing date', 'missing dates') : '',
+      items.details.length ? plural(items.details.length, 'missing detail', 'missing details') : ''].filter(Boolean).join(', ');
+  }
+
+  var checksDrawerMode = '';
+  function checksDrawerOpen() {
+    var drawer = document.getElementById('sideDrawer');
+    return Boolean(checksDrawerMode && drawer && !drawer.hidden);
+  }
+
+  function checksExtraHtml(items) {
+    var group = function (title, rows) {
+      return rows.length ? '<section class="checks-group"><h3>' + escapeHtml(title) + ' <span class="checks-count">' + rows.length + '</span></h3><ul class="checks-list">' + rows.join('') + '</ul></section>' : '';
+    };
+    var actionRow = function (kind) {
+      return function (action) {
+        return '<li><span class="checks-item-text">' + escapeHtml(action.action || 'Untitled action') + '</span><button class="secondary compact" data-fix-' + kind + '="' + escapeHtml(actionOccurrence(action)) + '" type="button">Fix</button></li>';
+      };
+    };
+    var done = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status && flag.status !== 'open'; });
+    var doneHtml = done.length ? '<details class="checks-done"><summary>Done (' + done.length + ')</summary><ul class="checks-list">' + done.map(function (flag) {
+      var status = flag.status === 'dismissed' ? 'Left out of the minutes' : flag.status === 'corrected' ? 'Note saved' : 'Checked';
+      return '<li><span class="checks-item-text">' + escapeHtml(reviewFlagLabel(flag)) + '</span><span class="muted">' + status + '</span></li>';
+    }).join('') + '</ul></details>' : '';
+    return group('Missing owner', items.owner.map(actionRow('owner')))
+      + group('Missing date', items.due.map(actionRow('due')))
+      + group('Missing details', items.details.map(function (item) {
+        return '<li><span class="checks-item-text">' + escapeHtml(item.label) + '</span><button class="secondary compact" data-fix-detail="' + item.field + '" type="button">Fix</button></li>';
+      }))
+      + (items.total ? '' : '<p class="checks-all-done">All checked. The minutes are ready to finalise.</p>')
+      + doneHtml;
+  }
+
+  function finaliseConfirmHtml(items) {
+    return '<div class="finalise-confirm" role="alert"><p><strong>' + plural(items.total, 'item is', 'items are') + ' still open:</strong> ' + escapeHtml(checksSummaryText(items)) + '.</p>'
+      + '<p class="muted">You can finalise anyway, or review them first.</p>'
+      + '<div class="finalise-confirm-actions"><button class="secondary" data-finalise-anyway type="button">Finalise anyway</button><button class="button" data-review-first type="button">Review first</button></div></div>';
+  }
+
+  function refreshChecksDrawer() {
+    var items = openCheckItems();
+    var confirm = document.getElementById('checksConfirm');
+    if (confirm) confirm.innerHTML = checksDrawerMode === 'finalise' && items.total ? finaliseConfirmHtml(items) : '';
+    var flagGroup = document.getElementById('checksFlagGroup');
+    if (flagGroup) {
+      flagGroup.hidden = !items.flagged.length;
+      var count = flagGroup.querySelector('.checks-count');
+      if (count) count.textContent = items.flagged.length;
+    }
+    var extra = document.getElementById('checksExtra');
+    if (extra) extra.innerHTML = checksExtraHtml(items);
+    var title = document.getElementById('sideDrawerTitle');
+    if (title) title.textContent = checksDrawerMode === 'finalise' && items.total ? 'Finalise with open items?' : (items.total ? plural(items.total, 'item', 'items') + ' to check' : 'All checked');
+  }
+
+  // The model's checks keep today's cards: the list itself moves into the
+  // drawer while it is open and goes back when it closes.
+  function openChecksDrawer(mode) {
+    var trigger = document.getElementById(mode === 'finalise' ? 'finaliseMinutes' : 'reviewQueueToggle');
+    openDrawer({ title: '', trigger: trigger,
+      html: '<div id="checksConfirm"></div><section id="checksFlagGroup" class="checks-group"><h3>Model flagged <span class="checks-count"></span></h3><div id="checksFlagSlot"></div></section><div id="checksExtra"></div>' });
+    checksDrawerMode = mode || 'checks';
+    document.getElementById('sideDrawer').classList.add('checks-drawer');
+    var list = document.getElementById('flagList');
+    var slot = document.getElementById('checksFlagSlot');
+    if (list && slot) slot.appendChild(list);
+    refreshChecksDrawer();
+    document.getElementById('reviewQueueToggle').setAttribute('aria-expanded', 'true');
+  }
+
+  function restoreFlagList() {
+    var list = document.getElementById('flagList');
+    var home = document.querySelector('#reviewFlags .review-flags-body');
+    if (list && home && list.parentElement !== home) home.appendChild(list);
+    checksDrawerMode = '';
+    var drawer = document.getElementById('sideDrawer');
+    if (drawer) drawer.classList.remove('checks-drawer');
+    var pill = document.getElementById('reviewQueueToggle');
+    if (pill) pill.setAttribute('aria-expanded', 'false');
+  }
+
+  // Finds the place in the document a model check is about.
+  function documentElementForFlag(flag) {
+    var target = flagTarget(flag);
+    if (!target || target.ambiguous) return null;
+    if (target.field === 'summary') return document.querySelector('#finalDocument [data-kind="summary"]');
+    if (target.elementId === 'objectivesList') return document.querySelector('#finalDocument .final-objectives');
+    if (target.elementId === 'meetingDate') return document.querySelector('#documentMeta [data-field="meetingDate"]');
+    if (target.stage === 3) {
+      var actions = state.draft.actions || [];
+      for (var index = 0; index < actions.length; index += 1) {
+        if (actionDomId(actions[index], index) === target.elementId) return document.querySelector('#finalDocument tr[data-doc-action="' + actionOccurrence(actions[index]).replace(/"/g, '\\"') + '"]');
+      }
+      return null;
+    }
+    if (target.stage === 2 && !target.retained) {
+      var found = null;
+      (state.draft.discussion || []).forEach(function (topic, topicIndex) {
+        var topicId = topic.id || 'topic-' + topicIndex;
+        ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+          (topic[field] || []).forEach(function (item, itemIndex) {
+            if (!found && (item.reviewFlagIds || []).indexOf(flag.id) >= 0) found = item.id || (topicId + '-' + field + '-' + itemIndex);
+          });
+        });
+      });
+      var element = found && document.querySelector('#finalDocument [data-kind="discussion"][data-record-id="' + String(found).replace(/"/g, '\\"') + '"]');
+      return element ? (element.closest('li') || element) : null;
+    }
+    return null;
+  }
+
+  function pulseInDocument(element) {
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    element.classList.remove('doc-pulse');
+    void element.offsetWidth;
+    element.classList.add('doc-pulse');
+    window.setTimeout(function () { element.classList.remove('doc-pulse'); }, 1800);
+  }
+
+  // Open model checks marked in the document with an amber bar.
+  var docFlaggedKeys = new Set();
+  function computeDocFlaggedKeys() {
+    var keys = new Set();
+    var draft = state.draft || {};
+    var open = (draft.reviewFlags || []).filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
+    if (!open.length) return keys;
+    var openIds = new Set(open.map(function (flag) { return flag.id; }));
+    (draft.discussion || []).forEach(function (topic, topicIndex) {
+      var topicId = topic.id || 'topic-' + topicIndex;
+      ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+        (topic[field] || []).forEach(function (item, itemIndex) {
+          if ((item.reviewFlagIds || []).some(function (id) { return openIds.has(id); })) keys.add('discussion|' + (item.id || topicId + '-' + field + '-' + itemIndex));
+        });
+      });
+    });
+    var actionIds = (draft.actions || []).map(function (action, index) { return actionDomId(action, index); });
+    open.forEach(function (flag) {
+      var target = flagTarget(flag);
+      if (!target || target.ambiguous) return;
+      if (target.field === 'summary') keys.add('summary|executive-summary');
+      else if (target.stage === 3) {
+        var at = actionIds.indexOf(target.elementId);
+        if (at >= 0) keys.add('action|' + actionOccurrence(draft.actions[at]));
+      }
+    });
+    return keys;
   }
 
   function documentMetaHtml(editable) {
@@ -2507,6 +2711,18 @@
         : counts.optional ? counts.optional + ' optional check' + (counts.optional === 1 ? '' : 's') : 'Review complete';
     document.getElementById('reviewQueueToggle').title = counts.flags + ' total checks. ' + counts.primary + ' concern possible corrections; ' + counts.optional + ' concern optional material; ' + counts.coverage + ' concern coverage.';
     updateReviewQueueToggle(counts);
+    if (inDocumentMode()) {
+      // One answer to "am I done?": model checks, missing owners and dates,
+      // and empty required details, added up.
+      var open = openCheckItems();
+      var pill = document.getElementById('reviewQueueToggle');
+      document.getElementById('flagCount').textContent = open.total ? open.total + ' to check' : 'All checked';
+      pill.hidden = false;
+      pill.dataset.state = open.total ? 'warning' : 'done';
+      pill.title = open.total ? checksSummaryText(open) : 'Nothing left to check.';
+      pill.setAttribute('aria-expanded', String(checksDrawerOpen()));
+      if (checksDrawerOpen()) refreshChecksDrawer();
+    }
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) {
       intro.hidden = !counts.flags;
@@ -2624,7 +2840,7 @@
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
-          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : 'Open in minutes') + '</button></div>';
+          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : inDocumentMode() ? 'Show in document' : 'Open in minutes') + '</button></div>';
       } else if (showTarget && target && target.ambiguous) {
         body += '<p>' + (target.retained ? 'This check is linked to several retained details. Review those entries before including them.' : 'This check is linked to several actions. Review those rows directly.') + '</p></div>';
       } else if (showTarget && candidateText) {
@@ -2758,7 +2974,9 @@
       var recordId = actionIndex >= 0 ? state.draft.actions[actionIndex].id : id;
       var occurrenceAttribute = kind === 'action' ? ' data-action-occurrence-id="' + escapeHtml(id) + '"' : '';
       var edited = editedFields().indexOf(fieldEditKey(kind, id, field)) >= 0;
-      return '<button class="final-editable' + (options.block ? ' block' : '') + (edited ? ' user-edited' : '') + (displayValue ? '' : ' is-empty') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="' + (edited ? 'Edited by you' : 'Click to edit') + '">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
+      var flagged = inDocumentMode() && field !== 'owners' && field !== 'timing' && docFlaggedKeys.has(kind + '|' + id);
+      var hint = flagged ? 'Flagged for a check' + (edited ? ' · Edited by you' : '') : edited ? 'Edited by you' : 'Click to edit';
+      return '<button class="final-editable' + (options.block ? ' block' : '') + (edited ? ' user-edited' : '') + (flagged ? ' model-flagged' : '') + (displayValue ? '' : ' is-empty') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="' + hint + '">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
@@ -2834,6 +3052,7 @@
     var draft = state.draft || {}; var details = draft.details || {};
     var include = includedSectionState();
     var docMode = inDocumentMode();
+    docFlaggedKeys = docMode ? computeDocFlaggedKeys() : new Set();
     var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && (item.text || finalEditMatches('objective', item.id, 'text'));}) : [];
     var addObjective = docMode ? '<button class="quiet doc-add doc-only" data-doc-add-objective type="button">Add objective</button>' : '';
     var summaryHtml = (objectives.length || (docMode && include.meetingObjectives) ? '<section><h3>Meeting objectives</h3>' + (objectives.length ? '<ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {singleLine:docMode,label:'Edit meeting objective',empty:'New objective'}) + '</li>'; }).join('') + '</ul>' : '') + addObjective + '</section>' : '')
@@ -2877,6 +3096,7 @@
     if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); fitFinalTextarea(editor); }
+    if (docMode) updateReviewQueueSummary();
   }
 
   // A textarea in the document grows with its text instead of scrolling.
@@ -4909,7 +5129,7 @@
   }
 
   function openFinalEditable(editable) {
-    if (!editable || !state.draft) return;
+    if (!editable || !state.draft || documentFinalised()) return;
     activeFinalEdit = { kind:editable.dataset.kind,
       id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
       field:editable.dataset.field };
@@ -5191,7 +5411,7 @@
     if (editable) { openFinalEditable(editable); return; }
     if (event.target.closest('[data-final-cancel]')) { cancelFinalEdit(); return; }
     if (event.target.closest('[data-final-save]')) { applyFinalEdit(); return; }
-    if (state.draft && inDocumentMode()) onDocumentEditClick(event);
+    if (state.draft && inDocumentMode() && !documentFinalised()) onDocumentEditClick(event);
   }
   // The document header (title, date, location) edits the same way as the body.
   document.getElementById('finalDocument').addEventListener('click', onFinalDocumentClick);
@@ -5296,13 +5516,75 @@
     if (regenerate) { closeMenus(null); requestBackgroundStage(regenerate.dataset.regenerateSection, { regenerate: true }); }
   });
 
-  document.getElementById('finaliseMinutes').addEventListener('click', function () {
+  function finaliseNow() {
     document.body.classList.remove('doc-preview');
     if (editStructureOn()) setEditStructure(false);
     document.getElementById('saveMinutes').click();
+  }
+  // Finalise never blocks: with open items it asks once, in the drawer.
+  document.getElementById('finaliseMinutes').addEventListener('click', function () {
+    if (documentReady() && openCheckItems().total > 0) {
+      if (editStructureOn()) setEditStructure(false);
+      openChecksDrawer('finalise');
+      return;
+    }
+    finaliseNow();
+  });
+  document.getElementById('sideDrawer').addEventListener('click', function (event) {
+    var target;
+    if (event.target.closest('[data-finalise-anyway]')) { closeDrawer(); finaliseNow(); return; }
+    if (event.target.closest('[data-review-first]')) {
+      checksDrawerMode = 'checks'; refreshChecksDrawer();
+      var first = document.querySelector('#sideDrawerBody .checks-group:not([hidden]) button');
+      if (first) first.focus({ preventScroll: true });
+      return;
+    }
+    if ((target = event.target.closest('[data-fix-owner],[data-fix-due]'))) {
+      var owner = target.hasAttribute('data-fix-owner');
+      var occ = owner ? target.dataset.fixOwner : target.dataset.fixDue;
+      closeDrawer();
+      docPickerOpen = (owner ? 'owner:' : 'due:') + occ;
+      renderFinal();
+      var picker = document.querySelector('[data-picker="' + docPickerOpen + '"]');
+      if (picker) {
+        picker.closest('tr').scrollIntoView({ block: 'center' });
+        var control = picker.querySelector('[data-menu-popover] button, [data-menu-popover] input');
+        if (control) control.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if ((target = event.target.closest('[data-fix-detail]'))) {
+      closeDrawer();
+      var field = target.dataset.fixDetail;
+      if (field === 'attendees') { var add = document.querySelector('[data-doc-add-attendee="internal"]'); if (add) { add.scrollIntoView({ block: 'center' }); add.click(); } return; }
+      var editable = findEditable(fieldEditKey('details', 'meeting-details', field));
+      if (editable) { editable.scrollIntoView({ block: 'center' }); openFinalEditable(editable); }
+    }
+  });
+  document.getElementById('copyDraftLink').addEventListener('click', async function () {
+    var link = window.location.origin + window.location.pathname + '?draftId=' + encodeURIComponent((state.draft && state.draft.draftId) || '');
+    try { await navigator.clipboard.writeText(link); setSaveStatus('Link copied', 'saved'); }
+    catch (error) { window.prompt('Copy this link', link); }
+  });
+  document.getElementById('reopenMinutes').addEventListener('click', async function () {
+    try {
+      await saveDraftNow('draft');
+      document.body.classList.remove('doc-preview', 'doc-finalised');
+      renderFinalSaveState(); renderDocumentMode(); renderFinal(); updateFinishingBar();
+      setStatus('Reopened for editing.', false, 'review');
+    } catch (error) { setStatus(error.message, true, 'review'); }
   });
 
   function openReviewTarget(targetButton) {
+    // In the document, a check scrolls to and pulses its item; the drawer stays open.
+    if (inDocumentMode() && targetButton.dataset.viewFlagTarget) {
+      var card = targetButton.closest('[data-review-flag-id]');
+      var flag = card && (state.draft.reviewFlags || []).filter(function (item) { return item.id === card.dataset.reviewFlagId; })[0];
+      if (flag && document.body.classList.contains('doc-preview') && !documentFinalised()) { document.body.classList.remove('doc-preview'); renderFinal(); updateFinishingBar(); }
+      var inDocument = flag && documentElementForFlag(flag);
+      if (inDocument) { pulseInDocument(inDocument); return; }
+      closeDrawer();
+    }
     var elementId = targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget || targetButton.dataset.viewCoverageAction;
     // Until the checks point into the document itself, a check that lives on
     // a step screen opens the structure view at that item.
@@ -5374,6 +5656,10 @@
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
   document.getElementById('reviewQueueToggle').addEventListener('click', function () {
+    if (inDocumentMode()) {
+      if (checksDrawerOpen() && checksDrawerMode === 'checks') closeDrawer(); else openChecksDrawer('checks');
+      return;
+    }
     var panel = document.getElementById('reviewFlags');
     panel.open = !panel.open;
     updateReviewQueueSummary();
@@ -5407,6 +5693,7 @@
     try {
       await saveDraftNow('complete');
       renderFinalSaveState();
+      if (documentReady()) { closeDrawer(); renderFinal(); updateFinishingBar(); }
       setStatus('Final minutes saved. This transcript is marked Complete in Library.', false, 'review');
       document.getElementById('finalSaveConfirmation').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } catch (error) {

@@ -3761,7 +3761,8 @@ test('every text in the document edits the same way and removals can be undone',
     await page.keyboard.press('Escape');
     const edited = page.locator('#finalDocument .final-editable.user-edited');
     assert.equal(await edited.count(), 1);
-    assert.equal(await edited.getAttribute('title'), 'Edited by you');
+    // The point also carries a model check, which the tooltip names first.
+    assert.match(await edited.getAttribute('title'), /Edited by you$/);
 
     // Clicking outside an unchanged field just closes it.
     await points.nth(1).click();
@@ -3925,6 +3926,80 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     await page.click('[data-doc-add-action]');
     await page.keyboard.press('Escape');
     assert.equal(await table.locator('tbody tr').count(), count + 1);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('one counter adds up open checks, and Finalise asks once then locks the document', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH');
+    // 2 model checks + 1 action with no owner + 2 actions with no due date.
+    assert.equal((await page.textContent('#flagCount')).trim(), '5 to check');
+
+    // Flagged text has an amber bar in the document.
+    assert.ok(await page.locator('#finalDocument .final-editable.model-flagged').count() >= 1);
+
+    // The pill opens the checks drawer, grouped, with today's cards.
+    await page.click('#reviewQueueToggle');
+    const drawer = page.locator('#sideDrawer');
+    assert.equal(await drawer.isVisible(), true);
+    assert.deepEqual(await drawer.locator('.checks-group:not([hidden]) > h3').evaluateAll((nodes) => nodes.map((node) => node.firstChild.textContent.trim())), ['Model flagged', 'Missing owner', 'Missing date']);
+    assert.ok(await drawer.locator('#flagList [data-flag-status="confirmed"]').count() >= 1);
+    // Show in document scrolls to the item and keeps the drawer open.
+    await drawer.locator('[data-view-flag-target]').first().click();
+    assert.equal(await drawer.isVisible(), true);
+    await page.waitForSelector('#finalDocument .doc-pulse');
+
+    // Fix opens the owner picker on that row.
+    await drawer.locator('[data-fix-owner]').first().click();
+    const picker = page.locator('.owner-picker[open]');
+    await picker.waitFor();
+    let saved = patch();
+    await picker.locator('[data-owner-toggle="Alex Reed"]').click();
+    await saved;
+    await page.keyboard.press('Escape');
+    assert.equal((await page.textContent('#flagCount')).trim(), '4 to check');
+
+    // Finalise with open items asks in the drawer; Review first keeps editing.
+    await page.click('#finaliseMinutes');
+    assert.equal(await page.locator('.finalise-confirm').isVisible(), true);
+    assert.equal((await page.textContent('#sideDrawerTitle')).trim(), 'Finalise with open items?');
+    assert.match(await page.textContent('.finalise-confirm'), /4 items are still open: 2 model checks, 2 missing dates/);
+    await page.click('[data-review-first]');
+    assert.equal(await page.locator('.finalise-confirm').count(), 0);
+    await page.keyboard.press('Escape');
+    assert.equal(await drawer.isVisible(), false);
+    assert.equal(await page.locator('#reviewFlags #flagList').count(), 1, 'the checks go back to their panel');
+
+    // Finalise anyway saves the minutes as complete and locks the document.
+    await page.click('#finaliseMinutes');
+    saved = patch();
+    await page.click('[data-finalise-anyway]');
+    assert.equal((await saved).request().postDataJSON().status, 'complete');
+    await page.waitForSelector('body.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    for (const id of ['copyDraftLink', 'reopenMinutes']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    assert.equal(await page.locator('#finaliseMinutes').isVisible(), false);
+    await page.locator('#finalDocument [data-final-edit]').first().focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0, 'read-only once finalised');
+
+    // Reopen for editing makes it editable again.
+    saved = patch();
+    await page.click('#reopenMinutes');
+    assert.equal((await saved).request().postDataJSON().status, 'draft');
+    await page.waitForFunction(() => !document.body.classList.contains('doc-finalised'));
+    await page.locator('#finalDocument [data-final-edit]').first().click();
+    assert.equal(await page.locator('[data-final-editor]').count(), 1);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

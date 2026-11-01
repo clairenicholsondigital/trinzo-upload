@@ -1296,6 +1296,32 @@
 .meeting-agent-page .doc-actions-table+.doc-add,.meeting-agent-page .actions-wrap+.doc-add{margin-top:.4rem}
 .meeting-agent-page.doc-preview .doc-picker>summary{pointer-events:none;border-color:transparent;box-shadow:none}
 .meeting-agent-page.doc-preview .due-note{cursor:default;pointer-events:none}
+/* Slice 6: one counter, a checks drawer and the Finalise gate. */
+.meeting-agent-page .review-queue-toggle[data-state="done"]{color:var(--ok,#2f7a4d);border-color:#b7dcc4;background:#eef8f1}
+.meeting-agent-page .checks-drawer .checks-group{margin:0 0 1rem}
+.meeting-agent-page .checks-drawer .checks-group h3{display:flex;align-items:center;gap:.4rem;font-size:var(--fs-sm);text-transform:none;margin:0 0 .4rem}
+.meeting-agent-page .checks-count{display:inline-grid;place-items:center;min-width:1.4rem;height:1.4rem;padding:0 .3rem;border-radius:999px;background:#fdf3dc;color:#8a5a00;font-size:var(--fs-cap)}
+.meeting-agent-page .checks-list{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
+.meeting-agent-page .checks-list li{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff}
+.meeting-agent-page .checks-item-text{flex:1;min-width:0;font-size:var(--fs-sm)}
+.meeting-agent-page .checks-done summary{cursor:pointer;font-size:var(--fs-sm);color:var(--muted);margin:.4rem 0}
+.meeting-agent-page .checks-all-done{color:var(--ok,#2f7a4d);font-weight:var(--fw-bold)}
+.meeting-agent-page .checks-drawer #flagList .flag{margin-bottom:.6rem}
+.meeting-agent-page .checks-drawer .review-item-layout{grid-template-columns:minmax(0,1fr)}
+.meeting-agent-page .checks-drawer .flag-actions{flex-wrap:wrap}
+.meeting-agent-page.doc-mode #finalSaveConfirmation{display:none}
+.meeting-agent-page .finalise-confirm{border:1px solid #f0d9a6;background:#fffaf0;border-radius:var(--radius-sm);padding:.8rem;margin-bottom:1rem}
+.meeting-agent-page .finalise-confirm p{margin:0 0 .4rem}
+.meeting-agent-page .finalise-confirm-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.6rem}
+.meeting-agent-page.doc-mode .final-editable.model-flagged,
+.meeting-agent-page.doc-mode .final-editable.model-flagged.user-edited{box-shadow:inset 3px 0 0 #d39a12;padding-left:.55rem;border-top-left-radius:0;border-bottom-left-radius:0}
+.meeting-agent-page.doc-preview .final-editable.model-flagged{box-shadow:none;padding-left:.2rem}
+@keyframes docPulse{0%{background:rgba(211,154,18,.28)}100%{background:transparent}}
+.meeting-agent-page .doc-pulse,.meeting-agent-page .doc-pulse>td{animation:docPulse 1.6s ease-out}
+.meeting-agent-page .finalised-note{font-size:var(--fs-sm);color:var(--ok,#2f7a4d);font-weight:var(--fw-bold);align-self:center}
+.meeting-agent-page .finalised-export{display:inline-flex}
+.meeting-agent-page .finalised-export[hidden]{display:none}
+.meeting-agent-page.doc-finalised .preview-bar #previewExport:empty{display:none}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
@@ -1334,7 +1360,7 @@
 
   <label class="mobile-step-picker"><span id="mobileStepCount">Step 1 of 5</span><select id="mobileStepSelect" aria-label="Meeting minutes step"><option value="0">Details</option><option value="2" disabled>Discussion</option><option value="3" disabled>Actions</option><option value="4" disabled>Summary</option><option value="5" disabled>Review</option></select></label>
 
-  <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span><button id="finaliseMinutes" class="button finalise-button" type="button" hidden>Finalise</button></span></div>
+  <div id="saveStrip" class="save-strip" hidden><span class="save-strip-primary"><span id="saveStatus" class="save-status">Saved</span><button id="reviewQueueToggle" class="review-queue-toggle" type="button" aria-controls="reviewFlags" aria-expanded="false" hidden><span id="flagCount" class="flag-count"></span></button></span><span class="save-strip-actions"><button id="undoLastDecision" class="secondary quiet" type="button" hidden>Undo</button><button id="redoLastDecision" class="secondary quiet" type="button" hidden>Redo</button><button id="reloadDraft" class="secondary" type="button" hidden>Reload saved version</button><button id="previewDocument" class="secondary" type="button" aria-label="Preview draft"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="wide-label">Preview draft</span><span class="narrow-label">Preview</span></button><button id="downloadDraft" class="secondary" type="button" aria-label="Download draft" aria-describedby="downloadDraftHint"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span class="wide-label">Download draft</span><span class="narrow-label">Download</span></button><span id="downloadDraftHint" class="visually-hidden" aria-live="polite"></span><button id="finaliseMinutes" class="button finalise-button" type="button" hidden>Finalise</button><span id="finalisedNote" class="finalised-note" hidden></span><span id="finalisedExport" class="finalised-export" hidden></span><button id="copyDraftLink" class="secondary" type="button" hidden>Copy link</button><button id="reopenMinutes" class="secondary" type="button" hidden>Reopen for editing</button></span></div>
 
   <div class="workflow-utilities">
     <details id="reviewFlags" class="review-flags" hidden><summary class="review-flags-summary"></summary><div class="review-flags-body panel"><p id="reviewQueueIntro" class="muted">A few details are worth a quick source check. They may already be right.</p><div id="flagList" class="flag-list"></div></div></details>
