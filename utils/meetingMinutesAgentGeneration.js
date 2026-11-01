@@ -36,7 +36,42 @@ const PROGRESS_STAGES = ['summary', 'discussion', 'actions'];
 const PROGRESS_CODES = ['preparing', 'queued', 'request_sent', 'response_received',
   'validating', 'validated', 'retrying', 'extracting', 'checking', 'arranging', 'saving', 'failed'];
 
-function normaliseMeetingAgentProgress(value) {
+// Read-only Beta previews share the existing progress snapshot. Keep only
+// display text; provider IDs, evidence, proposals and diagnostics stay private.
+function normaliseMeetingAgentSectionPreview(stage, value) {
+  if (!value || typeof value !== 'object') return null;
+  const text = (input, limit = 1600) => typeof input === 'string' ? input.slice(0, limit) : '';
+  const records = (items, limit = 80) => (Array.isArray(items) ? items : []).slice(0, limit)
+    .map(item => ({ text: text(item?.text) })).filter(item => item.text.trim());
+  if (stage === 'summary' && typeof value.executiveSummary === 'string' && Array.isArray(value.meetingObjectives)) {
+    return { executiveSummary: text(value.executiveSummary, 4000), meetingObjectives: records(value.meetingObjectives, 4) };
+  }
+  if (stage === 'discussion' && Array.isArray(value.discussion)) {
+    let remaining = 80;
+    const discussion = value.discussion.slice(0, 30).map(topic => {
+      const result = { topic: text(topic?.topic, 500),
+        ...(typeof topic?.hideHeading === 'boolean' ? { hideHeading: topic.hideHeading } : {}) };
+      for (const key of ['points', 'decisions', 'openQuestions']) {
+        result[key] = records(topic?.[key], remaining);
+        remaining -= result[key].length;
+      }
+      return result;
+    }).filter(topic => topic.points.length || topic.decisions.length || topic.openQuestions.length);
+    return { discussion };
+  }
+  if (stage === 'actions' && Array.isArray(value.actions)) {
+    return { actions: value.actions.slice(0, 60).map(action => ({
+      action: text(action?.action),
+      owners: (Array.isArray(action?.owners) ? action.owners : []).slice(0, 12)
+        .map(owner => text(owner, 180)).filter(owner => owner.trim()),
+      timing: { kind: ['deadline', 'target', 'dependency', 'not_stated', 'stated'].includes(action?.timing?.kind)
+        ? action.timing.kind : 'not_stated', wording: text(action?.timing?.wording, 600), exactDate: text(action?.timing?.exactDate, 20) }
+    })).filter(action => action.action.trim()) };
+  }
+  return null;
+}
+
+function normaliseMeetingAgentProgress(value, { includePreviews = false } = {}) {
   if (!value || typeof value !== 'object' || !PROGRESS_CODES.includes(value.code)) return null;
   const date = (input) => typeof input === 'string' && Number.isFinite(Date.parse(input))
     ? new Date(input).toISOString() : '';
@@ -48,26 +83,29 @@ function normaliseMeetingAgentProgress(value) {
     for (const key of ['records', 'proposals', 'flags']) {
       if (Number.isFinite(section.counts?.[key])) counts[key] = Math.min(100000, Math.max(0, Math.floor(section.counts[key])));
     }
+    const preview = includePreviews && section.code === 'validated'
+      ? normaliseMeetingAgentSectionPreview(stage, section.preview) : null;
     sections[stage] = { code: section.code, updatedAt: date(section.updatedAt),
-      ...(Object.keys(counts).length ? { counts } : {}) };
+      ...(Object.keys(counts).length ? { counts } : {}), ...(preview ? { preview } : {}) };
   }
   return { code: value.code, updatedAt: date(value.updatedAt), sections };
 }
 
-// A bounded snapshot in the existing generation record; never provider text or history.
-function mergeMeetingAgentProgress(prior, event = {}) {
-  const progress = normaliseMeetingAgentProgress(prior);
+// Preview projection is an explicit Beta-only opt-in; other callers retain metadata only.
+function mergeMeetingAgentProgress(prior, event = {}, options = {}) {
+  const progress = normaliseMeetingAgentProgress(prior, options);
   if (!PROGRESS_CODES.includes(event.code)) return progress;
   const updatedAt = new Date().toISOString();
   const sections = { ...(progress?.sections || {}) };
   if (PROGRESS_STAGES.includes(event.stage)) {
     sections[event.stage] = { code: event.code, updatedAt,
-      ...(event.code === 'validated' && event.counts ? { counts: event.counts } : {}) };
+      ...(event.code === 'validated' && event.counts ? { counts: event.counts } : {}),
+      ...(options.includePreviews && event.code === 'validated' && event.preview ? { preview: event.preview } : {}) };
   }
-  return normaliseMeetingAgentProgress({ code: event.code, updatedAt, sections });
+  return normaliseMeetingAgentProgress({ code: event.code, updatedAt, sections }, options);
 }
 
-function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.now()) {
+function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.now(), options = {}) {
   const parallel = draft.generationProvider === 'parallel-specialists-v1';
   const completed = PROGRESS_STAGES.map(stage => ({ ...draft.qualityState?.[stage], stage }))
     .filter(item => Number.isFinite(Date.parse(item.completedAt || '')))
@@ -76,7 +114,10 @@ function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.no
   const active = Boolean(generation);
   const failed = generation?.status === 'failed';
   const interrupted = failed && draft.generation?.status === 'running';
-  const progress = normaliseMeetingAgentProgress(generation?.progress);
+  const includePreviews = options.includePreviews === true && parallel && generation?.status === 'running'
+    && Number.isFinite(Date.parse(generation.startedAt)) && now - Date.parse(generation.startedAt) <= 240000;
+  const progress = normaliseMeetingAgentProgress(generation?.progress, { includePreviews });
+  const healthyPreviews = includePreviews && !Object.values(progress?.sections || {}).some(section => section.code === 'failed');
   const stage = parallel ? 'all' : PROGRESS_STAGES.includes(generation?.stage) ? generation.stage : completed?.stage || 'discussion';
   const timestamp = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : '';
   const parallelStartedAt = parallel && !active ? PROGRESS_STAGES
@@ -116,7 +157,8 @@ function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.no
       : ['response_received', 'validating'].includes(section.code) ? 'received'
       : ['preparing', 'queued', 'retrying'].includes(section.code) ? 'waiting' : 'running';
     sections[sectionStage] = { state, updatedAt: section.updatedAt,
-      ...(section.counts ? { counts: section.counts } : {}) };
+      ...(section.counts ? { counts: section.counts } : {}),
+      ...(healthyPreviews && section.preview ? { preview: section.preview } : {}) };
   }
   let message = messages[code];
   if (parallel && active && !failed && code !== 'saving') {
@@ -344,6 +386,7 @@ module.exports = {
   meetingAgentGenerationState,
   meetingAgentPassTimingPolicy,
   normaliseMeetingAgentGeneration,
+  normaliseMeetingAgentSectionPreview,
   normaliseMeetingAgentProgress,
   mergeMeetingAgentProgress,
   publicMeetingAgentProgress,

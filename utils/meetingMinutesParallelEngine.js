@@ -2,6 +2,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {normaliseMeetingAgentSectionPreview} = require('./meetingMinutesAgentGeneration');
 const STAGES = Object.freeze(['summary', 'discussion', 'actions']);
 const hash = value => crypto.createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 const fail = (code, message) => Object.assign(new Error(message), {code});
@@ -92,13 +93,17 @@ async function runSpecialists(packet, configuration, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const now = options.now || (() => Date.now());
   const timeoutMs = options.timeoutMs || 180000;
-  const report = (stage, code, counts) => {
+  const report = (stage, code, counts, result) => {
     if (typeof options.onProgress !== 'function') return;
     // Start all provider requests before observers can do work; observation
     // failures and unresolved observer promises never affect provider results.
     queueMicrotask(() => {
-      try { Promise.resolve(options.onProgress({stage,code,...(counts ? {counts} : {})})).catch(() => {}); }
-      catch { /* Progress is advisory. */ }
+      try {
+        const preview = code === 'validated' ? normaliseMeetingAgentSectionPreview(stage, stage === 'summary'
+          ? {executiveSummary:result.executiveSummary.text,meetingObjectives:result.meetingObjectives}
+          : stage === 'discussion' ? {discussion:discussionForMinutes(result)} : {actions:result.actions}) : null;
+        Promise.resolve(options.onProgress({stage,code,...(counts ? {counts} : {}),...(preview ? {preview} : {})})).catch(() => {});
+      } catch { /* Progress is advisory. */ }
     });
   };
   const packetHash = hash(packet);
@@ -124,7 +129,7 @@ async function runSpecialists(packet, configuration, options = {}) {
         : stage === 'discussion'
           ? (result.items ? result.items.length : result.discussion.reduce((total, topic) => total + topic.points.length + topic.decisions.length + topic.openQuestions.length, 0))
           : result.actions.length;
-      report(stage,'validated',{records,proposals:stage === 'actions' ? result.actionProposals.length : 0,flags:result.reviewFlags.length});
+      report(stage,'validated',{records,proposals:stage === 'actions' ? result.actionProposals.length : 0,flags:result.reviewFlags.length},result);
       const timingCompatibility = stage === 'actions'
         ? ['actions','actionProposals'].flatMap(key => result[key].flatMap((item,index) =>
           decoded[key][index].timing.kind === 'not_stated' && item.timing.kind === 'stated'

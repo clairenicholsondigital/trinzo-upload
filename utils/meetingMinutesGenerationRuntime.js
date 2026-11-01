@@ -155,7 +155,8 @@ function meetingAgentSpeculationState(draft = {}) {
 
 function publicMeetingAgentGeneration(generation) {
   if (!generation) return null;
-  const { bootId: _bootId, semanticPolicy: _semanticPolicy, discussionCoveragePolicy: _discussionCoveragePolicy, progress: _progress, ...rest } = generation;
+  const { bootId: _bootId, semanticPolicy: _semanticPolicy, discussionCoveragePolicy: _discussionCoveragePolicy,
+    progress: _progress, progressInputHash: _progressInputHash, ...rest } = generation;
   return rest;
 }
 

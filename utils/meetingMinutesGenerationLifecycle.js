@@ -644,7 +644,9 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     return res.json({
       ok: true,
       generation: publicMeetingAgentGeneration(generation),
-      progress: publicMeetingAgentProgress(draft, generation),
+      progress: publicMeetingAgentProgress(draft, generation, Date.now(), {
+        includePreviews: parallelMinutes.isParallel(draft) && generation?.progressInputHash === parallelMinutes.inputHash(draft)
+      }),
       actionsPrewarm: meetingAgentActionsPrewarmState(draft),
       speculation: meetingAgentSpeculationState(draft),
       // Carry the draft only once the run is over, so completion is one round trip.

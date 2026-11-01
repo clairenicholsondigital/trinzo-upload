@@ -1,14 +1,35 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),express=require('express'),{chromium}=require('playwright');
 const root=path.resolve(__dirname,'..');
-test('the editor adopts all three parallel results, keeps proposals separate and does not expose legacy AI phases',async t=>{
- const app=express();app.use(express.json());let polls=0;const errors=[],unexpected=[];
- const common={generationProvider:'parallel-specialists-v1',draftId:'parallel-ui',revision:1,payloadVersion:5,status:'draft',
- details:{meetingTitle:'Parallel review',meetingDate:'2026-10-28',meetingLocation:'Microsoft Teams',internalAttendees:['Alex'],clientAttendees:[]},
- sourceUnits:[{id:'T1',speaker:'Alex',timestamp:'',text:'Review the file only after approval.'}],
- discussion:[],actions:[],meetingObjectives:[],executiveSummary:'',reviewFlags:[],staleStages:[],currentStep:0,selectedStep:0,
- unassignedSupportingDetails:[],removedActions:[],changeHistoryCount:0,
- generation:{stage:'discussion',status:'running',startedAt:new Date().toISOString(),message:'Preparing your meeting minutes…'}};
+function parallelUiDraft(draftId) {
+ return {generationProvider:'parallel-specialists-v1',draftId,revision:1,payloadVersion:5,status:'draft',
+  details:{meetingTitle:'Parallel review',meetingDate:'2026-10-28',meetingLocation:'Microsoft Teams',internalAttendees:['Alex'],clientAttendees:[]},
+  sourceUnits:[{id:'T1',speaker:'Alex',timestamp:'',text:'Review the file only after approval.'}],
+  discussion:[],actions:[],meetingObjectives:[],executiveSummary:'',reviewFlags:[],staleStages:[],currentStep:0,selectedStep:0,
+  unassignedSupportingDetails:[],removedActions:[],changeHistoryCount:0,
+  generation:{stage:'discussion',status:'running',startedAt:new Date().toISOString(),message:'Preparing your meeting minutes…'}};
+}
+function serveMinutesUi(app) {
+ app.get('/meeting-minutes-agent',(_,res)=>res.type('html').send(fs.readFileSync(path.join(root,'views/meeting-minutes-agent.html'),'utf8')));
+ app.get('/static/trinzo.js',(_,res)=>res.type('application/javascript').send(''));
+ app.get('/static/meeting-minutes-timing.js',(_,res)=>res.type('application/javascript').send(fs.readFileSync(path.join(root,'utils/meetingMinutesTiming.js'),'utf8')));
+ app.use('/static',express.static(path.join(root,'public'),{dotfiles:'allow'}));
+}
+function progressFor(draft,sections,code='validated') {
+ const updatedAt=new Date().toISOString();
+ return {status:'running',stage:'all',startedAt:draft.generation.startedAt,updatedAt,
+  elapsedMs:1000,code,message:code==='saving'?'Saving the generated draft.':'Received sections are being checked.',
+  sections:Object.fromEntries(Object.entries(sections).map(([stage,value])=>[stage,{updatedAt,...value}]))};
+}
+async function resumeGenerationPoll(page) {
+ const response=page.waitForResponse(r=>r.url().endsWith('/generation'));
+ await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+ await response;
+}
+test('the editor previews independent Beta sections then adopts the saved result and keeps proposals separate',async t=>{
+ const app=express();app.use(express.json());const errors=[],unexpected=[],patches=[],exports=[];
+ let progress=null,finished=false;
+ const common=parallelUiDraft('parallel-ui');
  const ready={...common,revision:3,currentStep:5,generation:null,
  discussion:[{id:'TOP1',topic:'File review',points:[{id:'P1',text:'Approval is a prerequisite.',evidenceIds:['T1']}],decisions:[],openQuestions:[]}],
  actions:[{id:'A1',action:'Review the file.',owners:['Alex'],timing:{kind:'stated',wording:'only after approval',exactDate:''},evidenceIds:['T1']}],
@@ -16,25 +37,68 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  meetingObjectives:[{id:'O1',text:'Review the file.',evidenceIds:['T1']}],
  parallelActionProposals:[{id:'AP1',status:'open',action:'Prepare another review.',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},reason:'Not accepted.',evidenceIds:['T1']}],
  generatedStages:{discussion:'2026-10-28T12:00:00Z',actions:'2026-10-28T12:00:00Z',summary:'2026-10-28T12:00:00Z'}};
- app.get('/meeting-minutes-agent',(_,res)=>res.type('html').send(fs.readFileSync(path.join(root,'views/meeting-minutes-agent.html'),'utf8')));
- app.get('/static/trinzo.js',(_,res)=>res.type('application/javascript').send(''));
- app.get('/static/meeting-minutes-timing.js',(_,res)=>res.type('application/javascript').send(fs.readFileSync(path.join(root,'utils/meetingMinutesTiming.js'),'utf8')));
- app.use('/static',express.static(path.join(root,'public'),{dotfiles:'allow'}));
+ serveMinutesUi(app);
  app.get('/api/meeting-minutes-agent/drafts/parallel-ui',(_,res)=>res.json({ok:true,draft:common}));
- app.get('/api/meeting-minutes-agent/drafts/parallel-ui/generation',(_,res)=>{
-  polls++;res.json({ok:true,generation:polls<2?common.generation:null,draft:polls<2?common:ready});
+ app.get('/api/meeting-minutes-agent/drafts/parallel-ui/generation',(_,res)=>res.json(finished
+  ?{ok:true,generation:null,draft:ready}:{ok:true,generation:common.generation,progress}));
+ app.patch('/api/meeting-minutes-agent/drafts/parallel-ui',(req,res)=>{
+  patches.push(req.body);res.json({ok:true,draft:{...ready,...req.body,revision:4}});
  });
- app.patch('/api/meeting-minutes-agent/drafts/parallel-ui',(req,res)=>res.json({ok:true,draft:{...ready,...req.body,revision:4}}));
  app.use((req,res)=>{if(req.method!=='GET')unexpected.push(req.path);res.status(404).json({error:'Unexpected request'});});
  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
  const browser=await chromium.launch({headless:true});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
  const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
+ page.on('request',request=>{if(/\/export(?:\/|\?|$)/.test(new URL(request.url()).pathname))exports.push(request.url());});
  await page.goto('http://127.0.0.1:'+server.address().port+'/meeting-minutes-agent?draftId=parallel-ui');
  await page.waitForSelector('#generationProgress:not([hidden])');
- assert.equal(await page.locator('#generationPhases li').count(),1);
- assert.match(await page.locator('#generationPhases').innerText(),/summary, discussion and actions together/);
- assert.ok(!/referee|Verify against transcript/.test(await page.locator('#generationPhases').innerText()));
+ assert.equal(await page.locator('#generationPhases li').count(),3,'older responses without progress still show three Beta branches');
+ const phases=await page.locator('#generationPhases').innerText();
+ for(const stage of ['Summary','Discussion','Actions'])assert.match(phases,new RegExp(stage,'i'));
+ assert.ok(!/referee|Verify against transcript/.test(phases));
+ const sections={actions:{state:'validated',counts:{records:1,proposals:0,flags:0},preview:{actions:[{
+  action:'Provisional action only.',owners:['Alex'],timing:{kind:'dependency',wording:'after approval',exactDate:''}
+ }]}}};
+ progress=progressFor(common,sections);await resumeGenerationPoll(page);
+ await page.locator('[data-generation-section="actions"]').getByText('Provisional action only.',{exact:true}).waitFor();
+ assert.equal(await page.locator('#executiveSummary').inputValue(),'');
+ assert.equal(await page.locator('#actionsBody [data-action]').count(),0,'provisional rows do not become editable actions');
+ const quoted='Provisional <img src=x onerror="window.previewExecuted=true"> summary.';
+ sections.summary={state:'validated',counts:{records:2,flags:0},preview:{executiveSummary:quoted,meetingObjectives:[{text:'Provisional objective.'}]}};
+ progress=progressFor(common,sections);await resumeGenerationPoll(page);
+ await page.locator('[data-generation-section="summary"]').getByText(quoted,{exact:true}).waitFor();
+ assert.match(await page.locator('[data-generation-section="actions"]').innerText(),/Provisional action only/,'a later Summary response retains the earlier Actions branch');
+ assert.equal(await page.locator('#generationSections img').count(),0);
+ assert.equal(await page.evaluate(()=>window.previewExecuted),undefined);
+ sections.discussion={state:'validated',counts:{records:3,flags:0},preview:{discussion:[{
+  topic:'Provisional topic',hideHeading:false,points:[{text:'Provisional discussion.'}],decisions:[{text:'Provisional decision.'}],openQuestions:[{text:'Provisional question?'}]
+ }]}};
+ progress=progressFor(common,sections,'saving');await resumeGenerationPoll(page);
+ await page.locator('[data-generation-section="discussion"]').getByText('Provisional discussion.',{exact:true}).waitFor();
+ for(const text of ['Provisional decision.','Provisional question?'])assert.match(await page.locator('[data-generation-section="discussion"]').innerText(),new RegExp(text.replace(/[.?]/g,'\\$&')));
+ assert.equal(await page.locator('#generationSections input,#generationSections textarea,#generationSections select,#generationSections button,#generationSections [contenteditable="true"]').count(),0);
+ assert.equal(await page.locator('#downloadDraft').isDisabled(),true);
+ assert.equal(await page.locator('#finaliseMinutes').isVisible(),false);
+ assert.ok(await page.locator('#saveMinutes').isHidden()||await page.locator('#saveMinutes').isDisabled());
+ assert.ok(await page.locator('#createProjectUpdateFromMinutes').isHidden()||await page.locator('#createProjectUpdateFromMinutes').isDisabled());
+ await page.locator('#downloadDraft').dispatchEvent('click');
+ assert.equal(await page.locator('#executiveSummary').inputValue(),'');
+ assert.equal(await page.locator('#discussionList [data-record-field]').count(),0);
+ assert.equal(await page.locator('#saveStatus').getAttribute('data-state'),'generating','validated sections are not saved results');
+ assert.deepEqual(patches,[]);assert.deepEqual(exports,[]);
+ for(const width of [320,1280]){
+  await page.setViewportSize({width,height:900});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
+  for(const stage of ['summary','discussion','actions']){
+   const bounds=await page.locator('[data-generation-section="'+stage+'"]').boundingBox();
+   assert.ok(bounds&&bounds.x>=0&&bounds.x+bounds.width<=width+1,JSON.stringify({width,stage,bounds}));
+  }
+  await page.emulateMedia({media:'print'});
+  assert.equal(await page.locator('#generationProgress').isVisible(),false,'provisional text is excluded from phone and desktop print');
+  await page.emulateMedia({media:'screen'});
+ }
+ finished=true;await resumeGenerationPoll(page);
  await page.waitForFunction(()=>document.querySelector('#executiveSummary')?.value==='The file review depends on approval.');
+ assert.ok(!(await page.locator('#generationSections').textContent()).includes('Provisional'),'saved result clears every provisional section');
  assert.equal(await page.locator('[data-action]').count(),1);
  assert.equal(await page.locator('[data-parallel-proposal]').count(),2);
  assert.equal(await page.locator('#discussionInstruction').evaluate(e=>e.closest('details').hidden),true);
@@ -69,6 +133,58 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  assert.equal(await page.locator('.parallel-proposal-row [data-label="Owners"]').isVisible(),true);
  assert.equal(await page.locator('#betaFlowControl').isVisible(),false,'saved drafts keep their provider');
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+});
+
+test('Beta partial sections recover after polling errors and reload, reject stale snapshots and clear on failure',async t=>{
+ const app=express();app.use(express.json());serveMinutesUi(app);
+ const common=parallelUiDraft('parallel-recovery');common.currentStep=common.selectedStep=2;
+ const errors=[],writes=[];let mode='healthy';
+ const emptyActions=progressFor(common,{actions:{state:'validated',counts:{records:0,proposals:0,flags:0},preview:{actions:[]}}});
+ app.get('/api/meeting-minutes-agent/drafts/parallel-recovery',(_,res)=>res.json({ok:true,draft:common}));
+ app.get('/api/meeting-minutes-agent/drafts/parallel-recovery/generation',(_,res)=>{
+  if(mode==='unavailable')return res.status(503).json({ok:false,error:'Temporary poll failure.'});
+  if(mode==='failed'){
+   const generation={...common.generation,status:'failed',error:'The Actions service did not complete. Saved content was kept.'};
+   return res.json({ok:true,generation,draft:{...common,revision:2,generation},progress:{...emptyActions,status:'failed',code:'failed'}});
+  }
+  const progress=mode==='stale'?{...emptyActions,startedAt:'2000-01-01T00:00:00.000Z'}:emptyActions;
+  res.json({ok:true,generation:common.generation,progress});
+ });
+ app.use((req,res)=>{if(req.method!=='GET')writes.push({method:req.method,path:req.path,body:req.body});res.status(404).json({error:'Unexpected request'});});
+ const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+ const browser=await chromium.launch({headless:true});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+ const page=await browser.newPage({viewport:{width:390,height:844}});page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+ const url='http://127.0.0.1:'+server.address().port+'/meeting-minutes-agent?draftId=parallel-recovery';
+ const actions=page.locator('[data-generation-section="actions"]');
+ const waitForEmptyActions=()=>actions.getByText(/no (confirmed )?actions/i).waitFor();
+ await page.goto(url);await waitForEmptyActions();
+ assert.equal(await page.locator('#meetingTitle').isDisabled(),true,'Beta inputs stay read-only while section previews arrive');
+ assert.equal(await page.locator('#actionsBody [data-action]').count(),0);
+ mode='unavailable';await resumeGenerationPoll(page);
+ await page.waitForFunction(()=>!document.getElementById('reloadDraft').hidden);
+ assert.match(await page.locator('#generationProgressMessage').innerText(),/Progress could not be checked/);
+ assert.equal(await page.locator('#generationPhases li').count(),3);
+ assert.equal(await page.locator('#saveStatus').getAttribute('data-state'),'generating');
+ assert.equal(await page.locator('#generationSections').isVisible(),false,'a failed poll cannot leave stale preview content visible');
+ mode='healthy';await page.locator('#reloadDraft').click();await waitForEmptyActions();
+ assert.equal(await page.locator('#reloadDraft').isHidden(),true);
+ await page.reload();await waitForEmptyActions();
+ assert.equal(await page.locator('#downloadDraft').isDisabled(),true);
+ mode='stale';await resumeGenerationPoll(page);
+ await page.waitForFunction(()=>document.getElementById('generationSections').hidden);
+ assert.equal(await page.locator('#generationPhases li').count(),3,'a mismatched snapshot does not complete the current run');
+ mode='healthy';await resumeGenerationPoll(page);await waitForEmptyActions();
+ mode='failed';await resumeGenerationPoll(page);
+ await page.waitForFunction(()=>!document.body.classList.contains('generation-active'));
+ assert.equal(await page.locator('#generationSections').isVisible(),false);
+ assert.equal(await page.locator('#generationSections').textContent(),'','failed attempts discard provisional output');
+ assert.match(await page.locator('#workflowStatus').innerText(),/Actions service did not complete/);
+ assert.equal(await page.locator('#executiveSummary').inputValue(),'');
+ assert.equal(await page.locator('#discussionList [data-record-field]').count(),0);
+ assert.equal(await page.locator('#actionsBody [data-action]').count(),0);
+ assert.equal(await page.locator('#downloadDraft').isDisabled(),true);
+ assert.equal(await page.locator('#finaliseMinutes').isVisible(),false);
+ assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
 test('Beta switch selects the upload provider, supports keyboard/mobile and preserves access rules',async t=>{

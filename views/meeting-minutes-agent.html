@@ -266,6 +266,14 @@
 /* In progress keeps the accent border as its signal and inherits the same
    navy, so the label does not change colour as a stage moves along. */
 .meeting-agent-page .generation-phase.active{border-color:var(--accent)}
+.meeting-agent-page .generation-phase.failed{border-color:var(--danger-border);color:var(--danger-text)}
+.meeting-agent-page .generation-sections{overflow-wrap:anywhere}
+.meeting-agent-page .generation-sections>section{margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)}
+.meeting-agent-page .generation-sections h3{margin:.2rem 0 .6rem;font-size:var(--fs-lg)}
+.meeting-agent-page .generation-sections h4{margin:.75rem 0 .3rem;font-size:var(--fs-sm)}
+.meeting-agent-page .generation-sections p{white-space:pre-line}
+.meeting-agent-page .generation-sections li>p{margin:.3rem 0}
+@media(min-width:901px){.meeting-agent-page .generation-phases.parallel-phases{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .meeting-agent-page .generation-phase.active::before{
   background:transparent;border:2px solid var(--brand-200);border-top-color:var(--accent);animation:agent-spin .75s linear infinite}
 .meeting-agent-page .generation-phase.done{background:#17D0C4;border-color:#17D0C4;color:#01173B}
@@ -1073,6 +1081,7 @@
   .meeting-agent-page .hero,
   .meeting-agent-page .steps,
   .meeting-agent-page .save-strip,
+  .meeting-agent-page .generation-progress,
   .meeting-agent-page .notice,
   .meeting-agent-page .review-flags,
   .meeting-agent-page .screen:not([data-screen="5"]),
@@ -1442,6 +1451,7 @@
     <div class="generation-progress-head"><div><h2 id="generationProgressTitle">Preparing actions</h2><p id="generationProgressMessage" aria-live="polite"></p></div><span id="generationElapsed" class="generation-elapsed"></span></div>
     <ol id="generationPhases" class="generation-phases"></ol>
     <p id="generationPreviewNote" class="generation-preview-note" hidden></p>
+    <div id="generationSections" class="generation-sections" hidden></div>
     <div class="generation-progress-actions"><button id="viewGeneratedStage" class="secondary compact" type="button" hidden>View actions</button><span class="generation-detach-note">This carries on if you close the tab. Come back whenever and it will be here.</span></div>
   </section>
   <p id="staleNotice" class="notice" hidden><span>Discussion changed. Actions may need updating.</span><span id="staleStages" class="visually-hidden"></span><span id="staleStageActions" class="notice-actions"></span></p>

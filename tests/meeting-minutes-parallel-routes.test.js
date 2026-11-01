@@ -93,7 +93,8 @@ for (const provider of ['legacy', P.PROVIDER]) test(provider+' polling adds safe
  const legacy={stage:'actions',status:'running',startedAt,error:'',pass:'referee',message:'Existing generation status.',completedPasses:[],callTimings:[]};
  saved.generation={...legacy,bootId:A.MEETING_AGENT_BOOT_ID,progress:{
   code:'validated',updatedAt:startedAt,providerResponse:'private-progress-sentinel',
-  sections:{summary:{code:'validated',updatedAt:startedAt,counts:{records:2,proposals:0,flags:1,raw:'private-progress-sentinel'}},
+  sections:{summary:{code:'validated',updatedAt:startedAt,counts:{records:2,proposals:0,flags:1,raw:'private-progress-sentinel'},
+    preview:{executiveSummary:'private-progress-sentinel',meetingObjectives:[]}},
    discussion:{code:'request_sent',updatedAt:startedAt},actions:{code:'queued',updatedAt:startedAt},
    privateStage:{code:'validated',raw:'private-progress-sentinel'}}
  }};
@@ -112,6 +113,53 @@ for (const provider of ['legacy', P.PROVIDER]) test(provider+' polling adds safe
  const reopened=(await request('get')).body.draft;
  assert.equal(Object.hasOwn(reopened.generation,'progress'),false,'ordinary draft reads also keep internal progress private');
  assert.deepEqual(saved,before);assert.equal(writes,0,'polling does not save metadata or create history');
+});
+
+function runningPreview() {
+ const startedAt=new Date(Date.now()-1000).toISOString(),privateField='private-preview-field';
+ saved.generation={stage:'discussion',status:'running',requestId:'current-preview-run',bootId:A.MEETING_AGENT_BOOT_ID,
+  startedAt,progressInputHash:P.inputHash(saved),progress:{code:'validated',updatedAt:startedAt,sections:{
+   summary:{code:'validated',updatedAt:startedAt,preview:{executiveSummary:'Checked summary, still provisional.',
+    meetingObjectives:[{text:'Keep this exact objective.',id:privateField,evidenceIds:[privateField]}],raw:privateField}},
+   discussion:{code:'validated',updatedAt:startedAt,preview:{discussion:[{topic:'Exact topic',hideHeading:true,
+    points:[{text:'Exact discussion wording.',id:privateField,evidenceIds:[privateField]}],decisions:[],openQuestions:[],url:privateField}]}},
+   actions:{code:'validated',updatedAt:startedAt,preview:{actions:[{action:'Exact action wording.',owners:['Alex'],
+    timing:{kind:'stated',wording:'on the day; throughout',exactDate:'',url:privateField},id:privateField,evidenceIds:[privateField],reason:privateField}],
+    actionProposals:[{action:privateField}],raw:privateField}}
+  }}};
+}
+test('healthy current Beta polling exposes only validated read-only preview text without changing saved content',async()=>{
+ reset();runningPreview();const before=structuredClone(saved);
+ const r=await request('get','/generation');
+ assert.equal(r.statusCode,200);assert.equal(r.body.draft,undefined);
+ assert.equal(r.body.progress.status,'running');assert.notEqual(r.body.progress.code,'ready');
+ assert.deepEqual(r.body.progress.sections.summary.preview,{executiveSummary:'Checked summary, still provisional.',meetingObjectives:[{text:'Keep this exact objective.'}]});
+ assert.deepEqual(r.body.progress.sections.discussion.preview,{discussion:[{topic:'Exact topic',hideHeading:true,points:[{text:'Exact discussion wording.'}],decisions:[],openQuestions:[]}]});
+ assert.deepEqual(r.body.progress.sections.actions.preview,{actions:[{action:'Exact action wording.',owners:['Alex'],timing:{kind:'stated',wording:'on the day; throughout',exactDate:''}}]});
+ assert.ok(!JSON.stringify(r.body).includes('private-preview-field'));
+ assert.equal(r.body.generation.progressInputHash,undefined);assert.ok(!JSON.stringify(r.body).includes(saved.generation.progressInputHash));
+ const reloaded=(await request('get','/generation')).body;
+ assert.deepEqual(reloaded.progress.sections,r.body.progress.sections,'preview is reconstructed from persisted run state on reload');
+ const ordinary=(await request('get')).body.draft;
+ assert.equal(ordinary.generation.progressInputHash,undefined);assert.equal(ordinary.generation.progress,undefined);
+ assert.equal(ordinary.executiveSummary,before.executiveSummary);assert.deepEqual(ordinary.actions,before.actions);
+ assert.deepEqual(saved,before);assert.equal(writes,0);
+});
+test('previews disappear immediately for changed inputs, failed branches, old runs and terminal or Original snapshots',async()=>{
+ for(const condition of ['input-edit','branch-failed','failed','orphaned','stale','saved','original']){
+  reset();runningPreview();
+  if(condition==='input-edit')saved.details.meetingTitle='Reviewer edit while generating';
+  if(condition==='branch-failed')saved.generation.progress.sections.actions.code='failed';
+  if(condition==='failed')saved.generation.status='failed';
+  if(condition==='orphaned')saved.generation.bootId='previous-boot';
+  if(condition==='stale')saved.generation.startedAt=new Date(Date.now()-250000).toISOString();
+  if(condition==='saved')saved.generation=null;
+  if(condition==='original')saved.generationProvider='legacy';
+  const before=structuredClone(saved),r=await request('get','/generation');
+  assert.equal(r.statusCode,200,condition);
+  assert.ok(Object.values(r.body.progress?.sections||{}).every(section=>section.preview===undefined),condition);
+  assert.deepEqual(saved,before,condition);assert.equal(writes,0,condition);
+ }
 });
 
 test('polling never calls an active or failed newer attempt ready because older results exist',async()=>{
@@ -142,12 +190,12 @@ test('polling infers legacy completion only from saved quality markers and leave
 });
 
 test('generation progress remains owner-scoped and does not leak through failed reads',async()=>{
- reset();saved.generation={stage:'discussion',status:'running',bootId:A.MEETING_AGENT_BOOT_ID,startedAt:new Date().toISOString(),
-  progress:{code:'request_sent',updatedAt:new Date().toISOString(),sections:{}}};
+ reset();runningPreview();
  const before=structuredClone(saved);
  for (const user of ['other',null]) {
   const r=await request('get','/generation',{},user);
   assert.equal(r.statusCode,404);assert.equal(r.body.progress,undefined);assert.equal(r.body.generation,undefined);
+  assert.ok(!JSON.stringify(r.body).includes('Exact discussion wording.'));
  }
  assert.deepEqual(saved,before);assert.equal(writes,0);
 });

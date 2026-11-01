@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),JSZip=require('jszip');
 const P=require('../utils/meetingMinutesParallel'), E=require('../utils/meetingMinutesParallelEngine');
+const G=require('../utils/meetingMinutesAgentGeneration');
 const source=[{id:'T0001',speaker:'Alex',timestamp:'0:00',text:'We hope to finish the review on Tuesday, then add the technical considerations.',classification:'keep'}];
 const record=(id,text)=>({id,text,evidenceIds:['T0001']});
 function base(){return {generationProvider:P.PROVIDER,draftId:'17',revision:1,status:'draft',payloadVersion:5,
@@ -52,15 +53,62 @@ test('branch progress follows actual responses without changing concurrent reque
  release.actions();await new Promise(resolve=>setImmediate(resolve));
  assert.equal(settled,false,'one validated branch cannot complete the minutes');
  assert.deepEqual(events.filter(event=>event.stage==='actions').map(event=>event.code),['request_sent','response_received','validating','validated']);
- assert.deepEqual(events.find(event=>event.stage==='actions' && event.code==='validated').counts,{records:1,proposals:1,flags:0});
+ const checkedAction=events.find(event=>event.stage==='actions' && event.code==='validated');
+ assert.deepEqual(checkedAction.counts,{records:1,proposals:1,flags:0});
+ assert.deepEqual(checkedAction.preview,{actions:[{action:'Review the file.',owners:['Alex'],timing:{kind:'target',wording:'hoping for Tuesday',exactDate:''}}]});
  assert.ok(events.filter(event=>event.stage!=='actions').every(event=>event.code==='request_sent'));
  release.summary();release.discussion();const result=await running;
  const baseline=await generated(options);
  assert.deepEqual(result,baseline.result);assert.deepEqual(starts,baseline.starts);
  assert.ok(observedLaunchCounts.every(count=>count===3),'all requests start before observer work');
- for(const event of events){assert.ok(Object.keys(event).every(key=>['stage','code','counts'].includes(key)));if(event.counts)assert.equal(event.code,'validated');}
+ for(const event of events){assert.ok(Object.keys(event).every(key=>['stage','code','counts','preview'].includes(key)));if(event.counts||event.preview)assert.equal(event.code,'validated');}
+ assert.ok(!JSON.stringify(events).includes('evidenceIds'));assert.ok(!JSON.stringify(events).includes('actionProposals'));
  assert.ok(!JSON.stringify(events).includes(source[0].text));
 });
+test('validated branch previews persist before the other branches finish without publishing draft content',async()=>{
+ const initial=base();let stored=structuredClone(initial),calls=0;const release={};
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const runner=P.createRunner({getDraft:async()=>structuredClone(stored),config:()=>config,
+  saveDraft:async(draft,user,changes)=>(stored={...stored,...changes,revision:stored.revision+1},structuredClone(stored)),
+  execute:(packet,configuration,options)=>E.runSpecialists(packet,configuration,{...options,fetchImpl:url=>{
+   calls++;const stage=new URL(url).hostname.split('.')[0];
+   return new Promise(resolve=>{release[stage]=()=>resolve({ok:true,text:async()=>JSON.stringify(replies()[stage])});});
+  }})});
+ await runner.start(initial,1);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,3);release.summary();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(stored.generation.status,'running');assert.equal(stored.generation.progressInputHash,P.inputHash(stored));
+ assert.equal(stored.generation.progress.sections.summary.preview.executiveSummary,'Review the proposed work.');
+ assert.equal(stored.executiveSummary,'');assert.deepEqual(stored.discussion,[]);assert.deepEqual(stored.actions,[]);
+ assert.equal(stored.qualityState.summary,undefined);
+ const reopened=G.publicMeetingAgentProgress(structuredClone(stored),stored.generation,Date.now(),{includePreviews:true});
+ assert.deepEqual(reopened.sections.summary.preview,{executiveSummary:'Review the proposed work.',meetingObjectives:[{text:'Review scope.'}]});
+ assert.equal(reopened.sections.actions.preview,undefined);assert.equal(reopened.status,'running');
+ release.discussion();release.actions();await runner.active.get('17');
+ assert.equal(calls,3);assert.equal(stored.generation,null);assert.equal(stored.executiveSummary,'Review the proposed work.');
+});
+
+test('flat discussion previews reuse display conversion and all previews remain bounded allowlisted text',async()=>{
+ const values=replies();values.discussion={schemaVersion:1,specialist:'discussion',items:[record('flat-id','Keep this exact flat wording.')],reviewFlags:[]};
+ const events=[],config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>({ok:true,text:async()=>JSON.stringify(values[new URL(url).hostname.split('.')[0]])}),onProgress:event=>events.push(event)});
+ assert.deepEqual(events.find(event=>event.stage==='discussion'&&event.code==='validated').preview,
+  {discussion:[{topic:'Discussion',hideHeading:true,points:[{text:'Keep this exact flat wording.'}],decisions:[],openQuestions:[]}]});
+ const sentinel='private-preview-field';
+ const topic={topic:'Topic',points:Array.from({length:100},()=>({text:'t'.repeat(2000),id:sentinel,evidenceIds:[sentinel],raw:sentinel})),decisions:[],openQuestions:[],url:sentinel};
+ const projected=G.normaliseMeetingAgentSectionPreview('discussion',{discussion:[topic,topic],raw:sentinel});
+ assert.equal(projected.discussion.length,1);assert.equal(projected.discussion[0].points.length,80);
+ assert.equal(projected.discussion[0].points[0].text.length,1600);assert.ok(!JSON.stringify(projected).includes(sentinel));
+ const actions=G.normaliseMeetingAgentSectionPreview('actions',{actions:Array.from({length:100},()=>({action:'a'.repeat(2000),
+  owners:Array(20).fill('o'.repeat(200)),timing:{kind:'stated',wording:'w'.repeat(800),exactDate:'2026-10-29',private:sentinel},id:sentinel,private:sentinel}))});
+ assert.equal(actions.actions.length,60);assert.equal(actions.actions[0].action.length,1600);
+ assert.equal(actions.actions[0].owners.length,12);assert.equal(actions.actions[0].owners[0].length,180);
+ assert.equal(actions.actions[0].timing.wording.length,600);assert.ok(!JSON.stringify(actions).includes(sentinel));
+ const event={stage:'summary',code:'validated',preview:{executiveSummary:'Text',meetingObjectives:[]}};
+ assert.equal(G.mergeMeetingAgentProgress(null,event).sections.summary.preview,undefined);
+ assert.equal(G.mergeMeetingAgentProgress(null,{...event,code:'validating'},{includePreviews:true}).sections.summary.preview,undefined);
+ assert.equal(G.mergeMeetingAgentProgress(null,event,{includePreviews:true}).sections.summary.preview.executiveSummary,'Text');
+});
+
 test('throwing, rejected and unresolved progress observers cannot change provider outcomes', {timeout:2000},async()=>{
  const baseline=await generated({now:()=>1234567890000});
  for(const observer of [()=>{throw Error('private observer failure');},()=>Promise.reject(Error('private observer failure')),()=>new Promise(()=>{})]){
@@ -166,7 +214,7 @@ test('advisory writes reject superseded run identities while legacy fake run fix
   let stored=base(),progressWrites=0;
   const runner=P.createRunner({getDraft:async()=>structuredClone(stored),config:()=>({}),
    saveDraft:async(draft,user,changes)=>{if(changes.generation?.progress)progressWrites++;stored={...stored,...changes,revision:stored.revision+1};return structuredClone(stored);},
-   execute:async(packet,configuration,{onProgress})=>{stored.generation={...stored.generation,...replacement};onProgress({stage:'actions',code:'validated',counts:{records:1}});return result;}});
+   execute:async(packet,configuration,{onProgress})=>{stored.generation={...stored.generation,...replacement};onProgress({stage:'actions',code:'validated',counts:{records:1},preview:{actions:replies().actions.actions}});return result;}});
   await runner.start(base(),1);await runner.active.get('17');assert.equal(progressWrites,0,JSON.stringify(replacement));
  }
  let stored={...base(),generation:{requestId:'legacy-fixture',status:'running'}};

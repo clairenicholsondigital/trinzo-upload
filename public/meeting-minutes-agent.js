@@ -27,7 +27,8 @@
   var pendingGenerationEdits = false;
   var pendingGenerationNavigation = false;
   var actionsInvalidatedDuringGeneration = false;
-  var generationPollKey = '';
+  // Read-only snapshots never enter the editable/saved draft.
+  var generationProgress = null;
   var navigationScrollStep = null;
   var navigationScrollToken = 0;
   var navigationScrollTimer = null;
@@ -949,8 +950,19 @@
       && (!stage || generation.stage === stage));
   }
 
+  function generationRunKey(draft, generation) {
+    generation = generation || (draft && draft.generation) || {};
+    return [draft && draft.draftId, generation.stage, generation.startedAt].join('|');
+  }
+
+  function parallelProgress() {
+    if (!isParallelDraft() || !generationRunning() || pendingGenerationEdits || !generationProgress
+      || generationProgress.key !== generationRunKey(state.draft)) return null;
+    return generationProgress.snapshot;
+  }
+
   function generationPhaseStatus(generation, phase) {
-    if (isParallelDraft() && phase.key === 'parallel') return 'active';
+    if (isParallelDraft()) return phase.state || 'active';
     var pass = String(generation.pass || '');
     var completed = generation.completedPasses || [];
     var hasCompleted = function (prefix) { return completed.some(function (item) { return String(item).indexOf(prefix) === 0; }); };
@@ -971,7 +983,19 @@
   }
 
   function generationPhases(generation) {
-    if (isParallelDraft()) return [{key:'parallel',label:'Preparing summary, discussion and actions together'}];
+    if (isParallelDraft()) {
+      var progress = parallelProgress();
+      return ['summary', 'discussion', 'actions'].map(function (stage) {
+        var section = progress && progress.sections && progress.sections[stage];
+        var sectionState = section && section.state;
+        var checked = sectionState === 'validated';
+        var label = checked ? (section.preview ? 'Ready to read' : 'Checked')
+          : sectionState === 'received' ? 'Checking response' : sectionState === 'failed' ? 'Could not complete'
+          : sectionState === 'waiting' ? 'Waiting' : 'Preparing';
+        return { key:stage, label:generationStageLabel(stage) + ' · ' + label,
+          state:checked ? 'done' : sectionState === 'failed' ? 'failed' : 'active' };
+      });
+    }
     if (generation.stage === 'actions') return [
       {key:'primary',label:'Find possible actions'},
       {key:'recovery',label:'Checking for missing details'},
@@ -996,10 +1020,59 @@
     return value || 'Preparing independent quality checks…';
   }
 
+  function renderGenerationSections(progress) {
+    var container = document.getElementById('generationSections');
+    if (!container) return;
+    var list = function (records) {
+      return records.length ? '<ul>' + records.map(function (record) {
+        return '<li>' + escapeHtml(record.text) + '</li>';
+      }).join('') + '</ul>' : '';
+    };
+    var html = ['summary', 'discussion', 'actions'].map(function (stage) {
+      var section = progress && progress.sections && progress.sections[stage];
+      if (!section || section.state !== 'validated' || !section.preview) return '';
+      var preview = section.preview;
+      var content = '';
+      if (stage === 'summary') {
+        if (preview.executiveSummary) content += '<p>' + escapeHtml(preview.executiveSummary) + '</p>';
+        if ((preview.meetingObjectives || []).length) content += '<h4>Meeting objectives</h4>' + list(preview.meetingObjectives);
+        if (!content) content = '<p>No summary content in this response.</p>';
+      } else if (stage === 'discussion') {
+        content = (preview.discussion || []).map(function (topic) {
+          var records = '';
+          [['points', 'Discussion'], ['decisions', 'Decisions'], ['openQuestions', 'Open questions']].forEach(function (group) {
+            if ((topic[group[0]] || []).length) records += (group[0] === 'points' ? '' : '<h4>' + group[1] + '</h4>') + list(topic[group[0]]);
+          });
+          return (topic.hideHeading ? '' : '<h4>' + escapeHtml(topic.topic) + '</h4>') + records;
+        }).join('') || '<p>No discussion points identified in this section.</p>';
+      } else {
+        content = (preview.actions || []).length ? '<ul>' + preview.actions.map(function (action) {
+          return '<li><p>' + escapeHtml(action.action) + '</p><p class="muted">Owners: '
+            + escapeHtml((action.owners || []).join(', ') || 'Not stated') + ' · Timing: '
+            + escapeHtml(timingDisplayText(action.timing)) + '</p></li>';
+        }).join('') + '</ul>' : '<p>No actions identified in this section.</p>';
+      }
+      return '<section data-generation-section="' + stage + '" aria-labelledby="generation-section-' + stage + '">'
+        + '<h3 id="generation-section-' + stage + '">' + generationStageLabel(stage) + '</h3>' + content + '</section>';
+    }).join('');
+    container.hidden = !html;
+    if (html) html = '<p class="generation-preview-note">Read-only preview. The full minutes will open when the draft is saved.</p>' + html;
+    // Keep text selection and the reader's place when only the elapsed time changed.
+    if (container.innerHTML !== html) container.innerHTML = html;
+  }
+
   function renderGenerationProgress() {
-    // The progress panel sits above the content; keep the reader's place when it
-    // appears, changes size or goes away.
     var anchor = captureAnchor();
+    if (isParallelDraft() && !document.activeElement.matches('input,textarea,select,[contenteditable="true"]')) {
+      // Show the first arriving section without scrolling past it. After that,
+      // keep the visible preview in place if an earlier section arrives later.
+      var reading = Array.from(document.querySelectorAll('[data-generation-section]')).find(function (section) {
+        var box = section.getBoundingClientRect();
+        return box.height > 0 && box.bottom > 0 && box.top < window.innerHeight;
+      });
+      anchor = reading ? { selector:'[data-generation-section="' + reading.dataset.generationSection + '"]',
+        index:0, top:reading.getBoundingClientRect().top } : null;
+    }
     renderGenerationProgressPanel();
     restoreAnchor(anchor);
   }
@@ -1012,6 +1085,8 @@
     // step's buttons or read as still working.
     var generation = generationRunning() ? state.draft.generation : null;
     var notice = completedGenerationNotice;
+    var progress = parallelProgress();
+    renderGenerationSections(progress);
     panel.hidden = !generation && !notice;
     document.body.classList.toggle('generation-active', Boolean(generation));
     document.querySelectorAll('[data-step]').forEach(function (button) {
@@ -1025,15 +1100,19 @@
     document.getElementById('generationProgressTitle').textContent = generation
       ? (isParallelDraft() ? 'Preparing meeting minutes' : stage === 'actions' ? 'Preparing actions' : stage === 'discussion' ? 'Preparing discussion' : 'Preparing summary…')
       : (stage === 'actions' ? 'Actions are ready' : 'Generation complete');
-    document.getElementById('generationProgressMessage').textContent = generation
+    var message = generation
       ? stage === 'summary' ? '' : friendlyGenerationMessage(generation.message, stage)
       : (notice.message || 'The completed draft is ready to review.');
+    if (progress) message = progress.message;
+    if (generation && isParallelDraft() && document.getElementById('reloadDraft').dataset.progressCheck === 'true') message = status.textContent;
+    document.getElementById('generationProgressMessage').textContent = message;
     if (generation && STAGE_STEP[stage] === state.currentStep) status.hidden = true;
     var started = generation && new Date(generation.startedAt).getTime();
     var elapsed = started && !Number.isNaN(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
     document.getElementById('generationElapsed').textContent = generation
       ? 'Elapsed ' + Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0') + (isParallelDraft() ? '' : ' · ' + typicalDurationText(stage, elapsed))
       : 'Complete';
+    document.getElementById('generationPhases').classList.toggle('parallel-phases', isParallelDraft());
     document.getElementById('generationPhases').innerHTML = generationPhases(generation || {stage:stage}).map(function (phase) {
       var phaseState = generation ? generationPhaseStatus(generation, phase) : 'done';
       return '<li class="generation-phase ' + phaseState + '">' + escapeHtml(phase.label) + '</li>';
@@ -1776,6 +1855,7 @@
       Object.keys(bucket).forEach(function (key) { delete bucket[key]; });
     });
     completedGenerationNotice = null;
+    generationProgress = null;
     activeFinalEdit = null;
     state.draft = null;
     state.currentStep = 0;
@@ -3707,6 +3787,8 @@
       setSaveStatus('The saved actions changed while an owner entry was unfinished. Finish or cancel that entry before reloading.', 'local-only');
       return;
     }
+    if (!isParallelDraft(draft) || !draft.generation || draft.generation.status !== 'running'
+      || (generationProgress && generationProgress.key !== generationRunKey(draft))) generationProgress = null;
     state.draft = restorePendingActions(restorePendingDiscussion(draft));
     ensureActionOccurrences(state.draft);
     // Responses to saves and background work must not navigate the reviewer.
@@ -3720,7 +3802,6 @@
     renderAll();
     // A reload in the middle of a run must not look dead.
     if (generationRunning()) {
-      generationPollKey = [state.draft.draftId, state.draft.generation.stage, state.draft.generation.startedAt].join('|');
       pollGeneration(true);
     }
     else pollActionPrewarm();
@@ -3803,6 +3884,7 @@
     // conflict banner over the reviewer's own generation. Flushed on completion.
     if (generationRunning()) {
       pendingGenerationEdits = true;
+      if (isParallelDraft()) { generationProgress = null; renderGenerationProgress(); }
       setSaveStatus(generationSaveText(), 'waiting');
       // Never rebuild the section the reviewer is typing in: rebuilding it
       // destroys the focused field, so every later keystroke was lost.
@@ -4035,7 +4117,7 @@
       completedGenerationNotice = null;
       pendingGenerationEdits = false;
       if (stage === 'actions') actionsInvalidatedDuringGeneration = false;
-      generationPollKey = [state.draft.draftId, stage, payload.generation && payload.generation.startedAt].join('|');
+      generationProgress = null;
       if (stage !== 'actions') showStep(STAGE_STEP[stage], { scroll: true });
       renderAll();
       setSaveStatus(generationSaveText(), 'generating');
@@ -4072,18 +4154,21 @@
     if (document.hidden || !state.draft || !generationRunning()) return;
     generationTimer = window.setTimeout(async function () {
       if (!state.draft || document.hidden) return;
-      var expectedDraftId = state.draft.draftId;
       var expectedGeneration = state.draft.generation || {};
-      var expectedKey = [expectedDraftId, expectedGeneration.stage, expectedGeneration.startedAt].join('|');
+      var expectedKey = generationRunKey(state.draft);
       var controller = new AbortController();
       generationPollController = controller;
       try {
         var payload = await jsonRequest(draftUrl('/generation'), {signal: controller.signal});
         if (generationPollController === controller) generationPollController = null;
+        if (!state.draft || generationRunKey(state.draft) !== expectedKey) return;
         clearProgressCheck();
-        var currentGeneration = state.draft && state.draft.generation;
-        var currentKey = [state.draft && state.draft.draftId, currentGeneration && currentGeneration.stage, currentGeneration && currentGeneration.startedAt].join('|');
-        if (!state.draft || state.draft.draftId !== expectedDraftId || currentKey !== expectedKey) return;
+        var progress = payload.progress;
+        generationProgress = isParallelDraft() && payload.generation && payload.generation.status === 'running'
+          && generationRunKey(state.draft, payload.generation) === expectedKey
+          && progress && progress.status === 'running' && progress.stage === 'all'
+          && progress.startedAt === payload.generation.startedAt
+          ? { key:expectedKey, snapshot:progress } : null;
         var activeStage = (state.draft.generation && state.draft.generation.stage) || 'discussion';
         state.draft.generation = payload.generation;
         if (payload.speculation !== undefined) state.draft.speculation = payload.speculation;
@@ -4143,7 +4228,7 @@
             ? 'Your edited Actions were kept. The regenerated Actions will be applied automatically.'
             : state.draft.qualityNotice || stageReadyText(activeStage), !keptEdits && Boolean(state.draft.qualityNotice), activeStage);
         }
-        generationPollKey = '';
+        generationProgress = null;
         var saveAfterGeneration = pendingGenerationEdits || pendingGenerationNavigation;
         pendingGenerationNavigation = false;
         if (saveAfterGeneration) scheduleSave();
@@ -4152,8 +4237,10 @@
       } catch (error) {
         if (generationPollController === controller) generationPollController = null;
         if (error.name === 'AbortError') return;
-        if (!state.draft || state.draft.draftId !== expectedDraftId) return;
+        if (!state.draft || generationRunKey(state.draft) !== expectedKey) return;
+        generationProgress = null;
         showProgressCheck(error, expectedGeneration.stage);
+        renderGenerationProgress();
         generationTimer = window.setTimeout(function () { pollGeneration(true); }, GENERATION_RETRY_MS);
       }
     }, immediate ? 0 : GENERATION_POLL_MS);

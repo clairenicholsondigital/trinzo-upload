@@ -58,15 +58,19 @@ install it with `npx playwright install chromium` if it is not already available
 
 The existing authenticated `GET /api/meeting-minutes-agent/drafts/:draftId/generation`
 also returns an additive `progress` snapshot. The draft must belong to the caller.
-Existing `generation`, draft, preview and error fields keep their contracts; the
-current frontend continues to use those fields.
+Existing `generation`, draft and error fields keep their contracts. The Beta
+frontend also reads this snapshot to show checked sections as they arrive.
 
 `progress` is null before any generation or saved completion marker exists.
 Otherwise it contains `status` (`running`, `failed` or `ready`), a stable `code`,
 a safe `message`, `stage` (`summary`, `discussion`, `actions` or Beta's `all`),
 `startedAt`, `updatedAt`, `elapsedMs` and `sections`. Section states are
 `waiting`, `running`, `received`, `validated`, `failed` or `saved`.
-Validated responses may include provisional record/proposal/flag counts.
+Validated responses may include provisional record/proposal/flag counts. Healthy
+Beta runs may also include a bounded `sections.<stage>.preview`: summary text and
+objectives, discussion text, or actions with owners and timing. These are read-only
+display projections; IDs, evidence, proposals and provider diagnostics are omitted.
+Changed meeting inputs, failed/stale runs and terminal states suppress previews.
 A checked response is not a published result: `ready` requires saved completion
 markers and no active or failed newer attempt.
 
@@ -79,8 +83,10 @@ these snapshots describe observable work, not upstream internal progress.
 
 Poll this endpoint to read the latest snapshot; polling does not start work,
 write a draft or create history. There is no event history or stream in this
-version. Progress observations are bounded metadata in the existing run record,
-exclude transcript/provider content, and cannot fail generation.
+version. Progress observations use the existing run record and cannot fail
+generation. Beta previews contain only validated, bounded display text and never
+enter editable draft fields, saves, print or downloads. The normal editor adopts
+the authoritative draft after all three responses succeed and are saved.
 A timestamp changes when an actual milestone is saved, rather than on each poll.
 
 ## Deployment
