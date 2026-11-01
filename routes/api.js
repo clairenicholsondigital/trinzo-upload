@@ -29,13 +29,11 @@ const {
 } = require('../utils/meetingMinutesDraftHttp');
 const { registerMeetingMinutesLibraryList, registerMeetingMinutesLibraryDetail, registerMeetingMinutesLibraryDelete, registerMeetingMinutesLibraryExports } = require('./meetingMinutesLibrary');
 const { compactDiscussionPropositions, dedupeSupportingDetailsSemantically, limitSupportingDetails, mergeHybridDiscussionTopics, promotePrioritySupportingDetails, prioritySupportingDetail, consolidateSupportingDetails } = require('../utils/meetingMinutesDiscussionSelection');
-const { meetingAgentDraftForPdf, meetingAgentPublicationContent, removeHeadingFragmentsFromDiscussion, removeMinorCommunicationCourtesyDiscussion, removeWithheldGeneratedDiscussion, stripMinorCommunicationCourtesy, completeDiscussionSuggestionText, meetingAgentDraftForDocx, minorCommunicationCourtesy, looksLikeStandaloneHeadingFragment } = require('../utils/meetingMinutesPublication');
+const { meetingAgentDraftForPdf, meetingAgentPublicationContent, removeHeadingFragmentsFromDiscussion, removeMinorCommunicationCourtesyDiscussion, stripMinorCommunicationCourtesy, completeDiscussionSuggestionText, meetingAgentDraftForDocx, minorCommunicationCourtesy, looksLikeStandaloneHeadingFragment } = require('../utils/meetingMinutesPublication');
 const {
   discussionStructureDiagnostics, finalisePromotedDiscussion, promoteAllDiscussionDetails
 } = require('../utils/meetingMinutesDiscussionFinalization');
-const {
-  meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash, groundedObjectives, mergeGroundedObjectiveRecords, groundedExecutiveSummary
-} = require('../utils/meetingMinutesSummaryPublication');
+const { meetingAgentSummaryAuthority, meetingAgentReviewerSummaryHash } = require('../utils/meetingMinutesSummaryPublication');
 const { meetingMinutesAgentRefereeContract, effectiveDiscussionRefereeDispositions, meetingAgentRefereeCandidates } = require('../utils/meetingMinutesRefereeCandidates');
 require('../utils/meetingMinutesAssessmentEvidence');
 
@@ -48,15 +46,12 @@ const { unionActionDiscoveryResults, mergeMeetingAgentRefereeResults, mergeBatch
 const { actionDeliveryFrame, bundleSameRecipientDeliveries, dedupeHybridActionProposals, dedupeHybridActionRecords, distinctActionDeliverables, hybridCandidateMatchesRecord, isClientReadyActionWording, mergeDocumentDeliveryWorkflow, nestedActionWork, publishedActionNamesSameThing, sameActionApproach, sameDocumentDeliveryWorkflow, strictActionDeliverableMatch, mergePublishedActionEvidence } = require('../utils/meetingMinutesActionDuplicatePolicy');
 require('../utils/meetingMinutesRecordMatching');
 const { sanitiseDetails: sanitiseMeetingAgentDetails, meetingAgentTimingAnchor, meetingAgentPromptDetails } = require('../utils/meetingMinutesDraftContext');
-const { normaliseFlag: normaliseMeetingAgentFlag, isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, reconcileUsefulRecordFlags, mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId, coverageFlags } = require('../utils/meetingMinutesReviewFlags');
+const { normaliseFlag: normaliseMeetingAgentFlag, isUsefulReviewFlag: isUsefulMeetingAgentReviewFlag, mergeMeetingAgentFlags, meetingAgentProposalReviewFlagId } = require('../utils/meetingMinutesReviewFlags');
 const { preparedTranscriptFromUnits } = require('../utils/meetingMinutesEvidenceContext');
 require('../utils/meetingMinutesEvidenceResolution');
-const { actionNegatedByEvidence, isMeetingAdminAction } = require('../utils/meetingMinutesActionEvidence');
-const {
-  applyRequesterOwnerRule, groundRowAttributions, flagConflictingDiscussionRoles,
-  meetingAgentPeopleNames
-} = require('../utils/meetingMinutesPeopleEvidence');
-const { meetingAgentPassCacheKey, meetingMinutesAgentReplayPassCacheEnabled } = require('../utils/meetingMinutesPassCache');
+const { isMeetingAdminAction } = require('../utils/meetingMinutesActionEvidence');
+const { applyRequesterOwnerRule } = require('../utils/meetingMinutesPeopleEvidence');
+const { meetingAgentPassCacheKey } = require('../utils/meetingMinutesPassCache');
 const { meetingAgentResultError, meetingAgentRefereeRoute, meetingAgentInfrastructureFailure, refereeActionMaterializationIssues, meetingAgentDispositionError, meetingAgentRefereeAccountedForAllCandidates, normaliseMeetingAgentRefereeContractResult, meetingAgentRefereeRepairCandidates, normaliseAgentCandidateDispositions, refereeDiscussionContractDiagnostics, discussionRefereeHasCompleteCandidateAccounting, reconcileRefereeActionMaterialization } = require('../utils/meetingMinutesResponseContracts');
 const { meetingAgentRefereeBatches, meetingAgentRefereeBatchPlan, meetingAgentRunOrderedConcurrent, shouldStopMeetingAgentRefereeBatches } = require('../utils/meetingMinutesRefereeBatches');
 require('../utils/meetingMinutesDiscussionRows');
@@ -78,15 +73,15 @@ require('../utils/meetingMinutesActionPhaseCorrection');
 require('../utils/canonicalMinutes/detailedContactCoverage');
 const express = require('express');
 require('../utils/meetingMinutesOptionalReview');
-const citedFilingAliases = require('../utils/meetingMinutesCitedFilingAliases');
-const discussionRewrite = require('../utils/canonicalMinutes/discussionBoundedRewrite');
-const discussionOwnParent = require('../utils/canonicalMinutes/discussionOwnParentCoverage');
-const discussionDirectional = require('../utils/canonicalMinutes/discussionDirectionalCoverage');
-const discussionMainPoint = require('../utils/canonicalMinutes/discussionMainPointCoverage');
-const discussionPointDecision = require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
+require('../utils/meetingMinutesCitedFilingAliases');
+require('../utils/canonicalMinutes/discussionBoundedRewrite');
+require('../utils/canonicalMinutes/discussionOwnParentCoverage');
+require('../utils/canonicalMinutes/discussionDirectionalCoverage');
+require('../utils/canonicalMinutes/discussionMainPointCoverage');
+require('../utils/canonicalMinutes/discussionPointDecisionCoverage');
 require('../utils/canonicalMinutes/discussionActionSeparation');
-const minimalFidelityRepair = require('../utils/meetingMinutesMinimalFidelityRepair');
-const { stripMeetingTitleReferences } = require('../utils/canonicalMinutes/referenceText');
+require('../utils/meetingMinutesMinimalFidelityRepair');
+require('../utils/canonicalMinutes/referenceText');
 const multer = require('multer');
 const mammoth = require('mammoth');
 const fetch = require('node-fetch');
@@ -95,7 +90,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
-const { appendRefereeFailureAudit } = require('../utils/meetingMinutesRefereeFailureAudit');
+require('../utils/meetingMinutesRefereeFailureAudit');
 const { runProjectKnowledgeRetrieval } = require('../utils/knowledge');
 
 const {
@@ -108,12 +103,12 @@ const {
 const { extractTextFromUpload, validateTranscriptText, transcriptMetadata } = require('../utils/transcript');
 const { matchingMeetingAgentDrafts } = require('../utils/meetingAgentDuplicate');
 const { cleanGeneratedMeetingAgentResult } = require('../utils/meetingMinutesGeneratedHygiene');
-const { normaliseSemanticPolicy, semanticPolicyForRun } = require('../utils/meetingMinutesSemanticPolicy');
-const { normaliseDiscussionCoveragePolicy, discussionCoveragePolicyForRun } = require('../utils/meetingMinutesDiscussionCoveragePolicy');
+require('../utils/meetingMinutesSemanticPolicy');
+require('../utils/meetingMinutesDiscussionCoveragePolicy');
 require('../utils/meetingMinutesEnquiryRecovery');
-const { reconcileGeneratedSemanticStage } = require('../utils/meetingMinutesSemanticStage');
+require('../utils/meetingMinutesSemanticStage');
 require('../utils/canonicalMinutes/actionSemanticReconciliation');
-const { preserveCopiedReviewerContent } = require('../utils/meetingMinutesReviewedAiEdits');
+require('../utils/meetingMinutesReviewedAiEdits');
 const {
   assertStagedSourceIdentity,
   assertStagedTranscriptHash
@@ -121,7 +116,7 @@ const {
 const { buildEvidenceBoundStagedActionInventory, parseDeadlineEvidence } = require('../utils/stagedActionRecovery');
 const { buildStagedEvidenceLedger } = require('../utils/stagedEvidenceLedger');
 
-const { isMalformedStagedLine, buildTightStagedObjectives, classifyStagedTopic, topicIsIncomplete, dedupeStagedDiscussionCards, compactStagedDiscussionCards, reshapeStagedDiscussionCardsForHumanMinutes, buildStagedValidationFlags, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../utils/stagedEditorial');
+const { isMalformedStagedLine, buildTightStagedObjectives, dedupeStagedDiscussionCards, compactStagedDiscussionCards, reshapeStagedDiscussionCardsForHumanMinutes, buildStagedValidationFlags, normaliseFinalStagedActionCandidate, normaliseAndValidateActionOwner } = require('../utils/stagedEditorial');
 require('../utils/actionTextGate');
 const { getMeetingMinutesCoreGoldenStatus } = require('../utils/meetingMinutesCoreGolden');
 const { runCanonicalNoEditPass } = require('../utils/canonicalMinutes/runner');
@@ -129,24 +124,22 @@ require('../utils/canonicalMinutes/liveStages');
 require('../utils/canonicalMinutes/minilm');
 require('../utils/canonicalMinutes/meetingTypeSuggestion');
 const { prepareEvidence } = require('../utils/canonicalMinutes/evidence');
-const { batchRefereeCandidates, normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
+const { normaliseRefereeOutput, normaliseReferenceArrays } = require('../utils/refereeNormaliser');
 require('../config/meeting-minutes-discussion-materiality-policy.json');
-const { retainPureFutureAssignments } = require('../utils/meetingMinutesDiscussionTaskBoundary');
+require('../utils/meetingMinutesDiscussionTaskBoundary');
 require('../utils/meetingMinutesExactDiscussionProvenance');
 require('../utils/canonicalMinutes/trooperPolish');
 require('../utils/canonicalMinutes/proposedActions');
 require('../utils/canonicalMinutes/semanticStages');
 require('../utils/canonicalMinutes/proposedDiscussion');
-const filingAliases = require('../utils/meetingMinutesFilingAliases');
-const { collectUnassignedSupportingDetails, foldLiteralParentSupportingRepeats } = require('../utils/meetingMinutesSupportingDetails');
+require('../utils/meetingMinutesFilingAliases');
+require('../utils/meetingMinutesSupportingDetails');
 const { discussionSelectionCoverage, discussionPublicationCoverage } = require('../utils/meetingMinutesDiscussionCoverage');
-const { normalisePublishedParticipantReference } = require('../utils/entityNormalization');
+require('../utils/entityNormalization');
 const { encodeViaWorker, cosine } = require('../utils/canonicalMinutes/semanticDedupe');
-const { validateDiscussionTopicArrangement, applyDiscussionTopicArrangement, normaliseDiscussionPresentation, removeRawGeneratedDiscussionRows, dedupeAdjacentRestatements, demoteContainedPrimaryRows, dedupeGlobalRestatements } = require('../utils/canonicalMinutes/discussionOrganiser');
-const { stampPrimaryDiscussionEvidence } = require('../utils/canonicalMinutes/discussionPublication');
-const {
-  discourseSegments, segmentAnchors, segmentLabels
-} = require('../utils/canonicalMinutes/discourseSegments');
+require('../utils/canonicalMinutes/discussionOrganiser');
+require('../utils/canonicalMinutes/discussionPublication');
+require('../utils/canonicalMinutes/discourseSegments');
 const { mergeCommitmentDuplicates } = require('../utils/canonicalMinutes/commitmentDuplicates');
 require('../utils/canonicalMinutes/actionDuplicateCoverage');
 require('../utils/canonicalMinutes/actionDeliverableIdentity');
@@ -163,11 +156,9 @@ require('../utils/settingsStore');
 
 const { TIMING_POLICY_VERSION, isValidCalendarDate } = require('../utils/meetingMinutesTiming');
 
-const { indexReviewResults, meetingAgentReviewPacketError } = require('../utils/meetingMinutesReviewAccounting');
-const {
-  summaryTemporalCheckItems, summaryTemporalCheckPrompt, applySummaryTemporalCheckResults
-} = require('../utils/meetingMinutesTemporalReview');
-const { timedStepCoverage, mergeTimedStepRecovery } = require('../utils/meetingMinutesTimedStepCoverage');
+const { meetingAgentReviewPacketError } = require('../utils/meetingMinutesReviewAccounting');
+require('../utils/meetingMinutesTemporalReview');
+require('../utils/meetingMinutesTimedStepCoverage');
 const { generateStagedMinutesPdf, stagedMinutesPdfFilename } = require('../utils/stagedMinutesPdf');
 require('../utils/stagedExecutiveSummaryGrammar');
 require('../utils/stagedInitialUnderstandingPolish');
@@ -177,48 +168,19 @@ const { generateMiniLmTrooperStage, prepareMiniLmTranscript } = require('../util
 const { filterActionsForPresentation } = require('../utils/stagedActionPresentation');
 const { buildConfirmedUnderstanding } = require('../utils/stagedSemanticAuthority');
 
-const {
-  saveProjectUpdateDraft,
-  getProjectManagementDetail,
-  getProjectContext,
-  saveMeetingMinutesFeedback,
-  queueMeetingMinutesGeneration,
-  queueStagedMeetingMinutesStage,
-  queueProjectUpdateGeneration,
-  getGenerationJob,
-  getMeetingMinutesJob,
-  saveStagedMeetingMinutesReviewEvent,
-  listStagedMeetingMinutesReviewEvents,
-  createMeetingMinutesAgentDraft,
-  getMeetingMinutesAgentDraft,
-  listMeetingMinutesAgentDrafts,
-  listMeetingMinutesAgentDraftPage,
-  linkMeetingMinutesAgentDraftToProject,
-  unlinkMeetingMinutesAgentDraftFromProject,
-  deleteMeetingMinutesAgentDraft,
-  listTerminologyQaDecisions,
-  saveTerminologyQaDecision,
-  claimNextJob,
-  markJobCompleted,
-  markJobFailure,
-  markWebhookSuccess,
-  markWebhookFailure,
-  hasDatabaseConfig,
-  getDatabaseConfigError,
-  query
-} = require('../utils/db');
+const { saveProjectUpdateDraft, getProjectManagementDetail, getProjectContext, saveMeetingMinutesFeedback, queueMeetingMinutesGeneration, queueStagedMeetingMinutesStage, queueProjectUpdateGeneration, getGenerationJob, saveStagedMeetingMinutesReviewEvent, listStagedMeetingMinutesReviewEvents, createMeetingMinutesAgentDraft, getMeetingMinutesAgentDraft, listMeetingMinutesAgentDrafts, linkMeetingMinutesAgentDraftToProject, listTerminologyQaDecisions, saveTerminologyQaDecision, claimNextJob, markJobCompleted, markJobFailure, markWebhookSuccess, markWebhookFailure, hasDatabaseConfig, getDatabaseConfigError, query } = require('../utils/db');
 const { promoteMaterialObjectionDetails, commitmentCheckEnabled: meetingMinutesCommitmentCheckEnabled, commitmentCheckItems, commitmentCheckPrompt, applyCommitmentCheckResults, describesUsualPractice } = require('../utils/meetingMinutesAgentV2');
 const { normaliseKnownTerms: normaliseMeetingAgentKnownTerms, isAutomaticTerminologyFlag: isAutomaticMeetingAgentTerminologyFlag } = require('../utils/meetingMinutesText');
 const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
-const { timingClauseChecksEnabled: meetingMinutesTimingClauseChecksEnabled } = require('../utils/meetingMinutesActionTimingInference');
+require('../utils/meetingMinutesActionTimingInference');
 const { correctnessChecksEnabled } = require('../utils/meetingMinutesEvidenceChecks');
-const { removeDiscussionActionDuplicates } = require('../utils/discussionShape');
-const { applyPresenterAidGate } = require('../utils/presenterAidGate');
-const { actionReviewCounts } = require('../utils/actionReviewState');
+require('../utils/discussionShape');
+require('../utils/presenterAidGate');
+require('../utils/actionReviewState');
 require('../utils/meetingMinutesActionIdentity');
-const { summaryStageIsEmpty } = require('../utils/includedSections');
+require('../utils/includedSections');
 const { renderMinutesForProjectUpdate, minutesHaveContent, minutesActionsForProjectReport } = require('../utils/minutesForProjectUpdate');
-const { generateMeetingMinutesAgentDocx, docxFilename } = require('../utils/meetingMinutesAgentDocx');
+require('../utils/meetingMinutesAgentDocx');
 const { requireAuth } = require('./auth');
 
 const { buildProposal } = require('../utils/meetingMinutesProposals');
@@ -376,27 +338,9 @@ const STAGED_TOPIC_RULES = [
   { topic: 'Actions and ownership', patterns: [/action/i, /owner/i, /follow[- ]?up/i, /deadline/i] }
 ];
 
-function stagedTopicsAreNearDuplicates(left, right) {
-  const leftKey = normaliseTopicKey(left);
-  const rightKey = normaliseTopicKey(right);
-  if (!leftKey || !rightKey) return false;
-  if (leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey)) return true;
-  const aliasGroups = [
-    ['electrical compliance testing', 'compliance testing', 'electrical safety testing'],
-    ['software versioning changes', 'software updates'],
-    ['cybersecurity', 'risk management'],
-    ['change request', 'document updates']
-  ];
-  return aliasGroups.some((group) => group.includes(leftKey) && group.includes(rightKey));
-}
 
-function pushUniqueTopic(topics, topic, limit = 10) {
-  const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
-  if (!isUsableStagedTopic(cleaned) || isNoEvidenceDiscussionText(cleaned)) return;
-  if (topics.some((item) => stagedTopicsAreNearDuplicates(item, cleaned))) return;
-  topics.push(cleaned.slice(0, 80));
-  if (topics.length > limit) topics.length = limit;
-}
+
+
 
 function isUsableStagedTopic(topic) {
   const cleaned = String(topic || '').replace(/\s+/g, ' ').trim();
@@ -418,20 +362,7 @@ function cleanTranscriptContentLine(line) {
 }
 
 
-function stringListFromAny(value, keys = []) {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => stringListFromAny(item, keys));
-  }
-  if (typeof value === 'string') return linesFrom(value).length ? linesFrom(value) : [value.trim()].filter(Boolean);
-  if (typeof value === 'object') {
-    for (const key of keys) {
-      const nested = stringListFromAny(value[key], keys);
-      if (nested.length) return nested;
-    }
-  }
-  return [];
-}
+
 
 function normaliseStagedPointForSimilarity(value) {
   return String(value || '')
@@ -504,48 +435,9 @@ function stagedEvidenceClassifierTelemetry(context) {
   };
 }
 
-function topicsFromStagedMiniLM(minilmContext) {
-  const output = stagedMiniLMOutput(minilmContext);
-  const topics = [];
-  for (const topic of stringListFromAny(output.overallTopics || output.topics, ['topic', 'title', 'text'])) {
-    pushUniqueTopic(topics, topic, 10);
-  }
-  const discussionTopics = Array.isArray(output.discussionTopics) ? output.discussionTopics : [];
-  const meetingMinutes = Array.isArray(output.meetingMinutes) ? output.meetingMinutes : [];
-  const evidenceTopics = Array.isArray(output.evidenceBackedTopics) ? output.evidenceBackedTopics : [];
 
-  for (const item of discussionTopics) {
-    if (!item || typeof item !== 'object') continue;
-    pushUniqueTopic(topics, item.topic || item.title || item.heading, 10);
-  }
 
-  for (const item of meetingMinutes) {
-    if (!item || typeof item !== 'object') continue;
-    pushUniqueTopic(topics, item.topic || item.topicLabel || item.title, 10);
-  }
 
-  for (const item of evidenceTopics) {
-    if (!item || typeof item !== 'object') continue;
-    pushUniqueTopic(topics, item.themeLabel || item.topicLabel || item.topic, 10);
-    pushUniqueTopic(topics, item.topicLabel || item.topic || item.themeLabel, 10);
-  }
-
-  for (const point of stringListFromAny(output.discussionPoints, ['discussionPoint', 'topicLabel', 'text'])) {
-    const cleaned = cleanStagedGeneratedLine(point);
-    if (!cleaned || isNoEvidenceDiscussionText(cleaned)) continue;
-    pushUniqueTopic(topics, topic_label_from_text(cleaned), 10);
-  }
-
-  return topics.slice(0, 8);
-}
-
-function topic_label_from_text(value) {
-  const text = cleanStagedGeneratedLine(value).replace(/[.?!]\s.*$/, '').replace(/[.?!]$/, '');
-  if (!text) return '';
-  const words = text.split(/\s+/);
-  if (words.length <= 9 && isUsableStagedTopic(text)) return text;
-  return words.slice(0, 8).join(' ');
-}
 
 function isAuditableStagedAction(action, owner = '', deadline = '') {
   const text = cleanStagedActionText(action);
@@ -1041,12 +933,7 @@ function stagedTextHasFutureCommitmentMarker(value) {
 
 
 
-function normaliseTopicKey(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
+
 
 
 
