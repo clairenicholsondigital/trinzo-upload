@@ -1151,6 +1151,7 @@
   display:flex;align-items:center;justify-content:space-between;gap:.75rem;max-width:760px;margin:0 auto .75rem;
   padding:.55rem .75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--soft);font-size:var(--fs-sm)}
 .meeting-agent-page.doc-preview .final-editable{pointer-events:none;border-color:transparent!important;background:transparent!important}
+.meeting-agent-page.doc-preview #finalDocument button:disabled,.meeting-agent-page.doc-preview #documentHeader .final-editable:disabled{opacity:1;color:inherit;cursor:default}
 .meeting-agent-page.doc-preview .final-edit-hint,.meeting-agent-page.doc-preview .section-stale{display:none}
 .meeting-agent-page .preview-bar .export-menu{position:relative}
 .meeting-agent-page .preview-bar .export-menu-body{bottom:auto;top:calc(100% + .4rem)}
@@ -1296,6 +1297,10 @@
 .meeting-agent-page .doc-actions-table+.doc-add,.meeting-agent-page .actions-wrap+.doc-add{margin-top:.4rem}
 .meeting-agent-page.doc-preview .doc-picker>summary{pointer-events:none;border-color:transparent;box-shadow:none}
 .meeting-agent-page.doc-preview .due-note{cursor:default;pointer-events:none}
+/* Read-only minutes must expose the full values without opening an editor. */
+.meeting-agent-page.doc-preview .due-note,
+.meeting-agent-page.doc-preview .due-label,
+.meeting-agent-page.doc-preview .owner-chips-static{display:block;-webkit-line-clamp:unset;max-height:none;overflow:visible}
 /* Slice 6: one counter, a checks drawer and the Finalise gate. */
 .meeting-agent-page .review-queue-toggle[data-state="done"]{color:var(--ok,#2f7a4d);border-color:#b7dcc4;background:#eef8f1}
 .meeting-agent-page .checks-drawer .checks-group{margin:0 0 1rem}
@@ -1322,6 +1327,24 @@
 .meeting-agent-page .finalised-export{display:inline-flex}
 .meeting-agent-page .finalised-export[hidden]{display:none}
 .meeting-agent-page.doc-finalised .preview-bar #previewExport:empty{display:none}
+.meeting-agent-page .print-only{display:none}
+@media print{
+  .meeting-agent-page .print-only{display:block!important}
+  .meeting-agent-page .preview-bar,
+  .meeting-agent-page .side-drawer,
+  .meeting-agent-page #undoToast,
+  .meeting-agent-page .final-edit-hint,
+  .meeting-agent-page .final-edit-actions,
+  .meeting-agent-page .section-menu,
+  .meeting-agent-page .doc-point>.row-menu,
+  .meeting-agent-page [data-menu-popover],
+  .meeting-agent-page .doc-topic-head.is-hidden{display:none!important}
+  .meeting-agent-page .final-editable,
+  .meeting-agent-page .doc-picker>summary{border-color:transparent!important;background:transparent!important;box-shadow:none!important;opacity:1!important;color:inherit!important}
+  .meeting-agent-page .due-note,
+  .meeting-agent-page .due-label,
+  .meeting-agent-page .owner-chips-static{display:block;-webkit-line-clamp:unset;overflow:visible}
+}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>

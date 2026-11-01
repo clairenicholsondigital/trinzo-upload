@@ -4,4 +4,5 @@ One line per change in behaviour, newest first. Detail belongs in the PR, not he
 
 | Date | Change | PR |
 | --- | --- | --- |
+| 2026-11-01 | Processed minutes open as one editable document with shared menus, transcript and checks drawers, structured action controls, and explicit Preview/Finalise/Reopen states; existing step editing remains under Edit structure. | [#237](https://github.com/clairenicholsondigital/trinzo-upload/pull/237) |
 | 2026-11-01 | Added a GitHub Actions check that runs `npm test` on every PR, house rules for AI helpers in `AGENTS.md`, and stopped tracking `agent.log` and MiniLM comparison outputs. | [#236](https://github.com/clairenicholsondigital/trinzo-upload/pull/236) |

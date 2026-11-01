@@ -79,6 +79,7 @@
 
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
+    if (kind === 'local-only' && element.dataset.state === 'error') return;
     // The status stays short. Asking the reviewer to keep the tab open is
     // left to the browser's own leave warning (beforeunload).
     var strip = document.getElementById('saveStrip');
@@ -184,13 +185,27 @@
     }
     if (finalised) {
       if (preview) preview.hidden = true;
+      document.getElementById('undoToast').hidden = true;
       var pill = document.getElementById('reviewQueueToggle');
       if (pill) pill.hidden = true;
     }
   }
 
   function documentFinalised() {
-    return Boolean(state.draft && state.draft.status === 'complete' && documentReady());
+    return Boolean(state.draft && state.draft.status === 'complete');
+  }
+
+  function documentReadOnly() {
+    return documentFinalised() || document.body.classList.contains('doc-preview');
+  }
+
+  function leaveDocumentPreview() {
+    if (!state.draft || documentFinalised()) return false;
+    if (document.body.classList.contains('doc-preview')) {
+      document.body.classList.remove('doc-preview');
+      renderFinal(); updateFinishingBar();
+    }
+    return true;
   }
 
   function generationStageLabel(stage) {
@@ -341,7 +356,10 @@
   }
 
   function hasTransientEditorState() {
-    return hasTransientActionState() || hasTransientDiscussionState();
+    return Boolean(activeFinalEdit) || hasTransientActionState() || hasTransientDiscussionState()
+      || Array.from(document.querySelectorAll('#finalDocument [data-owner-new], #finalDocument [data-due-text]')).some(function (input) {
+        return input.value !== input.defaultValue;
+      });
   }
 
   // An empty row is a placeholder, not unsaved work: it is worth saying it
@@ -1365,13 +1383,13 @@
 
   function documentReady() {
     var draft = state.draft;
-    return Boolean(draft && stageGeneratedAt(draft, 'discussion') && stageGeneratedAt(draft, 'actions'));
+    return Boolean(draft && (documentFinalised() || (stageGeneratedAt(draft, 'discussion') && stageGeneratedAt(draft, 'actions'))));
   }
 
   function editStructureKey() { return 'mma-edit-structure:' + ((state.draft && state.draft.draftId) || ''); }
 
   function editStructureOn() {
-    if (!state.draft) return false;
+    if (!state.draft || documentFinalised()) return false;
     var stored = null;
     try { stored = window.localStorage.getItem(editStructureKey()); } catch (error) { stored = null; }
     if (stored === '1') return true;
@@ -1389,9 +1407,13 @@
     document.body.classList.toggle('doc-mode', doc);
     if (!doc) document.body.classList.remove('doc-preview');
     var toggle = document.getElementById('editStructureToggle');
-    if (toggle) toggle.setAttribute('aria-pressed', String(ready && !doc));
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', String(ready && !doc));
+      toggle.hidden = documentFinalised();
+      toggle.disabled = documentFinalised();
+    }
     var meta = document.getElementById('documentMeta');
-    if (meta) meta.innerHTML = ready ? documentMetaHtml(doc) : '';
+    if (meta) meta.innerHTML = ready ? documentMetaHtml(doc && !documentReadOnly()) : '';
     // Download lives in Preview while the page is one document; the step
     // screens keep their own Export menu on Review.
     var exportLabel = document.getElementById('exportMenuLabel');
@@ -1604,6 +1626,7 @@
   }
 
   function setEditStructure(on) {
+    if (documentFinalised()) return;
     var top = window.scrollY;
     try { window.localStorage.setItem(editStructureKey(), on ? '1' : '0'); } catch (error) { /* private mode */ }
     readEditors();
@@ -3078,12 +3101,12 @@
         + cell('action', finalTextEditor('action', actionOccurrence(action), 'action', action.action, {block:true,label:'Edit action',deferred:true}))
         + cell('owners', finalTextEditor('action', actionOccurrence(action), 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
         + cell('timing', finalTimingDisplay(action))
-        + (docMode ? '<td class="doc-only doc-row-menu">' + rowMenu('Action options', transcriptMenuItem(action) + '<button class="delete quiet" data-doc-remove-action="' + escapeHtml(actionOccurrence(action)) + '" type="button">Remove action</button>') + '</td>' : '')
         + '</tr>'
         + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
     var documentHead = inDocumentMode()
-      ? (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
+      ? '<div class="print-only"><h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2>' + finalDetailsLines(details, true) + '</div>'
+        + (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
       : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
     var headingsSwitch = docMode ? '<label class="doc-topic-headings doc-only"><input type="checkbox" data-doc-topic-headings' + (topicHeadingsShown() ? ' checked' : '') + '> Show topic titles in minutes</label>' : '';
     var actionsHead = docMode
@@ -3093,10 +3116,23 @@
     document.getElementById('finalDocument').innerHTML = documentHead + (docMode ? '<section class="final-attendees"><h3>Attendees</h3>' + docAttendeesHtml(details) + '<div class="preview-only">' + finalAttendeesHtml(details) + '</div></section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + headingsSwitch + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table' + (docMode ? ' doc-actions-table' : '') + '"><thead>' + actionsHead + '</thead><tbody>' + actionsHtml + '</tbody></table></div>' + addAction + '</section>';
     renderPageHeading();
     var meta = document.getElementById('documentMeta');
-    if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
+    if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode() && !documentReadOnly());
+    renderDocumentReadOnly();
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); fitFinalTextarea(editor); }
     if (docMode) updateReviewQueueSummary();
+  }
+
+  function renderDocumentReadOnly() {
+    if (!documentReadOnly()) return;
+    document.querySelectorAll('#finalDocument button, #finalDocument input, #finalDocument select, #finalDocument textarea, #documentHeader [data-final-edit], #documentHeader [data-doc-meeting-type]').forEach(function (control) {
+      control.disabled = true;
+    });
+    document.querySelectorAll('#finalDocument details').forEach(function (menu) {
+      menu.open = false;
+      var summary = menu.querySelector('summary');
+      if (summary) { summary.tabIndex = -1; summary.setAttribute('aria-disabled', 'true'); }
+    });
   }
 
   // A textarea in the document grows with its text instead of scrolling.
@@ -3115,9 +3151,9 @@
   var docPickerOpen = '';
   var docDueMode = {};
 
-  // Reads the stored timing as one of the four Due kinds. Wording that is not
-  // a short due phrase (often a sentence lifted from the transcript) is shown
-  // as a note under the action, and Due reads as None until it is set.
+  // Read the stored timing kind without changing its meaning for layout.
+  // Long target/deadline wording stays in a note beneath the action; wording
+  // without a classified due kind remains available for review.
   function dueState(timing) {
     timing = timing || {};
     var kind = timing.kind || 'not_stated';
@@ -3125,10 +3161,11 @@
     var date = String(timing.exactDate || '').trim();
     if (kind === 'not_stated' || (!wording && !date)) return { mode:'none', note:'' };
     if (date) return { mode:'date', date:date, label:formatUkDate(date) || date, note:wording.length > 32 ? wording : '' };
-    if (kind === 'dependency') return wording.length <= 40 ? { mode:'dependent', text:wording, label:'Depends on: ' + wording, note:'' } : { mode:'none', note:wording };
+    if (kind === 'dependency') return { mode:'dependent', text:wording, label:'Depends on: ' + wording, note:'' };
     var preset = RELATIVE_DUE.filter(function (item) { return item.toLowerCase() === wording.toLowerCase(); })[0];
     if (preset) return { mode:'relative', text:preset, label:preset, note:'' };
-    if (kind !== 'stated' && wording.length <= 32) return { mode:'relative', text:wording, custom:true, label:wording, note:'' };
+    if (kind === 'target' || kind === 'deadline') return { mode:'relative', text:wording, custom:true,
+      label:wording.length > 32 ? 'See timing note' : wording, note:wording.length > 32 ? wording : '' };
     return { mode:'none', note:wording };
   }
 
@@ -3140,7 +3177,7 @@
     var occ = actionOccurrence(action);
     var kept = isActionKept(action);
     var due = dueState(action.timing);
-    var note = due.note ? '<button type="button" class="due-note" data-due-note aria-expanded="false" title="Show the full note">From transcript: “' + escapeHtml(due.note) + '”</button>' : '';
+    var note = due.note ? '<button type="button" class="due-note" data-due-note aria-expanded="false" title="Show the full note">Timing note: “' + escapeHtml(due.note) + '”</button>' : '';
     var reviewed = kept ? '<span class="row-reviewed doc-reviewed doc-only" title="Marked reviewed">' + icon('check') + '<span class="visually-hidden">Reviewed</span></span>' : '';
     var menu = rowMenu('Action options', transcriptMenuItem(action).replace(/(?:View|Check) transcript/, 'View source')
       + '<button class="secondary quiet" data-doc-keep-action="' + escapeHtml(occ) + '" aria-pressed="' + (kept ? 'true' : 'false') + '" type="button">' + (kept ? 'Reviewed ✓' : 'Mark reviewed') + '</button>'
@@ -3364,8 +3401,14 @@
     try { return window.localStorage.getItem('mma-final-hint-dismissed') === '1'; } catch (error) { return false; }
   }
 
-  function finalDetailsLines(details) {
-    return '<p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>';
+  function finalDetailsLines(details, readOnly) {
+    var field = function (name, options) {
+      return readOnly ? escapeHtml(options.displayValue || details[name] || 'Not stated')
+        : finalTextEditor('details', 'meeting-details', name, details[name] || '', options);
+    };
+    return '<p><strong>Date:</strong> ' + field('meetingDate', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'})
+      + '<br><strong>Location:</strong> ' + field('meetingLocation', {singleLine:true,label:'Edit meeting location',empty:'Not stated'})
+      + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>';
   }
 
   function renderParallelControls() {
@@ -3783,14 +3826,15 @@
       });
     }).then(function (payload) {
       if (reviewDecisionLabel && pendingReviewDecisionLabel === reviewDecisionLabel) pendingReviewDecisionLabel = '';
-      if (editVersion !== requestEditVersion) {
+      if (editVersion !== requestEditVersion || hasTransientEditorState()) {
         // A newer keystroke landed while this request was in flight. Advance the
         // revision but do not replace the newer editor values with the response.
         state.draft.revision = payload.draft.revision;
         state.draft.updatedAt = payload.draft.updatedAt;
         state.draft.lastUndo = payload.draft.lastUndo;
         if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
-        setSaveStatus('Saving…', 'dirty');
+        if (hasTransientEditorState()) setSaveStatus('Finish the current entry to save it.', 'local-only');
+        else setSaveStatus('Saving…', 'dirty');
         return state.draft;
       }
       pendingGenerationEdits = false;
@@ -5129,7 +5173,7 @@
   }
 
   function openFinalEditable(editable) {
-    if (!editable || !state.draft || documentFinalised()) return;
+    if (!editable || !state.draft || documentReadOnly()) return;
     activeFinalEdit = { kind:editable.dataset.kind,
       id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
       field:editable.dataset.field };
@@ -5164,6 +5208,8 @@
     discardNewPlaceholder(edit);
     activeFinalEdit = null;
     renderFinal();
+    if (!hasTransientEditorState() && !saveInFlight && !savePending && !pendingGenerationEdits && !draftWritesInFlight
+      && document.getElementById('saveStatus').dataset.state === 'local-only') setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
     if (!options || options.focus !== false) focusEditable(finalEditKey(edit));
   }
 
@@ -5411,7 +5457,7 @@
     if (editable) { openFinalEditable(editable); return; }
     if (event.target.closest('[data-final-cancel]')) { cancelFinalEdit(); return; }
     if (event.target.closest('[data-final-save]')) { applyFinalEdit(); return; }
-    if (state.draft && inDocumentMode() && !documentFinalised()) onDocumentEditClick(event);
+    if (state.draft && inDocumentMode() && !documentReadOnly()) onDocumentEditClick(event);
   }
   // The document header (title, date, location) edits the same way as the body.
   document.getElementById('finalDocument').addEventListener('click', onFinalDocumentClick);
@@ -5540,6 +5586,7 @@
       return;
     }
     if ((target = event.target.closest('[data-fix-owner],[data-fix-due]'))) {
+      if (!leaveDocumentPreview()) return;
       var owner = target.hasAttribute('data-fix-owner');
       var occ = owner ? target.dataset.fixOwner : target.dataset.fixDue;
       closeDrawer();
@@ -5554,6 +5601,7 @@
       return;
     }
     if ((target = event.target.closest('[data-fix-detail]'))) {
+      if (!leaveDocumentPreview()) return;
       closeDrawer();
       var field = target.dataset.fixDetail;
       if (field === 'attendees') { var add = document.querySelector('[data-doc-add-attendee="internal"]'); if (add) { add.scrollIntoView({ block: 'center' }); add.click(); } return; }
@@ -5580,7 +5628,7 @@
     if (inDocumentMode() && targetButton.dataset.viewFlagTarget) {
       var card = targetButton.closest('[data-review-flag-id]');
       var flag = card && (state.draft.reviewFlags || []).filter(function (item) { return item.id === card.dataset.reviewFlagId; })[0];
-      if (flag && document.body.classList.contains('doc-preview') && !documentFinalised()) { document.body.classList.remove('doc-preview'); renderFinal(); updateFinishingBar(); }
+      if (flag) leaveDocumentPreview();
       var inDocument = flag && documentElementForFlag(flag);
       if (inDocument) { pulseInDocument(inDocument); return; }
       closeDrawer();
@@ -5741,6 +5789,13 @@
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
     if (event.target.matches('[data-timing-date],[data-final-timing-date]')) event.target.dataset.dateEdited = 'true';
+    // These controls commit through their own Save/Add action. A response to an
+    // earlier save must not rebuild them while their next entry is being typed.
+    if (event.target.closest('[data-final-editor]') || event.target.matches('[data-owner-new],[data-due-text]')) {
+      editVersion += 1;
+      setSaveStatus('Finish the current entry to save it.', 'local-only');
+      return;
+    }
     // Inclusion is a document-output choice. It does not alter the meeting
     // evidence or discussion content, so it must not mark downstream Actions
     // as stale merely because the checkboxes live inside Details.

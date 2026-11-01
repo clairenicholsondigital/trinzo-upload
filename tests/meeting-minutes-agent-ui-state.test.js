@@ -3681,6 +3681,15 @@ test('a processed draft opens as one document with one sticky bar, and Edit stru
     assert.equal(await page.locator('#previewBar').isVisible(), true);
     assert.equal(await page.locator('#previewBar .export-menu').count(), 1);
     assert.match(await page.textContent('#previewDocument'), /Back to editing/);
+    const readOnlySummary = page.locator('#finalDocument [data-final-edit][data-kind="summary"]');
+    assert.equal(await readOnlySummary.isDisabled(), true);
+    await page.locator('#previewDocument').evaluate((node) => node.blur());
+    await readOnlySummary.focus();
+    await page.keyboard.press('Enter');
+    await readOnlySummary.dispatchEvent('click');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0);
+    assert.equal(await page.locator('body.doc-preview').count(), 1);
+    assert.equal(await page.locator('#documentMeta select').count(), 0);
     await page.click('#previewDocument');
     assert.equal(await page.locator('#previewBar').isVisible(), false);
     assert.deepEqual(errors, []);
@@ -3847,14 +3856,19 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     assert.ok(widths[0] >= 320, JSON.stringify(widths));
     assert.equal(widths[1], 180); assert.equal(widths[2], 160);
 
-    // A transcript sentence is a note under the action, not the Due value.
-    assert.match(await row(0).locator('.due-note').textContent(), /^From transcript: “hoping by early July/);
-    assert.match(await row(0).locator('.due-picker>summary').textContent(), /No date agreed/);
+    // A long target remains structured timing, with its wording kept in a note.
+    assert.match(await row(0).locator('.due-note').textContent(), /^Timing note: “hoping by early July/);
+    assert.match(await row(0).locator('.due-picker>summary').textContent(), /See timing note/);
     const lineHeight = await row(0).locator('.due-note').evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
     const clamped = await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height);
     assert.ok(clamped <= lineHeight * 2 + 2, 'note clamped to two lines');
     await row(0).locator('.due-note').click();
     assert.ok(await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height) > clamped, 'note expands on click');
+    await page.click('#previewDocument');
+    assert.equal(await row(0).locator('.due-note').isDisabled(), true);
+    assert.ok(await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height) > clamped, 'read-only notes are fully readable without a click');
+    assert.equal(await row(0).locator('.due-note').evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+    await page.click('#previewDocument');
     // No other cell runs past two lines.
     const tall = await table.locator('tbody td').evaluateAll((cells) => cells.filter((cell) => !cell.querySelector('.due-note')).filter((cell) => {
       const line = parseFloat(getComputedStyle(cell).lineHeight) || 24;
@@ -3926,6 +3940,21 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     await page.click('[data-doc-add-action]');
     await page.keyboard.press('Escape');
     assert.equal(await table.locator('tbody tr').count(), count + 1);
+    // Long custom relative wording remains structured after save and reload.
+    const longRelative = 'Within five working days following the approval meeting';
+    await row(1).locator('.due-picker>summary').click();
+    await row(1).locator('[data-due-mode="relative"]').click();
+    await row(1).locator('[data-due-relative]').selectOption('__custom');
+    await row(1).locator('[data-due-text="relative"]').fill(longRelative);
+    saved = patch();
+    await row(1).locator('[data-due-save="relative"]').click();
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.kind, 'target');
+    assert.equal(body.actions[1].timing.wording, longRelative);
+    await page.reload();
+    await page.waitForSelector('body.doc-mode');
+    assert.equal((await row(1).locator('.due-picker>summary').textContent()).trim(), 'See timing note');
+    assert.equal(await row(1).locator('.due-note').textContent(), 'Timing note: “' + longRelative + '”');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -3942,8 +3971,8 @@ test('one counter adds up open checks, and Finalise asks once then locks the doc
     await page.waitForSelector('body.doc-mode');
     const patch = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
       && response.request().method() === 'PATCH');
-    // 2 model checks + 1 action with no owner + 2 actions with no due date.
-    assert.equal((await page.textContent('#flagCount')).trim(), '5 to check');
+    // 2 model checks + 1 missing owner + 1 missing due; a long target is still timing.
+    assert.equal((await page.textContent('#flagCount')).trim(), '4 to check');
 
     // Flagged text has an amber bar in the document.
     assert.ok(await page.locator('#finalDocument .final-editable.model-flagged').count() >= 1);
@@ -3959,21 +3988,25 @@ test('one counter adds up open checks, and Finalise asks once then locks the doc
     assert.equal(await drawer.isVisible(), true);
     await page.waitForSelector('#finalDocument .doc-pulse');
 
-    // Fix opens the owner picker on that row.
+    // An explicit Fix leaves Preview and opens an enabled editor.
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('body.doc-preview').count(), 1);
     await drawer.locator('[data-fix-owner]').first().click();
+    assert.equal(await page.locator('body.doc-preview').count(), 0);
     const picker = page.locator('.owner-picker[open]');
     await picker.waitFor();
+    assert.equal(await picker.locator('[data-owner-toggle="Alex Reed"]').isEnabled(), true);
     let saved = patch();
     await picker.locator('[data-owner-toggle="Alex Reed"]').click();
     await saved;
     await page.keyboard.press('Escape');
-    assert.equal((await page.textContent('#flagCount')).trim(), '4 to check');
+    assert.equal((await page.textContent('#flagCount')).trim(), '3 to check');
 
     // Finalise with open items asks in the drawer; Review first keeps editing.
     await page.click('#finaliseMinutes');
     assert.equal(await page.locator('.finalise-confirm').isVisible(), true);
     assert.equal((await page.textContent('#sideDrawerTitle')).trim(), 'Finalise with open items?');
-    assert.match(await page.textContent('.finalise-confirm'), /4 items are still open: 2 model checks, 2 missing dates/);
+    assert.match(await page.textContent('.finalise-confirm'), /3 items are still open: 2 model checks, 1 missing date/);
     await page.click('[data-review-first]');
     assert.equal(await page.locator('.finalise-confirm').count(), 0);
     await page.keyboard.press('Escape');
@@ -3992,6 +4025,22 @@ test('one counter adds up open checks, and Finalise asks once then locks the doc
     await page.locator('#finalDocument [data-final-edit]').first().focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('[data-final-editor]').count(), 0, 'read-only once finalised');
+    assert.equal(await page.locator('#editStructureToggle').isHidden(), true);
+    assert.equal(await page.locator('#editStructureToggle').isDisabled(), true);
+    assert.equal(await page.locator('#finalDocument [data-final-edit]:not([disabled])').count(), 0);
+    assert.equal(await page.locator('#finalDocument .due-note').first().evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+    const lockedBefore = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+    await page.locator('#editStructureToggle').dispatchEvent('click');
+    assert.equal(await page.locator('body.doc-mode.doc-finalised').count(), 1);
+    assert.equal(await page.locator('[data-step="3"]').isVisible(), false);
+    const lockedAfter = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+    assert.equal(lockedAfter.patches, lockedBefore.patches);
+    assert.equal(lockedAfter.draft.status, 'complete');
+    await page.evaluate(() => localStorage.setItem('mma-edit-structure:document-editing', '1'));
+    await page.reload();
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.equal(await page.locator('#editStructureToggle').isHidden(), true);
+    await page.evaluate(() => localStorage.removeItem('mma-edit-structure:document-editing'));
 
     // Reopen for editing makes it editable again.
     saved = patch();
@@ -4004,5 +4053,203 @@ test('one counter adds up open checks, and Finalise asks once then locks the doc
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('document print keeps meeting identity and topic visibility while excluding editing controls', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const saved = page.waitForResponse((response) => response.request().method() === 'PATCH'
+      && response.url().endsWith('/api/meeting-minutes-agent/drafts/document')
+      && response.request().postDataJSON().includeSections.topicHeadings === false);
+    await page.locator('[data-doc-topic-headings]').uncheck(); await saved;
+    await page.click('#previewDocument');
+    await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true);
+    await page.emulateMedia({ media: 'print' });
+    const printed = await page.locator('#finalDocument').innerText();
+    for (const text of ['UI state test', '16 Sept 2026', 'Teams', 'Review']) assert.ok(printed.includes(text), text);
+    for (const selector of ['#previewBar', '#sideDrawer', '#undoToast', '#finalDocument .doc-topic-head.is-hidden',
+      '#finalDocument .section-menu', '#finalDocument .doc-point>.row-menu']) {
+      for (const node of await page.locator(selector).all()) assert.equal(await node.isVisible(), false, selector);
+    }
+    assert.equal(printed.includes('Report review'), false);
+    assert.ok(printed.includes('The revised report is ready for circulation.'));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+for (const kind of ['owner', 'due']) {
+  test(`unfinished document ${kind} text survives the autosave pause`, { timeout: 120000 }, async () => {
+    const { server, port } = await startStubServer(); let browser;
+    try {
+      const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+      const { page, errors } = launched;
+      await page.waitForSelector('body.doc-mode');
+      const row = page.locator('#finalDocument .doc-actions-table tbody tr').nth(1);
+      let input;
+      if (kind === 'owner') {
+        await row.locator('.owner-picker>summary').click();
+        input = row.locator('[data-owner-new]');
+      } else {
+        await row.locator('.due-picker>summary').click();
+        await row.locator('[data-due-mode="dependent"]').click();
+        input = row.locator('[data-due-text="dependent"]');
+      }
+      const value = kind === 'owner' ? 'Patricia Newowner' : 'After contract approval';
+      await input.fill(value);
+      await page.waitForTimeout(1800);
+      assert.equal(await input.inputValue(), value);
+      const stored = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+      assert.equal(stored.patches, 0, 'an unfinished picker entry is not an unrelated draft save');
+      assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'local-only');
+      assert.equal(await page.evaluate(() => {
+        const event = new Event('beforeunload', { cancelable:true });
+        window.dispatchEvent(event); return event.defaultPrevented;
+      }), true, 'leaving warns about the entry that still exists only in this tab');
+      assert.deepEqual(errors, []);
+    } finally {
+      if (browser) await browser.close();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+}
+
+test('a preceding save preserves the next inline edit and cancelling settles its status', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    let release, acknowledge;
+    const held = new Promise(resolve => { release = resolve; });
+    const intercepted = new Promise(resolve => { acknowledge = resolve; });
+    let first = true;
+    await page.route('**/api/meeting-minutes-agent/drafts/document-editing', async route => {
+      if (route.request().method() === 'PATCH' && first) { first = false; acknowledge(); await held; }
+      await route.continue();
+    });
+    await page.locator('#finalDocument .doc-point [data-final-edit]').first().click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('The first field is committed.');
+    await page.keyboard.press('Tab');
+    await intercepted;
+    const next = page.locator('#finalDocument [data-final-editor-value]');
+    await next.fill('The next field is still being written.');
+    const response = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    release(); await response;
+    await page.waitForTimeout(100);
+    assert.equal(await next.inputValue(), 'The next field is still being written.');
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'local-only');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0);
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'saved');
+    assert.equal(await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable:true });
+      window.dispatchEvent(event); return event.defaultPrevented;
+    }), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('a long explicit dependency remains due after saving and reopening', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const row = page.locator('#finalDocument .doc-actions-table tbody tr').nth(1);
+    await row.locator('.due-picker>summary').click();
+    await row.locator('[data-due-mode="dependent"]').click();
+    const value = 'After legal approval of the supplier contract';
+    await row.locator('[data-due-text="dependent"]').fill(value);
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await row.locator('[data-due-save="dependent"]').click();
+    const body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].timing, { kind:'dependency', wording:value, exactDate:'' });
+    assert.deepEqual(body.actions[1].evidenceIds, ['T0001']);
+    await page.reload();
+    await page.waitForSelector('body.doc-mode');
+    assert.match(await row.locator('.due-picker>summary').textContent(), /Depends on: After legal approval/);
+    assert.equal(await row.locator('.due-note').count(), 0, 'authored wording is not presented as a transcript quotation');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('editing only an owner preserves a generated long timing note', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const row = page.locator('#finalDocument .doc-actions-table tbody tr').first();
+    const due = await row.locator('.due-picker>summary').textContent();
+    const note = await row.locator('.due-note').textContent();
+    await row.locator('.owner-picker>summary').click();
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await row.locator('[data-owner-toggle="Sam Okoro"]').click();
+    await saved;
+    await page.waitForTimeout(100);
+    assert.equal(await row.locator('.due-picker>summary').textContent(), due);
+    assert.equal(await row.locator('.due-note').textContent(), note);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('cancelling a later inline edit cannot hide a failed save', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    let fail = true;
+    await page.route('**/api/meeting-minutes-agent/drafts/document-editing', async route => {
+      if (route.request().method() === 'PATCH' && fail) {
+        fail = false;
+        await route.fulfill({ status:503, contentType:'application/json', body:JSON.stringify({ error:'Save unavailable' }) });
+      } else await route.continue();
+    });
+    const points = page.locator('#finalDocument .doc-point [data-final-edit]');
+    await points.first().click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('This first change still needs saving.');
+    await page.keyboard.press('Control+Enter');
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'error');
+    await points.nth(1).click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('Cancel this later edit.');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'error');
+    assert.equal(await page.textContent('#saveStatus'), 'Save unavailable');
+    assert.equal(await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable:true });
+      window.dispatchEvent(event); return event.defaultPrevented;
+    }), true);
+    // An explicit successful save can clear the error and persist both changes.
+    await points.nth(1).click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('A later deliberate retry.');
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await page.keyboard.press('Control+Enter');
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'saved');
+    const stored = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()).draft);
+    assert.equal(stored.discussion[0].points[0].text, 'This first change still needs saving.');
+    assert.equal(stored.discussion[0].points[1].text, 'A later deliberate retry.');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
   }
 });
