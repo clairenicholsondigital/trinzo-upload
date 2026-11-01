@@ -1424,6 +1424,8 @@
       toggle.hidden = documentFinalised();
       toggle.disabled = documentFinalised();
     }
+    var structureItem = document.querySelector('[data-doc-edit-structure]');
+    if (structureItem) structureItem.hidden = !ready || !doc || documentFinalised();
     var meta = document.getElementById('documentMeta');
     if (meta) meta.innerHTML = ready ? documentMetaHtml(doc && !documentReadOnly()) : '';
     // Download lives in Preview while the page is one document; the step
@@ -5597,6 +5599,7 @@
       if (hint) hint.remove();
       return;
     }
+    if (event.target.closest('[data-doc-edit-structure]')) { closeMenus(null); setEditStructure(true); return; }
     if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); return; }
     var regenerate = event.target.closest('[data-regenerate-section]');
     if (regenerate) { closeMenus(null); requestBackgroundStage(regenerate.dataset.regenerateSection, { regenerate: true }); }

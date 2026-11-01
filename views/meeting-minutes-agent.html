@@ -1223,6 +1223,37 @@
 .meeting-agent-page .final-edit-actions button{min-height:32px;padding:.2rem .8rem;font-size:var(--fs-sm)}
 .meeting-agent-page .meta-select{field-sizing:content;border:1px dashed transparent;background:transparent;font:inherit;color:inherit;padding:0 .2rem;min-height:0;height:auto;width:auto;border-radius:var(--radius-sm);cursor:pointer}
 .meeting-agent-page .meta-select:hover{border-color:#8a949f}
+/* Phones: give the title, the document and each action card the width.
+   Edit structure moves into the ••• menu (the button stays while it is on,
+   so there is a way back), the edit hint sits tight above the first section,
+   and an action's ••• sits in the card's corner instead of its own row. */
+.meeting-agent-page .doc-menu-structure{display:none!important}
+@media(max-width:650px){
+  .meeting-agent-page.doc-ready .document-header{gap:.5rem}
+  .meeting-agent-page.doc-ready .document-header-tools #editStructureToggle[aria-pressed="false"]{display:none}
+  .meeting-agent-page.doc-ready .doc-menu-structure:not([hidden]){display:flex!important}
+  .meeting-agent-page.doc-ready .document-meta{gap:.1rem .35rem}
+  .meeting-agent-page.doc-mode [data-screen="5"]{padding-top:.85rem}
+  .meeting-agent-page.doc-mode .final-edit-hint+section{border-top:0;padding-top:0;margin-top:0}
+  .meeting-agent-page.doc-mode .final-edit-hint+section>h3:first-child{margin-top:.6rem}
+  .meeting-agent-page .doc-actions-table tbody tr{position:relative}
+  .meeting-agent-page .doc-actions-table td{background:transparent}
+  .meeting-agent-page .doc-actions-table td.doc-action-cell{padding-right:2.4rem}
+  .meeting-agent-page .doc-actions-table td.doc-row-menu{position:absolute;top:.45rem;right:.3rem;width:auto;padding:0}
+  /* One slim row for the bar: Saved, the checks pill, an icon-only Preview
+     and Finalise. Extra history buttons wrap onto a second row. */
+  .meeting-agent-page.doc-mode .save-strip{display:flex!important;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;min-height:0;padding:.45rem .5rem}
+  .meeting-agent-page.doc-mode .save-strip-primary{display:flex;align-items:center;gap:.45rem;flex:1 1 auto;min-width:0}
+  .meeting-agent-page.doc-mode .save-status{font-size:var(--fs-cap);white-space:nowrap}
+  .meeting-agent-page.doc-mode .save-strip-actions{display:flex!important;flex-wrap:nowrap;width:auto!important;margin-left:auto;gap:.35rem}
+  .meeting-agent-page.doc-mode .save-strip-actions button{min-height:38px;width:auto!important}
+  .meeting-agent-page.doc-mode #previewDocument{width:38px!important;padding:0;justify-content:center}
+  .meeting-agent-page.doc-mode #previewDocument .narrow-label{display:none}
+  .meeting-agent-page.doc-mode .save-strip .finalise-button{height:38px}
+  .meeting-agent-page.doc-mode{padding-bottom:4.5rem}
+  .meeting-agent-page .doc-attendees .doc-attendee-group{grid-template-columns:minmax(0,1fr);gap:.3rem}
+  .meeting-agent-page .doc-attendees .doc-attendee-label{padding-top:0;font-size:var(--fs-sm);color:var(--muted)}
+}
 /* Attendees as chips: name, group toggle and remove. */
 .meeting-agent-page .doc-attendees{display:grid;gap:.5rem}
 .meeting-agent-page .doc-attendee-group{display:grid;grid-template-columns:5.5rem minmax(0,1fr);gap:.5rem;align-items:start}
@@ -1386,7 +1417,7 @@
 
   <section id="documentHeader" class="panel hero document-header">
     <div class="document-header-main"><h1 id="pageTitle">Meeting Minutes Agent</h1><p id="documentMeta" class="document-meta"></p><p id="pageIntro">Upload a Word transcript and work through an evidence-backed, editable draft.</p></div>
-    <div class="document-header-tools"><button id="editStructureToggle" class="secondary" type="button" aria-pressed="false" title="Show the step screens to reorder, merge and move items">Edit structure</button><details class="doc-menu" data-menu><summary class="secondary quiet" aria-label="More options" title="More options">•••</summary><div class="doc-menu-popover" data-menu-popover><button class="secondary quiet" data-doc-choose-transcript type="button">Choose another transcript</button></div></details></div>
+    <div class="document-header-tools"><button id="editStructureToggle" class="secondary" type="button" aria-pressed="false" title="Show the step screens to reorder, merge and move items">Edit structure</button><details class="doc-menu" data-menu><summary class="secondary quiet" aria-label="More options" title="More options">•••</summary><div class="doc-menu-popover" data-menu-popover><button class="secondary quiet doc-menu-structure" data-doc-edit-structure type="button">Edit structure</button><button class="secondary quiet" data-doc-choose-transcript type="button">Choose another transcript</button></div></details></div>
   </section>
   <p id="generationMethod" class="muted" hidden>Beta · Streamlined flow</p>
 

@@ -4311,3 +4311,24 @@ test('cancelling a later inline edit cannot hide a failed save', { timeout:12000
     await new Promise(resolve => server.close(resolve));
   }
 });
+test('on a phone, Edit structure lives in the document menu and the button returns while it is on', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors = []; page.on('pageerror', (error) => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${port}/meeting-minutes-agent?draftId=document-editing`);
+    await page.waitForSelector('body.doc-mode');
+    assert.equal(await page.locator('#editStructureToggle').isVisible(), false);
+    await page.locator('#documentHeader .doc-menu>summary').click();
+    await page.locator('[data-doc-edit-structure]').click();
+    await page.waitForSelector('#editStructureToggle[aria-pressed="true"]');
+    assert.equal(await page.locator('#editStructureToggle').isVisible(), true);
+    await page.locator('#editStructureToggle').click();
+    await page.waitForSelector('body.doc-mode');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
