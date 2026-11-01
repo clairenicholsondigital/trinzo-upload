@@ -1,3 +1,31 @@
+# House rules for AI helpers
+
+Read this file and `docs/LIVE_PRODUCT_MAP.md` before any change. Each rule exists because breaking it is how the repo got messy in 2026.
+
+## Before you start
+- Keep one coherent goal per branch and PR, with a finite stopping point. Follow the user's agreed scope, including related steps they have authorized.
+- Search for an existing helper, route module or test before creating a file. Say what you found and why you are or are not reusing it.
+- If your change touches something not on the live product map, say so before writing code.
+
+## While you work
+- Extend the existing feature owner under `routes/` or `utils/` when appropriate. Treat files over ~800 lines as a reason to review responsibility, not a requirement to split them. Extract only when it solves a concrete maintenance problem within the task.
+- Replace obsolete implementations rather than stacking versions. Verify consumers before retiring a path; supported alternatives such as Original and Beta remain supported. Record intentional coexistence in the live map.
+- Repeated fixes to the same behaviour call for investigating the common cause. Keep the repair within the agreed scope and explain any larger redesign that needs a separate task.
+- No experiments in production paths. New research code goes in `archive/` or a separate repo, and production must not import from it.
+- Do not commit generated logs, research run outputs or `node_modules`. Runtime models, fixtures and UI-consumed reports listed in the live map are retained product inputs; justify their updates and verify consumers before removing them. Check `git status` before every commit.
+
+## Docs
+- No new top-level docs. Update `docs/LIVE_PRODUCT_MAP.md` and, if behaviour changed, add one line to `CHANGELOG.md`. Working notes go in the PR description or `docs/archive/`.
+
+## Tests
+- Test behaviour: call the route or function and check the result.
+- Prefer behaviour tests over matching implementation strings. Retain justified security, architecture and source-contract checks. Replace brittle checks only when equivalent coverage is demonstrated; a small change should not require an unrelated test rewrite.
+
+## Finishing
+- Before opening the PR, sweep your own diff: leftovers (debug logs, dead code, unused imports, generated files), duplicates of existing helpers, and anything you replaced but did not remove. Put a short note of what you removed or flagged in the PR description.
+- Bundle related small fixes into one PR. Structural changes need an independent review before merging; readiness depends on review and verification, not a fixed waiting period.
+- Delete your branch once the PR is merged or closed.
+
 # Verification for changes in this repository
 
 - Use `npm test` for the compact product checks. Use `npm run test:changed -- --base origin/main` for a PR, or the PR's actual base revision if different. Fetch the base first.
