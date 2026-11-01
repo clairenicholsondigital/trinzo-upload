@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { assessGenerationHealth } = require('../routes/api').stagedEvaluation;
+const { assessGenerationHealth } = require('../utils/stagedMinutesCanonicalResponse');
 
 // The per-generation health judgement.
 //

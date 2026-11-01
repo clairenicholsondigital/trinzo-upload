@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const { stagedStageResumeUrl } = require('../routes/api').stagedEvaluation;
+const { stagedStageResumeUrl } = require('../utils/stagedMinutesQueue');
 
 // Screen indices shifted when the Summary stage was removed: Details, Summary, Discussion,
 // Actions, Final review became Details, Discussion, Actions, Final review, and everything

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { validateInitialUnderstandingRevision } = require('../utils/stagedInitialUnderstandingPolish');
-const { mergeNamedTopics } = require('../routes/api').stagedEvaluation;
+const { mergeNamedTopics } = require('../utils/stagedMinutesCanonicalResponse');
 
 // Topic headings, named by the model instead of chosen from a list of twenty-three.
 //
