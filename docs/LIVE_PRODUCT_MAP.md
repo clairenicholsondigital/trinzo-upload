@@ -87,9 +87,12 @@ The retained V2 facade and `utils/canonicalMinutes/` remain live dependencies.
 
 Background work in the main editor runs in the web process independently of the
 browser connection. The existing owned-draft `/generation` endpoint adds a bounded
-`progress` snapshot for observed Original/Beta milestones and provisional section
-counts. Existing UI fields remain unchanged; ready requires a saved result, and
-advisory writes share the draft queue and preserve run identity and reviewer edits.
+`progress` snapshot for observed Original/Beta milestones and section counts.
+For an active Beta run, checked sections also have bounded read-only text previews
+in the existing progress panel. Previews are separate from the editable draft,
+excluded from print/exports, and hidden after failures or changed meeting inputs.
+The normal editor opens from the final saved result; advisory writes share the
+draft queue and preserve run identity and reviewer edits.
 Queue jobs use the separate worker below.
 
 ## Draft review, publication and exports

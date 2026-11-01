@@ -132,7 +132,8 @@ function createRunner({getDraft,saveDraft,execute=runSpecialists,config=configur
             if (!generation || generation.status!=='running' || generation.requestId!==requestId
               || generation.bootId!==source.generation.bootId || generation.startedAt!==source.generation.startedAt) return;
             if (event.code==='saving' && inputHash(fresh)!==startedHash) return;
-            const progress = mergeMeetingAgentProgress(generation.progress,event);
+            const progress = mergeMeetingAgentProgress(generation.progress,event,
+              {includePreviews:inputHash(fresh)===startedHash});
             try { await saveDraft(fresh,userId,{generation:{...generation,progress}});return; }
             catch (error) { if (error.statusCode!==409 || attempt===2) throw error; }
           }
@@ -169,7 +170,7 @@ function createRunner({getDraft,saveDraft,execute=runSpecialists,config=configur
   async function start(draft,userId) {
     if (active.has(String(draft.draftId))) return getDraft(draft.draftId,userId,{includeTranscript:true});
     // Save is optimistic: only one request may claim this revision.
-    const generation = {stage:'discussion',status:'running',bootId,requestId:crypto.randomUUID(),
+    const generation = {stage:'discussion',status:'running',bootId,requestId:crypto.randomUUID(),progressInputHash:inputHash(draft),
       startedAt:new Date().toISOString(),message:'Preparing your meeting minutes…',error:''};
     const saved = await saveDraft(draft,userId,{generation});
     const task = new Promise(resolve=>setImmediate(resolve)).then(()=>run(saved,userId))
