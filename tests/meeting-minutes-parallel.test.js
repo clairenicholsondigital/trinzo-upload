@@ -15,6 +15,10 @@ function replies(){return {
  actions:{schemaVersion:1,specialist:'actions',actions:[{id:'A1',action:'Review the file.',owners:['Alex'],timing:{kind:'target',wording:'hoping for Tuesday',exactDate:''},evidenceIds:['T0001']}],
  actionProposals:[{id:'AP1',action:'Add technical considerations.',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},reason:'No accepted owner was established.',evidenceIds:['T0001']}],reviewFlags:[]}
 };}
+function systemReply(conversationId='11111111-1111-4111-8111-111111111111'){
+ return {conversationId,lastResponse:'PRIVATE Microsoft error https://private.example.invalid/secret',
+  activities:[{type:'trace',name:'ClientTraceData',value:{ErrorCode:'SystemError',private:'PRIVATE trace'}}]};
+}
 async function generated(options={}){
  const values=replies();const starts=[];
  const config=Object.fromEntries(E.STAGES.map(s=>[s,{webhookUrl:'https://'+s+'.example.invalid'}]));
@@ -130,7 +134,10 @@ test('empty lastResponse preserves valid response fallbacks and direct specialis
  for(const wrap of [
   result=>({lastResponse:'',responses:[JSON.stringify(result)]}),
   result=>({lastResponse:'',responses:[result]}),
-  result=>({...result,lastResponse:''})
+  result=>({...result,lastResponse:''}),
+  result=>({...systemReply(),lastResponse:JSON.stringify(result)}),
+  result=>({...systemReply(),lastResponse:'',responses:[result]}),
+  result=>({...systemReply(),...result,lastResponse:'',responses:[]})
  ]){
   const counts={summary:0,discussion:0,actions:0};
   const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
@@ -150,6 +157,107 @@ test('empty lastResponse preserves valid response fallbacks and direct specialis
  }});
  assert.deepEqual(counts,{summary:1,discussion:1,actions:1});assert.equal(invalid.status,'failed');
  assert.ok(E.STAGES.every(stage=>invalid.branches[stage].error.code==='INVALID_CONTRACT'&&invalid.branches[stage].formatFailures===undefined));
+});
+
+test('only the observed structured SystemError classifies an unreadable selected reply as a provider failure',()=>{
+ assert.throws(()=>E.decodeReply(JSON.stringify(systemReply())),error=>{
+  assert.equal(error.code,'PROVIDER_SYSTEM_ERROR');
+  assert.deepEqual(error.providerDiagnostics,{providerErrorCode:'SystemError',conversationId:systemReply().conversationId});
+  assert.equal(error.responseDiagnostics,undefined);
+  assert.ok(!JSON.stringify(error).includes('PRIVATE'));assert.ok(!JSON.stringify(error).includes('https:'));return true;
+ });
+ for(const activities of [undefined,[],[{type:'message',name:'ClientTraceData',value:{ErrorCode:'SystemError'}}],
+  [{type:'trace',name:'OtherTrace',value:{ErrorCode:'SystemError'}}],
+  [{type:'trace',name:'ClientTraceData',value:JSON.stringify({ErrorCode:'SystemError'})}],
+  [{type:'trace',name:'ClientTraceData',value:{ErrorCode:'QuotaExceeded'}}]]){
+  assert.throws(()=>E.decodeReply(JSON.stringify({...systemReply(),activities})),e=>e.code==='INVALID_AGENT_JSON');
+ }
+ // A valid JSON candidate still has to pass the ordinary schema check.
+ const wrongSchema=E.decodeReply(JSON.stringify({...systemReply(),lastResponse:'{"schemaVersion":2}'}));
+ assert.throws(()=>E.validateResult('summary',wrongSchema,source),e=>e.code==='INVALID_CONTRACT');
+ for(const conversationId of ['PRIVATE bad id','https://private.example.invalid','a'.repeat(400)]){
+  assert.throws(()=>E.decodeReply(JSON.stringify(systemReply(conversationId))),error=>{
+   assert.deepEqual(error.providerDiagnostics,{providerErrorCode:'SystemError'});return true;
+  });
+ }
+});
+
+test('SystemError recovery retains bounded private correlation and the existing single branch retry',async()=>{
+ for(const recover of [true,false]){
+  const calls=[],counts={summary:0,discussion:0,actions:0},events=[];
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{requestId:'app-request',now:()=>1234567890000,
+   onProgress:event=>events.push(event),fetchImpl:async(url,init)=>{
+    const stage=new URL(url).hostname.split('.')[0];const attempt=++counts[stage];calls.push(init.body);
+    return {ok:true,status:200,headers:new Headers({'x-ms-workflow-run-id':'workflow-'+stage+'-'+attempt}),
+     text:async()=>JSON.stringify(stage==='summary'&&(!recover||attempt===1)?systemReply():replies()[stage])};
+   }});
+  assert.deepEqual(counts,{summary:2,discussion:1,actions:1});assert.equal(new Set(calls).size,1);
+  assert.equal(result.status,recover?'completed':'partial');
+  assert.equal(result.branches.summary.formatFailures,undefined);
+  assert.deepEqual(result.branches.summary.providerFailures,Array.from({length:recover?1:2},(_,i)=>({attempt:i+1,
+   code:'PROVIDER_SYSTEM_ERROR',elapsedMs:0,receivedAt:'2009-02-13T23:31:30.000Z',workflowRunId:'workflow-summary-'+(i+1),
+   httpStatus:200,providerErrorCode:'SystemError',conversationId:systemReply().conversationId})));
+  assert.equal(events.filter(e=>e.code==='retrying').length,1);
+  assert.ok(!JSON.stringify(events).includes('workflow-'));assert.ok(!JSON.stringify(events).includes('conversationId'));
+  const privateAttempt=JSON.stringify(result.branches.summary);
+  assert.ok(!privateAttempt.includes('PRIVATE'));assert.ok(!privateAttempt.includes('https:'));
+  if(recover){
+   assert.equal(result.branches.summary.error,undefined);
+   assert.ok(!JSON.stringify(P.publicDraft({...base(),...P.resultChanges(base(),result)})).includes(systemReply().conversationId));
+  }else{
+   assert.equal(result.branches.summary.error.code,'PROVIDER_SYSTEM_ERROR');
+   assert.equal(result.branches.summary.error.workflowRunId,'workflow-summary-2');
+   assert.equal(result.branches.summary.error.conversationId,systemReply().conversationId);
+  }
+ }
+});
+
+test('the failed runner projects current section errors while provider correlation stays private',async()=>{
+ const initial=base();initial.executiveSummary='Keep the reviewed summary.';
+ let stored=structuredClone(initial);const counts={summary:0,discussion:0,actions:0};
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const runner=P.createRunner({getDraft:async()=>structuredClone(stored),config:()=>config,
+  saveDraft:async(draft,user,changes)=>(stored={...stored,...changes,revision:stored.revision+1},structuredClone(stored)),
+  execute:(packet,configuration,options)=>E.runSpecialists(packet,configuration,{...options,fetchImpl:async url=>{
+   const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+   if(stage==='actions')throw new DOMException('PRIVATE provider timeout','TimeoutError');
+   return {ok:stage==='summary',status:stage==='summary'?200:504,headers:new Headers({'x-ms-workflow-run-id':'private-workflow-id'}),
+    text:async()=>stage==='summary'?JSON.stringify(systemReply()):'PRIVATE gateway response'};
+  }})});
+ await runner.start(initial,1);await runner.active.get('17');
+ assert.deepEqual(counts,{summary:2,discussion:1,actions:1});assert.equal(stored.generation.status,'failed');
+ assert.equal(stored.executiveSummary,initial.executiveSummary);assert.deepEqual(stored.actions,initial.actions);
+ assert.equal(stored.generation.error,'One or more sections failed. Your saved content is unchanged. Try again.');
+ assert.equal(stored.qualityState.parallelAttempt.result.branches.summary.providerFailures.length,2);
+ const view=P.publicDraft(stored);
+ assert.match(view.generation.error,/Summary: Microsoft reported a service error/);
+ assert.match(view.generation.error,/Discussion: Microsoft did not respond in time/);
+ assert.match(view.generation.error,/Actions: Microsoft did not respond in time/);
+ const edited={...stored,executiveSummary:'Reviewer edited the summary after this failure.'};
+ assert.equal(P.publicDraft(edited).generation.error,stored.generation.error);
+ assert.equal(view.currentStep,0);assert.ok(!JSON.stringify(view).includes(systemReply().conversationId));
+ assert.ok(!JSON.stringify(view).includes('private-workflow-id'));assert.ok(!JSON.stringify(view).includes('PRIVATE'));
+});
+
+test('HTTP failure correlation is bounded and optional headers never change provider results',async()=>{
+ for(const [runId,expected]of [['08584080475070163708182899298CU08','08584080475070163708182899298CU08'],
+  ['https://private.example.invalid/secret',undefined],['a'.repeat(161),undefined],[undefined,undefined]]){
+  let calls=0;
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+   calls++;const stage=new URL(url).hostname.split('.')[0];return {ok:stage!=='summary',status:stage==='summary'?504:200,
+    headers:{get:()=>runId},text:async()=>stage==='summary'?'PRIVATE gateway reply':JSON.stringify(replies()[stage])};
+  }});
+  assert.equal(calls,3);assert.equal(result.branches.summary.error.code,'PROVIDER_HTTP_504');
+  assert.equal(result.branches.summary.error.workflowRunId,expected);
+  assert.equal(result.branches.summary.error.httpStatus,504);
+  assert.equal(result.branches.summary.providerFailures,undefined);
+  assert.ok(!JSON.stringify(result.branches.summary).includes('PRIVATE'));
+ }
+ const result=await generated({fetchImpl:async url=>({ok:true,headers:{get:()=>{throw Error('PRIVATE header error');}},
+  text:async()=>JSON.stringify(replies()[new URL(url).hostname.split('.')[0]])})});
+ assert.equal(result.result.status,'completed');assert.ok(!JSON.stringify(result.result).includes('PRIVATE'));
 });
 
 test('format diagnostics contain bounded structure only for empty, fenced, json-like and other replies',()=>{
@@ -175,14 +283,14 @@ test('format diagnostics contain bounded structure only for empty, fenced, json-
 });
 
 test('format retries share the original deadline and require at least ten seconds remaining',async t=>{
- for(const elapsed of [170000,170001,180000]){
+ for(const firstReply of ['invalid',JSON.stringify(systemReply())])for(const elapsed of [170000,170001,180000]){
   let clock=0;const counts={summary:0,discussion:0,actions:0},timeouts=[];
   const configured=t.mock.method(AbortSignal,'timeout',milliseconds=>{timeouts.push(milliseconds);return new AbortController().signal;});
   try{
    const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
    const result=await E.runSpecialists(P.packet(base()),config,{now:()=>clock,fetchImpl:async url=>{
     const stage=new URL(url).hostname.split('.')[0];const attempt=++counts[stage];
-    return {ok:true,text:async()=>{if(stage==='summary'&&attempt===1){clock=elapsed;return 'invalid';}return JSON.stringify(replies()[stage]);}};
+    return {ok:true,text:async()=>{if(stage==='summary'&&attempt===1){clock=elapsed;return firstReply;}return JSON.stringify(replies()[stage]);}};
    }});
    const retried=elapsed===170000;
    assert.deepEqual(counts,{summary:retried?2:1,discussion:1,actions:1});
@@ -201,7 +309,8 @@ test('schema, evidence, dates, HTTP and transport failures do not authorize form
   ['INVALID_DATE',JSON.stringify(badDate),200],['PROVIDER_HTTP_401','PRIVATE authentication reply',401],
   ['PROVIDER_HTTP_429','PRIVATE rate reply',429],['PROVIDER_HTTP_503','PRIVATE service reply',503],
   ['PROVIDER_ERROR','{"error":"PRIVATE failure"}',200],
-  ['PROVIDER_UNAVAILABLE',null,200,Error('PRIVATE network URL')],['PROVIDER_TIMEOUT',null,200,Object.assign(Error('PRIVATE timeout'),{name:'TimeoutError'})]
+  ['PROVIDER_UNAVAILABLE',null,200,Error('PRIVATE network URL')],['PROVIDER_TIMEOUT',null,200,Object.assign(Error('PRIVATE timeout'),{name:'TimeoutError'})],
+  ['PROVIDER_TIMEOUT',null,200,new DOMException('PRIVATE timeout with numeric code 23','TimeoutError')]
  ]){
   const counts={summary:0,discussion:0,actions:0},events=[];
   const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));

@@ -105,6 +105,25 @@ function mergeMeetingAgentProgress(prior, event = {}, options = {}) {
   return normaliseMeetingAgentProgress({ code: event.code, updatedAt, sections }, options);
 }
 
+// Explain only the current failed Beta attempt; historical errors cannot describe edited inputs or a later run.
+function meetingAgentParallelFailureMessage(draft = {}, currentInputHash = '') {
+  const generation = draft.generation, attempt = draft.qualityState?.parallelAttempt;
+  if (draft.generationProvider !== 'parallel-specialists-v1' || generation?.status !== 'failed'
+    || !generation.requestId || generation.requestId !== attempt?.requestId
+    || !['partial', 'failed'].includes(attempt.result?.status)
+    || typeof currentInputHash !== 'string' || !currentInputHash || generation.progressInputHash !== currentInputHash) return '';
+  const failures = PROGRESS_STAGES.filter(stage => attempt.result?.branches?.[stage]?.status === 'failed').map(stage => {
+    const code = attempt.result.branches[stage].error?.code;
+    const reason = ['PROVIDER_SYSTEM_ERROR', 'PROVIDER_ERROR'].includes(code) ? 'Microsoft reported a service error.'
+      : ['PROVIDER_TIMEOUT', 'PROVIDER_HTTP_408', 'PROVIDER_HTTP_504'].includes(code) ? 'Microsoft did not respond in time.'
+      : typeof code === 'string' && /^PROVIDER_HTTP_[45]\d{2}$/.test(code) ? 'Microsoft returned an unsuccessful response.'
+      : ['INVALID_JSON', 'INVALID_AGENT_JSON'].includes(code) ? 'Microsoft returned a response the app could not read.'
+      : 'The request could not complete.';
+    return stage[0].toUpperCase() + stage.slice(1) + ': ' + reason;
+  });
+  return failures.length ? failures.join(' ') + ' Your saved content has been kept. Try again later.' : '';
+}
+
 function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.now(), options = {}) {
   const parallel = draft.generationProvider === 'parallel-specialists-v1';
   const completed = PROGRESS_STAGES.map(stage => ({ ...draft.qualityState?.[stage], stage }))
@@ -161,7 +180,8 @@ function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.no
       ...(section.counts ? { counts: section.counts } : {}),
       ...(healthyPreviews && section.preview ? { preview: section.preview } : {}) };
   }
-  let message = messages[code];
+  let message = parallel && failed && !interrupted
+    ? meetingAgentParallelFailureMessage(draft, options.currentInputHash) || messages[code] : messages[code];
   if (parallel && active && !failed && code !== 'saving') {
     const checked = PROGRESS_STAGES.filter(key => sections[key]?.state === 'validated');
     const pending = PROGRESS_STAGES.filter(key => !['validated', 'failed'].includes(sections[key]?.state));
@@ -392,6 +412,7 @@ module.exports = {
   normaliseMeetingAgentSectionPreview,
   normaliseMeetingAgentProgress,
   mergeMeetingAgentProgress,
+  meetingAgentParallelFailureMessage,
   publicMeetingAgentProgress,
   normaliseMeetingAgentExecutionTelemetry,
   meetingAgentFailureClass,

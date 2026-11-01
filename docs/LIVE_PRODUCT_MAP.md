@@ -96,8 +96,15 @@ draft queue and preserve run identity and reviewer edits. Beta retries a section
 once after a JSON parse failure if at least ten seconds remain in the original
 180-second budget, retaining other checked sections and the same strict validation.
 Bounded response-shape diagnostics stay in private branch results; the existing
-progress panel identifies the retrying section. Other failure types and Original's
-retry policy retain their existing behavior.
+progress panel identifies the retrying section. Structured Microsoft SystemError
+replies that fail inner JSON parsing retain that same single retry and budget,
+with their provider code, validated conversation/run IDs and timings stored only
+in private branch results. Valid replies with historical error traces keep their
+normal decoding and validation. Current failed Beta sections get fixed, safe
+explanations in draft/status reads and remain visible on Details after reload;
+changed inputs or superseded attempts cannot supply those section explanations.
+TimeoutError is normalized before numeric browser error codes. Other failure
+types and Original's retry policy retain their existing behavior.
 Queue jobs use the separate worker below.
 
 ## Draft review, publication and exports

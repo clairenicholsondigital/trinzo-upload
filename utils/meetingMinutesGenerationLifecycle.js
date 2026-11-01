@@ -17,7 +17,7 @@ const { meetingAgentStaleStagesAfterGeneration, normaliseMeetingAgentGeneration 
 const { meetingMinutesAgentText } = require('./meetingMinutesPlainText');
 const { normaliseMeetingAgentPassCache } = require('./meetingMinutesPassCache');
 const parallelMinutes = require('./meetingMinutesParallel');
-const { mergeMeetingAgentProgress, publicMeetingAgentProgress } = require('./meetingMinutesAgentGeneration');
+const { mergeMeetingAgentProgress, publicMeetingAgentProgress, meetingAgentParallelFailureMessage } = require('./meetingMinutesAgentGeneration');
 const { preselectRequestedProposal } = require('./meetingMinutesProposalSelection');
 const { privateStagedCandidateQueueState } = require('./meetingMinutesCandidatePrewarm');
 const { publicMeetingAgentDraft } = require('./meetingMinutesDraftView');
@@ -616,6 +616,10 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     const draft = await loadOwnedMeetingAgentDraft(req);
     const generation = meetingAgentGenerationState(draft.generation);
     const running = Boolean(generation && generation.status === 'running');
+    const currentInputHash = parallelMinutes.isParallel(draft) ? parallelMinutes.inputHash(draft) : '';
+    const publicGeneration = publicMeetingAgentGeneration(generation);
+    const failureMessage = meetingAgentParallelFailureMessage(draft,currentInputHash);
+    if (publicGeneration && failureMessage) publicGeneration.error = failureMessage;
     const completedPerformance = running ? null : meetingAgentCompletedStagePerformance(draft);
     let observedPerformance;
     if (completedPerformance) {
@@ -643,9 +647,10 @@ router.get('/meeting-minutes-agent/drafts/:draftId/generation', requireAuth, asy
     }
     return res.json({
       ok: true,
-      generation: publicMeetingAgentGeneration(generation),
+      generation: publicGeneration,
       progress: publicMeetingAgentProgress(draft, generation, Date.now(), {
-        includePreviews: parallelMinutes.isParallel(draft) && generation?.progressInputHash === parallelMinutes.inputHash(draft)
+        includePreviews: Boolean(currentInputHash) && generation?.progressInputHash === currentInputHash,
+        currentInputHash
       }),
       actionsPrewarm: meetingAgentActionsPrewarmState(draft),
       speculation: meetingAgentSpeculationState(draft),

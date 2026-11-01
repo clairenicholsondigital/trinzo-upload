@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {STAGES, hash, runSpecialists} = require('./meetingMinutesParallelEngine');
-const {mergeMeetingAgentProgress} = require('./meetingMinutesAgentGeneration');
+const {mergeMeetingAgentProgress,meetingAgentParallelFailureMessage} = require('./meetingMinutesAgentGeneration');
 const PROVIDER = 'parallel-specialists-v1';
 const isParallel = draft => draft?.generationProvider === PROVIDER;
 const clone = value => structuredClone(value);
@@ -30,7 +30,8 @@ function publicDraft(draft, options = {}) {
   const generation = draft.generation;
   const staleRun = generation?.status === 'running' && Date.now() - Date.parse(generation.startedAt) > 240000;
   result.generation = generation ? {stage:generation.stage, status:staleRun?'failed':generation.status,
-    startedAt:generation.startedAt, error:staleRun?'Generation was interrupted. Try again.':generation.error || '',
+    startedAt:generation.startedAt, error:staleRun?'Generation was interrupted. Try again.'
+      : (generation.status === 'failed' && meetingAgentParallelFailureMessage(draft,inputHash(draft))) || generation.error || '',
     message:generation.message || '', completedPasses:[], callTimings:[]} : null;
   result.generatedStages = Object.fromEntries(STAGES.map(stage=>[stage,draft.qualityState?.[stage]?.completedAt || '']));
   result.actionsPrewarm = null; result.speculation = null; result.qualityNotice = '';

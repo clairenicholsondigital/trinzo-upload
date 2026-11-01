@@ -176,6 +176,63 @@ test('Beta retries identify only affected sections, retain checked previews and 
  assert.deepEqual(saved,before);assert.equal(writes,0);
 });
 
+function failedProviderAttempt(codes={summary:'PROVIDER_SYSTEM_ERROR',discussion:'PROVIDER_HTTP_504',actions:'PROVIDER_TIMEOUT'}) {
+ reset();runningPreview();saved.generation.status='failed';saved.generation.error='One or more sections failed. Your saved content is unchanged. Try again.';
+ saved.qualityState.parallelAttempt={requestId:saved.generation.requestId,result:{status:'failed',branches:
+  Object.fromEntries(Object.entries(codes).map(([stage,code])=>[stage,{status:'failed',error:{code,message:'PRIVATE provider response',workflowRunId:'PRIVATE correlation id'},
+   providerFailures:[{attempt:1,code,workflowRunId:'PRIVATE correlation id'}]}]))}};
+ for(const stage of Object.keys(codes))saved.generation.progress=G.mergeMeetingAgentProgress(saved.generation.progress,{stage,code:'failed'},{includePreviews:true});
+}
+
+test('current failed Beta attempts expose fixed useful section failures through polling and reload without provider diagnostics',async()=>{
+ for(const [code,reason] of [
+  ['PROVIDER_SYSTEM_ERROR','Microsoft reported a service error.'],['PROVIDER_TIMEOUT','Microsoft did not respond in time.'],
+  ['PROVIDER_HTTP_504','Microsoft did not respond in time.'],['PROVIDER_HTTP_429','Microsoft returned an unsuccessful response.'],
+  ['INVALID_JSON','Microsoft returned a response the app could not read.'],['INVALID_AGENT_JSON','Microsoft returned a response the app could not read.'],
+  ['PRIVATE unknown code','The request could not complete.']
+ ]){
+  failedProviderAttempt({summary:code});const before=structuredClone(saved);
+  const expected='Summary: '+reason+' Your saved content has been kept. Try again later.';
+  const r=await request('get','/generation');assert.equal(r.statusCode,200);
+  assert.equal(r.body.progress.message,expected);assert.equal(r.body.generation.error,expected);
+  assert.equal(r.body.draft.generation.error,expected);assert.equal(r.body.progress.status,'failed');
+  assert.ok(!JSON.stringify(r.body).includes('PRIVATE'));assert.ok(!JSON.stringify(r.body).includes('providerFailures'));
+  const reloaded=(await request('get')).body.draft;
+  assert.equal(reloaded.generation.error,expected);assert.equal(reloaded.qualityState,undefined);
+  assert.deepEqual(saved,before);assert.equal(writes,0);
+ }
+ failedProviderAttempt();
+ const message=(await request('get','/generation')).body.generation.error;
+ assert.match(message,/Summary: Microsoft reported a service error\./);
+ assert.match(message,/Discussion: Microsoft did not respond in time\./);
+ assert.match(message,/Actions: Microsoft did not respond in time\./);
+});
+
+test('historical failures do not describe a newer run, edited inputs, completed results, interrupted runs or Original',async()=>{
+ for(const condition of ['request','input','completed','running','interrupted','original']){
+  failedProviderAttempt();
+  if(condition==='request')saved.qualityState.parallelAttempt.requestId='older-run';
+  if(condition==='input')saved.details.meetingTitle='Changed after failure';
+  if(condition==='completed')saved.generation=null;
+  if(condition==='running')saved.generation.status='running';
+  if(condition==='interrupted'){saved.generation.status='running';saved.generation.bootId='older-boot';}
+  if(condition==='original')saved.generationProvider='legacy';
+  const before=structuredClone(saved),r=await request('get','/generation');
+  assert.ok(!JSON.stringify(r.body).includes('Microsoft reported a service error.'),condition);
+  assert.ok(!JSON.stringify(r.body).includes('PRIVATE'),condition);
+  const reloaded=(await request('get')).body.draft;
+  assert.ok(!JSON.stringify(reloaded).includes('Microsoft reported a service error.'),condition);
+  assert.deepEqual(saved,before);assert.equal(writes,0);
+ }
+ failedProviderAttempt();const discussion=structuredClone(saved.discussion);
+ discussion[0].points[0].text+=' Reviewer clarification.';
+ const edited=await request('patch','',{discussion});assert.equal(edited.statusCode,200);
+ assert.ok(!edited.body.draft.generation.error.includes('Microsoft reported a service error.'));
+ assert.ok(!(await request('get','/generation')).body.generation.error.includes('Microsoft reported a service error.'));
+ assert.ok(!(await request('get')).body.draft.generation.error.includes('Microsoft reported a service error.'));
+ assert.equal(writes,1);
+});
+
 test('Original retry progress retains its existing waiting state and service message',async()=>{
  reset();saved.generationProvider='legacy';
  const startedAt=new Date().toISOString();
