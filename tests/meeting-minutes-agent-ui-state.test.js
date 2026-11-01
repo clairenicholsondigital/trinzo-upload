@@ -4123,18 +4123,29 @@ test('document print keeps meeting identity and topic visibility while excluding
       && response.url().endsWith('/api/meeting-minutes-agent/drafts/document')
       && response.request().postDataJSON().includeSections.topicHeadings === false);
     await page.locator('[data-doc-topic-headings]').uncheck(); await saved;
-    await page.click('#previewDocument');
     await page.click('#reviewQueueToggle');
     assert.equal(await page.locator('#sideDrawer').isVisible(), true);
-    await page.emulateMedia({ media: 'print' });
-    const printed = await page.locator('#finalDocument').innerText();
-    for (const text of ['UI state test', '16 Sept 2026', 'Teams', 'Review']) assert.ok(printed.includes(text), text);
-    for (const selector of ['#previewBar', '#sideDrawer', '#undoToast', '#finalDocument .doc-topic-head.is-hidden',
-      '#finalDocument .section-menu', '#finalDocument .doc-point>.row-menu']) {
-      for (const node of await page.locator(selector).all()) assert.equal(await node.isVisible(), false, selector);
+    for (const mode of ['editing', 'preview']) {
+      if (mode === 'preview') {
+        await page.keyboard.press('Escape');
+        await page.click('#previewDocument');
+        await page.click('#reviewQueueToggle');
+        assert.equal(await page.locator('#sideDrawer').isVisible(), true);
+      }
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.emulateMedia({ media: 'print' });
+        const printed = await page.locator('#finalDocument').innerText();
+        for (const text of ['UI state test', '16 Sept 2026', 'Teams', 'Review']) assert.ok(printed.includes(text), text);
+        for (const selector of ['#previewBar', '#saveStrip', '#sideDrawer', '#undoToast', '#finalDocument .doc-topic-head.is-hidden',
+          '#finalDocument .section-menu', '#finalDocument .doc-point>.row-menu']) {
+          for (const node of await page.locator(selector).all()) assert.equal(await node.isVisible(), false, `${mode} ${width}: ${selector}`);
+        }
+        assert.equal(printed.includes('Report review'), false);
+        assert.ok(printed.includes('The revised report is ready for circulation.'));
+        await page.emulateMedia({ media: 'screen' });
+      }
     }
-    assert.equal(printed.includes('Report review'), false);
-    assert.ok(printed.includes('The revised report is ready for circulation.'));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -4311,7 +4322,7 @@ test('cancelling a later inline edit cannot hide a failed save', { timeout:12000
     await new Promise(resolve => server.close(resolve));
   }
 });
-test('on a phone, Edit structure lives in the document menu and the button returns while it is on', { timeout:120000 }, async () => {
+test('phone document menus and Finalised controls stay usable at narrow widths', { timeout:120000 }, async () => {
   const { server, port } = await startStubServer(); let browser;
   try {
     browser = await chromium.launch({ headless: true });
@@ -4326,6 +4337,47 @@ test('on a phone, Edit structure lives in the document menu and the button retur
     assert.equal(await page.locator('#editStructureToggle').isVisible(), true);
     await page.locator('#editStructureToggle').click();
     await page.waitForSelector('body.doc-mode');
+    const state = () => page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+    assert.equal((await state()).patches, 0, 'changing the editing view does not save the draft');
+    await page.locator('#finaliseMinutes').click();
+    const finalised = page.waitForResponse(r => r.request().method() === 'PATCH'
+      && r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing'));
+    await page.locator('[data-finalise-anyway]').click();
+    assert.equal((await finalised).request().postDataJSON().status, 'complete');
+    await page.waitForSelector('body.doc-finalised');
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const layout = await page.evaluate(() => {
+        const bar = document.getElementById('saveStrip').getBoundingClientRect();
+        const controls = [...document.querySelectorAll('.save-strip-actions>button:not([hidden]),#finalisedNote,#finalisedExport .export-menu>summary')]
+          .map(node => {
+            const r = node.getBoundingClientRect();
+            return { text:node.textContent.trim(), left:r.left, right:r.right, top:r.top, bottom:r.bottom,
+              clippedText:node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1 };
+          });
+        return { bar:{ left:bar.left, right:bar.right, top:bar.top, bottom:bar.bottom, height:bar.height }, controls,
+          paddingBottom:parseFloat(getComputedStyle(document.body).paddingBottom), bottomGap:innerHeight - bar.bottom };
+      });
+      assert.equal(layout.controls.length, 4);
+      assert.ok(layout.controls.every(c => c.left >= layout.bar.left && c.right <= layout.bar.right
+        && c.top >= layout.bar.top && c.bottom <= layout.bar.bottom), JSON.stringify(layout));
+      assert.ok(layout.controls.every(c => !c.clippedText), JSON.stringify(layout));
+      assert.ok(layout.paddingBottom >= layout.bar.height + layout.bottomGap, JSON.stringify(layout));
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      assert.equal(await page.evaluate(() => document.getElementById('finalDocument').getBoundingClientRect().bottom
+        <= document.getElementById('saveStrip').getBoundingClientRect().top), true, 'the bar leaves the final content visible');
+    }
+    assert.equal(await page.locator('[data-doc-edit-structure]').isHidden(), true);
+    const locked = await state();
+    await page.locator('[data-doc-edit-structure]').dispatchEvent('click');
+    assert.equal(await page.locator('body.doc-mode.doc-finalised').count(), 1);
+    assert.equal((await state()).patches, locked.patches, 'the hidden menu cannot unlock or save complete minutes');
+    await page.setViewportSize({ width:320, height:844 });
+    const reopened = page.waitForResponse(r => r.request().method() === 'PATCH'
+      && r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing'));
+    await page.locator('#reopenMinutes').click();
+    assert.equal((await reopened).request().postDataJSON().status, 'draft');
+    await page.waitForFunction(() => !document.body.classList.contains('doc-finalised'));
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

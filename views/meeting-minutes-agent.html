@@ -1228,7 +1228,7 @@
    so there is a way back), the edit hint sits tight above the first section,
    and an action's ••• sits in the card's corner instead of its own row. */
 .meeting-agent-page .doc-menu-structure{display:none!important}
-@media(max-width:650px){
+@media screen and (max-width:650px){
   .meeting-agent-page.doc-ready .document-header{gap:.5rem}
   .meeting-agent-page.doc-ready .document-header-tools #editStructureToggle[aria-pressed="false"]{display:none}
   .meeting-agent-page.doc-ready .doc-menu-structure:not([hidden]){display:flex!important}
@@ -1251,6 +1251,12 @@
   .meeting-agent-page.doc-mode #previewDocument .narrow-label{display:none}
   .meeting-agent-page.doc-mode .save-strip .finalise-button{height:38px}
   .meeting-agent-page.doc-mode{padding-bottom:4.5rem}
+  /* Completion keeps its full labels and exports inside the phone bar. */
+  .meeting-agent-page.doc-mode.doc-finalised .save-strip-actions{flex:0 0 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+  .meeting-agent-page.doc-mode.doc-finalised .finalised-note{flex-basis:100%;white-space:nowrap}
+  .meeting-agent-page.doc-mode.doc-finalised .save-strip-actions>button,
+  .meeting-agent-page.doc-mode.doc-finalised .finalised-export{flex-shrink:0;white-space:nowrap}
+  .meeting-agent-page.doc-mode.doc-finalised{padding-bottom:10rem}
   .meeting-agent-page .doc-attendees .doc-attendee-group{grid-template-columns:minmax(0,1fr);gap:.3rem}
   .meeting-agent-page .doc-attendees .doc-attendee-label{padding-top:0;font-size:var(--fs-sm);color:var(--muted)}
 }
@@ -1312,7 +1318,7 @@
 .meeting-agent-page .due-line{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--fs-sm);line-height:1.45;color:var(--muted)}
 .meeting-agent-page .due-line .ic{width:.85rem;height:.85rem;vertical-align:-.12em;margin-right:.3rem}
 .meeting-agent-page .due-line .due-label{display:inline}
-.meeting-agent-page .due-line .due-kind{font-weight:600}
+.meeting-agent-page .due-line .due-kind{font-weight:var(--fw-bold)}
 .meeting-agent-page .due-line-date .due-label{color:var(--heading)}
 .meeting-agent-page .due-line-date .due-kind{display:none}
 .meeting-agent-page .due-hint{margin:.1rem .3rem .3rem;font-size:var(--fs-cap);color:var(--muted);line-height:1.4;max-width:15rem}
