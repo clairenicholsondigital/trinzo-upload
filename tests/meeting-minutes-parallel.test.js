@@ -126,6 +126,32 @@ test('two malformed branches recover independently and empty inner responses rem
  }
 });
 
+test('empty lastResponse preserves valid response fallbacks and direct specialist bodies without retries',async()=>{
+ for(const wrap of [
+  result=>({lastResponse:'',responses:[JSON.stringify(result)]}),
+  result=>({lastResponse:'',responses:[result]}),
+  result=>({...result,lastResponse:''})
+ ]){
+  const counts={summary:0,discussion:0,actions:0};
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+   const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+   return {ok:true,text:async()=>JSON.stringify(wrap(replies()[stage]))};
+  }});
+  assert.deepEqual(counts,{summary:1,discussion:1,actions:1});assert.equal(result.status,'completed');
+  assert.deepEqual(result.minutes,(await generated()).result.minutes);
+  assert.ok(E.STAGES.every(stage=>result.branches[stage].formatFailures===undefined));
+ }
+ const counts={summary:0,discussion:0,actions:0};
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const invalid=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+  const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+  return {ok:true,text:async()=>JSON.stringify({...replies()[stage],schemaVersion:2,lastResponse:''})};
+ }});
+ assert.deepEqual(counts,{summary:1,discussion:1,actions:1});assert.equal(invalid.status,'failed');
+ assert.ok(E.STAGES.every(stage=>invalid.branches[stage].error.code==='INVALID_CONTRACT'&&invalid.branches[stage].formatFailures===undefined));
+});
+
 test('format diagnostics contain bounded structure only for empty, fenced, json-like and other replies',()=>{
  const privateText='PRIVATE response https://private.example.invalid/secret';
  for(const [raw,code,envelope,shape]of [

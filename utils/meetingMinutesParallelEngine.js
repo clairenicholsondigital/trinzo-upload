@@ -27,9 +27,11 @@ function decodeReply(raw) {
   if (value?.error) throw fail('PROVIDER_ERROR', 'Microsoft reported an error.');
   const last = value?.lastResponse;
   const finalResponse = Array.isArray(value?.responses) ? value.responses.at(-1) : null;
-  // Empty inner text is still an agent response, and must fail JSON decoding.
-  const envelope = typeof last === 'string' || last ? 'lastResponse'
-    : typeof finalResponse === 'string' || finalResponse ? 'responses_last' : 'body';
+  // Preserve successful fallback responses and direct specialist bodies before
+  // classifying an otherwise empty wrapper response as malformed agent JSON.
+  const directResult = object(value) && Object.hasOwn(value, 'schemaVersion') && Object.hasOwn(value, 'specialist');
+  const envelope = last ? 'lastResponse' : finalResponse ? 'responses_last' : directResult ? 'body'
+    : typeof last === 'string' ? 'lastResponse' : typeof finalResponse === 'string' ? 'responses_last' : 'body';
   const candidate = envelope === 'lastResponse' ? last : envelope === 'responses_last' ? finalResponse : value;
   try { return typeof candidate === 'string' ? JSON.parse(candidate) : candidate; }
   catch { throw replyParseError('INVALID_AGENT_JSON', 'The specialist did not return strict JSON.', raw, candidate, envelope); }
