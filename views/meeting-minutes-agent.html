@@ -1165,6 +1165,42 @@
   display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:50%;
   background:transparent;color:var(--muted);font-size:1.05rem;line-height:1;cursor:pointer}
 .meeting-agent-page .stale-dismiss:hover{background:var(--soft-2);color:var(--heading)}
+
+/* ------------------------------------------------------ button hierarchy -- */
+/* One filled button on screen: Finalise. Everything else is secondary (36px,
+   bordered), tertiary (text) or a red item at the end of a menu. */
+.meeting-agent-page.doc-ready .save-strip .secondary,
+.meeting-agent-page.doc-ready .document-header-tools>.secondary{height:36px;padding:0 14px;font-size:14px;font-weight:600;box-sizing:border-box}
+.meeting-agent-page.doc-ready .document-header-tools .doc-menu>summary{height:32px;width:32px;min-width:32px;padding:0;display:grid;place-items:center}
+/* Step-to-step buttons and top-level regenerate buttons give way to the tabs
+   and the section menus once the minutes exist. */
+.meeting-agent-page.doc-ready [data-screen] .screen-actions,
+.meeting-agent-page.doc-ready #regenerateDiscussion,
+.meeting-agent-page.doc-ready #regenerateActions,
+.meeting-agent-page.doc-ready #generateSummary{display:none!important}
+/* Row menus replace the red trash icons. */
+.meeting-agent-page .row-menu>summary{display:grid;place-items:center;min-width:32px;min-height:32px;box-sizing:border-box;padding:0 .45rem;list-style:none}
+.meeting-agent-page .row-menu>summary::-webkit-details-marker{display:none}
+.meeting-agent-page .record-menu-popover>.delete{color:var(--danger-text)}
+.meeting-agent-page .record-menu-popover>.delete:hover{background:var(--danger-bg)}
+.meeting-agent-page .row-decisions{align-items:center}
+.meeting-agent-page .row-decisions .row-menu>summary{border-radius:var(--radius-sm)}
+.meeting-agent-page .row-decisions .record-menu-popover button{border:0;border-radius:var(--radius-sm);font-size:var(--fs-sm);padding:.45rem .6rem;line-height:1.3}
+.meeting-agent-page .row-decisions .record-menu-popover,.meeting-agent-page .attendee-chip .record-menu-popover,.meeting-agent-page #objectivesList .record-menu-popover{right:auto;left:0}
+.meeting-agent-page .attendee-group:last-child .attendee-chip .record-menu-popover,.meeting-agent-page #objectivesList .record-menu-popover{left:auto;right:0}
+.meeting-agent-page .row-reviewed{display:inline-grid;place-items:center;width:1.5rem;height:1.5rem;color:var(--ok,#2f7a4d)}
+.meeting-agent-page .row-reviewed .ic{width:1rem;height:1rem}
+.meeting-agent-page .attendee-chip{align-items:center}
+/* Section headings in the document carry a menu revealed on hover or focus. */
+.meeting-agent-page .section-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.meeting-agent-page .section-head h3{margin:0}
+.meeting-agent-page .section-head+*{margin-top:.6rem}
+.meeting-agent-page .section-menu>summary{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;opacity:0;transition:opacity .12s}
+.meeting-agent-page section:hover .section-menu>summary,
+.meeting-agent-page .section-menu>summary:focus-visible,
+.meeting-agent-page .section-menu[open]>summary{opacity:1}
+@media (hover:none){.meeting-agent-page .section-menu>summary{opacity:1}}
+.meeting-agent-page.doc-preview .section-menu{display:none}
 </style>
 <script defer src="/static/meeting-minutes-timing.js"></script>
 <script defer src="/static/meeting-minutes-filing-order.js"></script>
@@ -1290,7 +1326,7 @@
   <!-- ================================================== 2 - discussion -->
   <section id="discussionScreen" class="panel screen" data-screen="2">
     <div class="paper">
-      <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="button" type="button">Apply changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
+      <div class="toolbar"><h2>Discussion, decisions and questions</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across this page. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="discussionInstruction" placeholder="Describe the changes to make..." aria-label="Discussion editing instruction"></textarea><button id="applyDiscussionEdit" class="secondary" type="button">Apply changes</button></div></details><button id="addDiscussion" class="secondary" type="button">Add topic</button><button id="regenerateDiscussion" class="secondary quiet" type="button" title="Ask the agent to draft the discussion again from the transcript.">Regenerate</button></div></div>
       <div id="omittedDetailsReview"></div>
       <div data-stale-slot="discussion"></div><div id="discussionListBar"></div>
       <div id="discussionList"></div>
@@ -1302,7 +1338,7 @@
   <!-- ===================================================== 2 - actions -->
   <section class="panel screen" data-screen="3">
     <div class="paper">
-      <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="button" type="button">Apply changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button><button id="regenerateActions" class="secondary quiet" type="button" title="Ask the agent to draft the actions again from the transcript.">Regenerate</button></div></div>
+      <div class="toolbar"><h2>Actions and timing</h2><div class="screen-toolbar-actions"><details class="agent-edit agent-edit-inline"><summary class="secondary">Ask AI to edit</summary><div class="agent-edit-body"><p class="muted">Describe changes across the action list. Generated changes are applied automatically. You can undo them afterwards.</p><textarea id="actionsInstruction" placeholder="Describe the changes to make..." aria-label="Action editing instruction"></textarea><button id="applyActionsEdit" class="secondary" type="button">Apply changes</button></div></details><button id="addAction" class="secondary" type="button">Add action</button><button id="regenerateActions" class="secondary quiet" type="button" title="Ask the agent to draft the actions again from the transcript.">Regenerate</button></div></div>
       <div data-stale-slot="actions"></div><div id="actionReviewBar" class="action-review-bar" role="status" aria-live="polite" hidden></div>
       <div class="actions-wrap"><table class="actions-table editable-actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody id="actionsBody"></tbody></table></div>
       <details id="removedActionsPanel" class="removed-actions" hidden><summary id="removedActionsSummary">Removed actions</summary><div id="removedActionsList"></div></details>

@@ -6,6 +6,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
+
+// Row controls live in each row's "…" menu: open the menu, then click the item.
+async function clickMenuItem(page, target) {
+  const item = typeof target === 'string' ? page.locator(target).first() : target;
+  await item.evaluate((node) => { const menu = node.closest('details[data-menu]'); if (menu) menu.open = true; });
+  await item.click();
+}
 const { normaliseAgentResult } = require('../utils/meetingMinutesResultNormalization');
 const Timing = require('../utils/meetingMinutesTiming');
 
@@ -152,7 +159,8 @@ test('final wording, owners and timing edit exactly one colliding occurrence', {
   const h = await harness('final');
   try {
     const { page } = h;
-    await page.click('#previewDocument');
+    // A processed draft edits in the document itself.
+    if (!(await page.locator('body.doc-mode').count())) await page.click('#editStructureToggle');
     const fields = (field) => page.locator('#finalDocument [data-kind="action"][data-field="' + field + '"]');
     await fields('action').nth(1).click();
     assert.equal(await page.locator('#finalDocument [data-final-editor]').count(), 1);
@@ -189,7 +197,7 @@ test('identical rows keep separate checked, source, warning and restore identiti
     await row(1).locator('[data-finish-timing-edit]').click();
     // Finish triggers a save; settle it before the next explicit decision.
     await page.waitForFunction(() => document.querySelector('#saveStatus').dataset.state === 'saved');
-    await h.mutation(() => row(1).locator('[data-keep-action]').click());
+    await h.mutation(() => clickMenuItem(page, row(1).locator('[data-keep-action]')));
     const keys = h.saved().actions.map((action) => action.occurrenceId);
     assert.deepEqual(h.saved().keptActionIds, ['A4'], 'ambiguous historical ID remains history');
     assert.deepEqual(h.saved().keptActionOccurrenceIds, [keys[1]]);
@@ -203,7 +211,7 @@ test('identical rows keep separate checked, source, warning and restore identiti
     assert.equal(await row(1).locator('[data-keep-action]').getAttribute('aria-pressed'), 'true');
     const sourceIds = await page.locator('#actionsBody [data-action-transcript-panel]').evaluateAll((nodes) => nodes.map((node) => node.id));
     assert.equal(new Set(sourceIds).size, 2);
-    await row(1).locator('[data-open-action-transcript]').click();
+    await clickMenuItem(page, row(1).locator('[data-open-action-transcript]'));
     assert.equal(await row(1).locator('[data-action-transcript-panel]').getAttribute('open'), '');
     assert.equal(await row(0).locator('[data-action-transcript-panel]').getAttribute('open'), null);
     await page.click('#reviewQueueToggle');
@@ -213,7 +221,7 @@ test('identical rows keep separate checked, source, warning and restore identiti
     await page.locator('[data-view-flag-target]').nth(1).click();
     assert.equal(await row(1).locator('[data-add-owner]').evaluate((node) => node === document.activeElement), true);
     const before = h.saved().actions[1];
-    await h.mutation(() => row(1).locator('[data-reject-action]').click());
+    await h.mutation(() => clickMenuItem(page, row(1).locator('[data-reject-action]')));
     assert.equal(h.saved().actions.length, 1);
     const removed = h.saved().removedActions[0];
     for (const field of ['id', 'occurrenceId', 'evidenceIds', 'reviewFlagIds', 'timingDecision']) assert.deepEqual(removed[field], before[field]);

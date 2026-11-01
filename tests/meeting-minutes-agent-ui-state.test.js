@@ -7,6 +7,13 @@ const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
 
+// Row controls live in each row's "…" menu: open the menu, then click the item.
+async function clickMenuItem(page, target) {
+  const item = typeof target === 'string' ? page.locator(target).first() : target;
+  await item.evaluate((node) => { const menu = node.closest('details[data-menu]'); if (menu) menu.open = true; });
+  await item.click();
+}
+
 const { automaticMeetingAgentProposalReview } = require('../routes/api').stagedEvaluation;
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -912,7 +919,7 @@ test('an internal-only meeting does not reserve an empty client-attendee panel',
     assert.equal(await page.locator('#addFirstClientAttendee').isHidden(), true);
     assert.equal(await page.locator('#clientAttendees input').evaluate((node) => node === document.activeElement), true);
     await page.fill('#clientAttendees input', 'Taylor Green');
-    await page.click('#clientAttendees [data-remove-attendee]');
+    await clickMenuItem(page, '#clientAttendees [data-remove-attendee]');
     assert.equal(await page.locator('#clientAttendeeGroup').isHidden(), true, 'removing the only client attendee collapses the empty panel again');
     assert.equal(await page.locator('#addFirstClientAttendee').isVisible(), true);
     assert.deepEqual(errors, []);
@@ -1022,7 +1029,7 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const checkedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH'
       && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as checked');
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     await checkedSave;
     assert.equal((await bar.textContent()).trim(), '1 action');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1, 'keeping removes nothing');
@@ -1031,17 +1038,17 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const uncheckedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH'
       && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as unchecked');
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     await uncheckedSave;
     assert.equal((await bar.textContent()).trim(), '1 action');
     assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Action marked as unchecked.');
 
     // Put it back in the checked state before exercising removal.
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     assert.equal((await bar.textContent()).trim(), '1 action');
 
     // Rejecting moves the row out of the register and into Removed.
-    await page.click('#actionsBody [data-action-row="0"] [data-reject-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     assert.equal(await page.locator('#removedActionsPanel').isHidden(), false);
     assert.match(await page.textContent('#removedActionsSummary'), /1 removed action/);
@@ -1278,7 +1285,7 @@ test('action View transcript opens the relevant passage by mouse and keyboard', 
     await page.click('[data-step="3"]');
     const button = page.locator('[data-action-row="0"] [data-open-action-transcript]');
     const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
-    await button.click();
+    await clickMenuItem(page, button);
     assert.equal(await panel.evaluate((node) => node.open), true);
     assert.equal(await button.getAttribute('aria-expanded'), 'true');
     assert.ok(await panel.locator('.source-speaker').count() > 0, 'speaker is visible');
@@ -1289,6 +1296,8 @@ test('action View transcript opens the relevant passage by mouse and keyboard', 
       node.open = false;
       node.querySelector('summary').blur();
     });
+    await page.locator('[data-action-row="0"] .row-menu>summary').focus();
+    await page.keyboard.press('Enter');
     await button.focus();
     await page.keyboard.press('Enter');
     await page.waitForTimeout(50);
@@ -1308,7 +1317,7 @@ test('transcript excerpts hide internal ids and avoid repeated speaker labels', 
     browser = launched.browser;
     const { page, errors } = launched;
     await page.click('[data-step="3"]');
-    await page.click('[data-action-row="0"] [data-open-action-transcript]');
+    await clickMenuItem(page, '[data-action-row="0"] [data-open-action-transcript]');
     const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
 
     assert.equal(await panel.locator('.source-id').count(), 0, 'internal transcript ids are not rendered');
@@ -1418,7 +1427,7 @@ test('edit confirmations and history labels use sentence capitalisation', { time
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH'
       && response.request().postDataJSON().reviewDecisionLabel === 'Remove objective');
-    await page.locator('[data-remove-objective]').first().click();
+    await clickMenuItem(page, '[data-remove-objective]');
     await saved;
     assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Remove objective.');
     assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Remove objective');
@@ -1751,7 +1760,7 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const actionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
-    await page.click('#actionsBody [data-reject-action]');
+    await clickMenuItem(page, '#actionsBody [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     await actionDeleteSave;
     // Moving to another screen is not an edit, so it sends nothing; the
@@ -2199,7 +2208,7 @@ test('an unlinked timing warning routes to its Action field and resolves when th
 
     const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
       && response.request().method() === 'PATCH');
-    await page.click('#minutes-action-training-action [data-reject-action]');
+    await clickMenuItem(page, '#minutes-action-training-action [data-reject-action]');
     await savedResponse;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/unlinked-warning')).json()).draft);
     assert.equal(saved.reviewFlags.find((flag) => flag.id === 'training-timing-flag').status, 'dismissed');
@@ -2587,7 +2596,7 @@ test('dense layouts give writing space to content rather than repeated controls'
     const objectiveLayout = await page.evaluate(() => {
       const list = document.getElementById('objectivesList').getBoundingClientRect();
       const editor = document.querySelector('[data-objective-index]').getBoundingClientRect();
-      const remove = document.querySelector('[data-remove-objective]');
+      const remove = document.querySelector('[data-remove-objective]').closest('details').querySelector('summary');
       const removeRect = remove.getBoundingClientRect();
       return {
         listWidth: list.width,
@@ -2601,9 +2610,10 @@ test('dense layouts give writing space to content rather than repeated controls'
     });
     assert.ok(objectiveLayout.editorWidth > objectiveLayout.listWidth * 0.8, JSON.stringify(objectiveLayout));
     assert.ok(objectiveLayout.editorHeight < 80, JSON.stringify(objectiveLayout));
-    assert.equal(objectiveLayout.removeText, '');
-    assert.match(objectiveLayout.removeLabel, /Remove objective 1/i);
-    assert.ok(objectiveLayout.removeWidth >= 36 && objectiveLayout.removeHeight >= 36, JSON.stringify(objectiveLayout));
+    // Removal sits in the objective's own "…" menu rather than a red trash icon.
+    assert.equal(objectiveLayout.removeText, '•••');
+    assert.match(objectiveLayout.removeLabel, /Objective 1 options/i);
+    assert.ok(objectiveLayout.removeWidth >= 32 && objectiveLayout.removeHeight >= 32, JSON.stringify(objectiveLayout));
 
     await page.click('[data-step="3"]');
     const actionLayout = await page.evaluate(() => {
@@ -3328,15 +3338,13 @@ test('an action row has one set of controls, not a menu repeating them', { timeo
     const launched = await launchPage(port, 'editor');
     browser = launched.browser;
     const { page, errors } = launched;
-    assert.equal(await page.locator('#actionsBody .record-menu').count(), 0);
+    // Source, review and removal share one "…" menu, with removal last and red.
     const row = page.locator('#actionsBody [data-action-row]').first();
-    assert.equal(await row.locator('[data-reject-action]').count(), 1);
-    assert.equal(await row.locator('[data-open-action-transcript]').count(), 1);
-    assert.equal((await row.locator('[data-transcript-toggle-label]').innerText()).trim(), 'Source');
-    assert.equal((await row.locator('[data-keep-action]').innerText()).trim(), '');
-    assert.equal((await row.locator('[data-reject-action]').innerText()).trim(), '');
-    assert.equal(await row.locator('[data-keep-action]').getAttribute('aria-label'), 'Mark action checked');
-    assert.equal(await row.locator('[data-reject-action]').getAttribute('aria-label'), 'Remove action from minutes');
+    assert.equal(await row.locator('.row-menu').count(), 1);
+    assert.equal(await row.locator('use[href="#i-trash"]').count(), 0, 'no red trash icon in the row');
+    const items = await row.locator('.row-menu [data-menu-popover] > button').evaluateAll((nodes) => nodes.map((node) => node.textContent.trim()));
+    assert.deepEqual(items, ['View source', 'Mark reviewed', 'Remove action']);
+    assert.equal(await row.locator('.row-menu summary').getAttribute('title'), 'Action 1 options');
     const controlsWidth = await row.locator('.row-decisions').evaluate((node) => Array.from(node.children)
       .reduce((total, child) => total + child.getBoundingClientRect().width, 0));
     assert.ok(controlsWidth < 190, 'secondary action controls stay compact: ' + controlsWidth);
@@ -3664,6 +3672,42 @@ test('a processed draft opens as one document with one sticky bar, and Edit stru
     assert.match(await page.textContent('#previewDocument'), /Back to editing/);
     await page.click('#previewDocument');
     assert.equal(await page.locator('#previewBar').isVisible(), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a processed draft has one filled button, no red trash icons and regenerate only in section menus', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const filled = () => page.evaluate(() => [...document.querySelectorAll('button.button')]
+      .filter((node) => node.getClientRects().length && !node.closest('dialog')).map((node) => node.id || node.textContent.trim()));
+    assert.deepEqual(await filled(), ['finaliseMinutes']);
+    // Regenerate lives in each section's menu.
+    const actionsMenu = page.locator('#finalDocument .section-head:has(h3:text("Actions")) .section-menu');
+    await actionsMenu.locator('summary').click();
+    assert.equal(await actionsMenu.locator('[data-regenerate-section="actions"]').isVisible(), true);
+    await page.keyboard.press('Escape');
+
+    await page.click('#editStructureToggle');
+    for (const step of [0, 2, 3, 4]) {
+      await page.click('[data-step="' + step + '"]');
+      const screen = page.locator('[data-screen="' + step + '"]');
+      assert.deepEqual(await filled(), ['finaliseMinutes'], 'step ' + step);
+      assert.equal(await screen.locator('use[href="#i-trash"]').count(), 0, 'no trash icons on step ' + step);
+      assert.equal(await screen.locator('.screen-actions').isVisible(), false, 'no Back/Continue on step ' + step);
+    }
+    assert.equal(await page.locator('#regenerateActions').isVisible(), false);
+    // Icon-only controls carry a label and a tooltip.
+    const unlabeled = await page.evaluate(() => [...document.querySelectorAll('summary, button')]
+      .filter((node) => node.getClientRects().length && /^[•…×]+$/.test(node.textContent.trim()))
+      .filter((node) => !node.getAttribute('aria-label') || !node.getAttribute('title')).length);
+    assert.equal(unlabeled, 0);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

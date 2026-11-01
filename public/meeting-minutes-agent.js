@@ -143,7 +143,15 @@
     // and Finalise on the right.
     var doc = inDocumentMode();
     var finalise = document.getElementById('finaliseMinutes');
-    if (finalise) finalise.hidden = !doc || finalComplete;
+    if (finalise) finalise.hidden = !documentReady() || finalComplete;
+    if (documentReady() && download) download.hidden = true;
+    if (documentReady() && !doc && preview) {
+      preview.hidden = false;
+      preview.querySelector('.wide-label').textContent = 'Preview';
+      preview.querySelector('.narrow-label').textContent = 'Preview';
+      preview.setAttribute('aria-label', 'Preview');
+      preview.querySelector('.ic use').setAttribute('href', '#i-eye');
+    }
     if (doc) {
       if (download) download.hidden = true;
       if (undo) undo.hidden = true;
@@ -481,7 +489,7 @@
   function attendeeChip(name, group) {
     var destination = group === 'internal' ? 'Client' : 'Internal';
     var removeLabel = 'Remove ' + (name || 'attendee');
-    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button" aria-label="Move ' + escapeHtml(name || 'attendee') + ' to ' + destination + '"><span class="move-long">Move to ' + destination + '</span><span class="move-short">Move</span></button><button class="delete icon-only" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '" title="' + escapeHtml(removeLabel) + '">' + icon('trash') + '<span class="visually-hidden">' + escapeHtml(removeLabel) + '</span></button></div>';
+    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button" aria-label="Move ' + escapeHtml(name || 'attendee') + ' to ' + destination + '"><span class="move-long">Move to ' + destination + '</span><span class="move-short">Move</span></button>' + rowMenu('Options for ' + (name || 'attendee'), '<button class="delete quiet" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '">Remove person</button>') + '</div>';
   }
 
   function renderAttendeeGroup(group, names) {
@@ -571,6 +579,11 @@
     if (!count) return '<button class="secondary quiet" type="button" disabled>No transcript linked</button>';
     var label = (recordNeedsReview(record) ? 'Check transcript' : 'View transcript') + ' (' + count + (count === 1 ? ' line)' : ' lines)');
     return '<button class="secondary quiet" data-view-transcript="' + escapeHtml(ids.join(',')) + '" data-transcript-pin="' + escapeHtml(record.text || record.action || '') + '" type="button">' + label + '</button>';
+  }
+
+  // A row's "…" menu: removal is always its last, red item.
+  function rowMenu(label, items) {
+    return '<details class="record-menu row-menu" data-menu><summary class="secondary quiet" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">•••</summary><div class="record-menu-popover" data-menu-popover>' + items + '</div></details>';
   }
 
   function recordMenu(record, actions) {
@@ -1236,7 +1249,7 @@
     var objectives = draft.meetingObjectives || [];
     document.getElementById('objectivesList').innerHTML = objectives.map(function (item, index) {
       var objectiveText = typeof item === 'string' ? item : item.text;
-      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet icon-only" data-remove-objective="' + index + '" type="button" aria-label="Remove objective ' + (index + 1) + '" title="Remove objective">' + icon('trash') + '</button></div></div>';
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools">' + rowMenu('Objective ' + (index + 1) + ' options', '<button class="delete quiet" data-remove-objective="' + index + '" type="button" aria-label="Remove objective ' + (index + 1) + '">Remove objective</button>') + '</div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
     var generate = document.getElementById('generateSummary');
     generate.hidden = summaryRunning;
@@ -1822,7 +1835,7 @@
       var headingToggle = showHeadings
         ? '<button class="secondary quiet" data-toggle-topic-heading="' + index + '" type="button">' + (topic.hideHeading ? 'Show title in minutes' : 'Hide title in minutes') + '</button>'
         : '';
-      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu" data-menu><summary class="secondary quiet" aria-label="Topic actions" title="Topic actions">•••</summary><div class="topic-menu-popover" data-menu-popover>' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic" title="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu" data-menu><summary class="secondary quiet" aria-label="Topic actions" title="Topic actions">•••</summary><div class="topic-menu-popover" data-menu-popover>' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
     restoreDisclosures(document.getElementById('omittedDetailsReview'));
@@ -2074,10 +2087,13 @@
       var kept = isActionKept(item);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
+      // Source, review and removal share one "…" menu; removal is last and red.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '" aria-label="' + (transcriptOpen ? 'Hide source transcript' : 'View source transcript') + '"><span data-transcript-toggle-label>Source</span><span class="row-transcript-chevron" aria-hidden="true">⌄</span></button>'
-        + '<button type="button" class="quiet row-keep icon-only' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '" aria-label="' + (kept ? 'Mark action unchecked' : 'Mark action checked') + '" title="' + (kept ? 'Marked checked' : 'Mark checked') + '">' + icon('check') + '</button>'
-        + '<button type="button" class="quiet row-reject icon-only" data-reject-action="' + index + '" aria-label="Remove action from minutes" title="Remove from minutes">' + icon('trash') + '</button>'
+        + (kept ? '<span class="row-reviewed" title="Marked reviewed">' + icon('check') + '<span class="visually-hidden">Reviewed</span></span>' : '')
+        + rowMenu('Action ' + (index + 1) + ' options',
+          '<button type="button" class="secondary quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '"><span data-transcript-toggle-label>' + (transcriptOpen ? 'Hide source' : 'View source') + '</span></button>'
+          + '<button type="button" class="secondary quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Reviewed ✓' : 'Mark reviewed') + '</button>'
+          + '<button type="button" class="delete quiet row-reject" data-reject-action="' + index + '">Remove action</button>')
         + '</div>';
       var transcriptPanel = '<details id="' + escapeHtml(transcriptId) + '" class="action-transcript-panel" data-action-transcript-panel data-keep-open="' + escapeHtml(transcriptKey) + '"><summary class="visually-hidden">Transcript passage</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details>';
       // Reordering: the handle is the drag source and also takes arrow keys, so
@@ -2786,7 +2802,7 @@
     var include = includedSectionState();
     var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
     var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
-      + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + staleLinkHtml('summary') + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+      + (include.executiveSummary && draft.executiveSummary ? '<section>' + sectionHeading('Executive summary', 'summary', summaryTranscriptItem()) + staleLinkHtml('summary') + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
       var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
@@ -2806,12 +2822,26 @@
     var documentHead = inDocumentMode()
       ? (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
       : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
-    document.getElementById('finalDocument').innerHTML = documentHead + (inDocumentMode() ? '<section class="final-attendees"><h3>Attendees</h3>' + finalAttendeesHtml(details) + '</section>' : finalAttendeesHtml(details)) + summaryHtml + '<section><h3>Meeting content</h3>' + staleLinkHtml('discussion') + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3>' + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
+    document.getElementById('finalDocument').innerHTML = documentHead + (inDocumentMode() ? '<section class="final-attendees"><h3>Attendees</h3>' + finalAttendeesHtml(details) + '</section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
     renderPageHeading();
     var meta = document.getElementById('documentMeta');
     if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode());
     var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
     if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
+  }
+
+  // A section heading in the document, with its own "…" menu.
+  function sectionHeading(title, stage, extraItems) {
+    if (!inDocumentMode()) return '<h3>' + escapeHtml(title) + '</h3>';
+    var items = (extraItems || '') + (stage ? '<button class="secondary quiet" data-regenerate-section="' + stage + '" type="button">Regenerate section…</button>' : '');
+    var menu = items ? '<details class="doc-menu section-menu" data-menu><summary class="secondary quiet" aria-label="' + escapeHtml(title) + ' options" title="' + escapeHtml(title) + ' options">•••</summary><div class="doc-menu-popover" data-menu-popover>' + items + '</div></details>' : '';
+    return '<div class="section-head"><h3>' + escapeHtml(title) + '</h3>' + menu + '</div>';
+  }
+
+  function summaryTranscriptItem() {
+    var draft = state.draft || {};
+    var ids = Array.from(new Set((draft.executiveSummaryEvidenceIds || []).concat((draft.meetingObjectives || []).flatMap(function (o) { return (o && o.evidenceIds) || []; }))));
+    return transcriptMenuItem({ evidenceIds: ids, text: draft.executiveSummary || '' }).replace('Check transcript', 'View transcript');
   }
 
   function finalHintDismissed() {
@@ -4303,7 +4333,10 @@
         var opening = !transcriptPanel.open;
         transcriptPanel.open = opening;
         transcriptButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
-        transcriptButton.setAttribute('aria-label', opening ? 'Hide source transcript' : 'View source transcript');
+        var toggleLabel = transcriptButton.querySelector('[data-transcript-toggle-label]');
+        if (toggleLabel) toggleLabel.textContent = opening ? 'Hide source' : 'View source';
+        closeMenus(null);
+        if (opening) transcriptPanel.scrollIntoView({ block: 'nearest' });
       }
       return;
     }
@@ -4677,11 +4710,14 @@
       if (hint) hint.remove();
       return;
     }
-    if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); }
+    if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); return; }
+    var regenerate = event.target.closest('[data-regenerate-section]');
+    if (regenerate) { closeMenus(null); requestBackgroundStage(regenerate.dataset.regenerateSection, { regenerate: true }); }
   });
 
   document.getElementById('finaliseMinutes').addEventListener('click', function () {
     document.body.classList.remove('doc-preview');
+    if (editStructureOn()) setEditStructure(false);
     document.getElementById('saveMinutes').click();
   });
 
@@ -4764,6 +4800,7 @@
   });
 
   document.getElementById('previewDocument').addEventListener('click', function () {
+    if (documentReady() && editStructureOn()) setEditStructure(false);
     if (inDocumentMode()) {
       // In the document, Preview shows the minutes read-only with Download.
       readEditors(); activeFinalEdit = null;
