@@ -103,6 +103,14 @@ fi
 # The staged review is unaffected either way: its stages run in-process (181 staged-stage
 # completions logged by trinzo, none by the worker). The /meeting-minutes-final queue is
 # not, and neither are the two helpers.
+# Publish identities for the prepared source before the live processes boot.
+# The optional testing instance refuses new work until those live peers match.
+sync_testing() {
+  if [ -f /etc/trinzo-testing/config.json ] && [ -f ops/testing-site/sync.cjs ]; then
+    node ops/testing-site/sync.cjs
+  fi
+}
+sync_testing
 say "tests green - restarting $APP_NAME and its workers"
 restart_services() {
   pm2 restart "$APP_NAME" --update-env >/dev/null
@@ -131,9 +139,11 @@ done
 if [ -n "$smoke_failures" ]; then
   say "rolling back and restarting the previous revision -${smoke_failures}"
   restore_checkout || fail "recovery installation/build failed; manual recovery required before restart"
+  sync_testing
   restart_services
   fail "the new revision did not answer on:${smoke_failures}; the previous one is serving again"
 fi
 
 git rev-parse HEAD > "$MARKER"
+sync_testing
 say "deployed $(git rev-parse --short HEAD); marker updated"

@@ -9,6 +9,8 @@ const { processMeetingMinutesJob } = require('../utils/meetingMinutesGenerator')
 const { processProjectUpdateJob } = require('../utils/projectUpdateGenerator');
 
 const settingsStore = require('../utils/settingsStore');
+const { createRuntimeIdentity } = require('../utils/runtimeIdentity');
+const runtimeIdentity = createRuntimeIdentity({ role: 'queue' });
 
 const WORKER_ID = process.env.MEETING_MINUTES_WORKER_ID || `minutes-final-${process.pid}`;
 const POLL_MS = Number(process.env.MEETING_MINUTES_WORKER_POLL_MS || 5000);
@@ -23,6 +25,7 @@ async function runLoop() {
 
   while (true) {
     try {
+      runtimeIdentity.assertCurrent();
       await settingsStore.refreshIfStale();
       const job = await claimNextGenerationJob(WORKER_ID);
       if (!job) {
