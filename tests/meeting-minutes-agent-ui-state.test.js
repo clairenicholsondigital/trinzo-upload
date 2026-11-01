@@ -2560,9 +2560,20 @@ test('final minutes edit source records in place and the finishing bar remains a
       && response.request().method() === 'PATCH' && response.request().postDataJSON().status === 'complete');
     await page.click('#saveMinutes');
     await completed;
-    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true, 'the green completion message remains visible');
-    assert.equal(await page.locator('.final-actions').isVisible(), true, 'Back and Export remain available');
-    assert.equal(await page.locator('#saveStrip').isHidden(), true, 'the redundant sticky status strip leaves once the minutes are final');
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    assert.equal(await page.locator('#saveStrip').isVisible(), true, 'one bar confirms completion and retains exports');
+    assert.equal(await page.locator('.final-actions').isHidden(), true, 'the former finishing bar is replaced');
+    assert.equal(await page.locator('#finalSaveConfirmation').isHidden(), true, 'completion is shown once');
+    assert.equal(await page.locator('#reopenMinutes').isVisible(), true, 'editing requires an explicit Reopen');
+    assert.equal(await page.locator('#copyDraftLink').isVisible(), true);
+    assert.equal(await page.textContent('#exportMenuLabel'), 'Download');
+    assert.equal(await page.locator('#finalDocument [data-final-edit]:not([disabled])').count(), 0);
+    await page.locator('#finalisedExport .export-menu>summary').click();
+    for (const id of ['printMinutes', 'downloadPdf', 'downloadWord']) {
+      assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    }
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -2969,10 +2980,24 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     await page.click('#saveMinutes');
     const finalSaveResponse = await finalSave;
     assert.equal(finalSaveResponse.request().postDataJSON().status, 'complete');
-    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true);
-    assert.match(await page.textContent('#finalSaveConfirmation'), /marked Complete in Library/i);
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    assert.equal(await page.locator('#saveStrip').isVisible(), true);
+    assert.equal(await page.locator('.final-actions').isHidden(), true, 'the finalised bar replaces the earlier controls');
     assert.equal(await page.locator('#saveMinutes').isHidden(), true);
-    assert.equal(await page.locator('#newMinutes').isVisible(), true);
+    assert.equal(await page.locator('#reopenMinutes').isVisible(), true);
+    assert.equal(await page.locator('#copyDraftLink').isVisible(), true);
+    assert.equal(await page.textContent('#exportMenuLabel'), 'Download');
+    await page.locator('#finalisedExport .export-menu>summary').click();
+    for (const id of ['printMinutes', 'downloadPdf', 'downloadWord']) {
+      assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    }
+    await page.keyboard.press('Escape');
+    await page.locator('#documentHeader .doc-menu>summary').click();
+    await page.locator('[data-doc-choose-transcript]').click();
+    await page.waitForSelector('#newTranscriptDialog[open]');
+    assert.equal(await page.locator('#confirmNewTranscript').isVisible(), true, 'a new meeting remains available through the header');
+    await page.locator('#newTranscriptDialog button[value="cancel"]').click();
     assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
@@ -3955,6 +3980,38 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     await page.waitForSelector('body.doc-mode');
     assert.equal((await row(1).locator('.due-picker>summary').textContent()).trim(), 'See timing note');
     assert.equal(await row(1).locator('.due-note').textContent(), 'Timing note: “' + longRelative + '”');
+
+    // Each phone picker and row menu stays visible and tappable at either width.
+    for (const [width, height] of [[390, 844], [320, 800]]) {
+      await page.setViewportSize({ width, height });
+      await row(0).scrollIntoViewIfNeeded();
+      for (const selector of ['.owner-picker', '.due-picker', '.doc-row-menu .row-menu']) {
+        const menu = row(0).locator(selector);
+        await menu.locator('summary').click();
+        await page.waitForFunction(() => {
+          const popover = document.querySelector('#finalDocument details[open] [data-menu-popover]');
+          if (!popover) return false;
+          const box = popover.getBoundingClientRect();
+          return box.left >= -1 && box.right <= document.documentElement.clientWidth + 1;
+        });
+        const bounds = await menu.locator('[data-menu-popover]').evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return { left: box.left, right: box.right, viewport: document.documentElement.clientWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            buttonsTappable: Array.from(node.querySelectorAll('button')).every((button) => {
+              const rect = button.getBoundingClientRect();
+              const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+              return !!hit && (hit === button || button.contains(hit));
+            }) };
+        });
+        assert.ok(bounds.left >= -1 && bounds.right <= width + 1, JSON.stringify(bounds));
+        assert.ok(bounds.documentWidth <= width + 1, JSON.stringify(bounds));
+        assert.equal(bounds.buttonsTappable, true, `${width}px ${selector}: ${JSON.stringify(bounds)}`);
+        await page.keyboard.press('Escape');
+        assert.equal(await menu.getAttribute('open'), null);
+        assert.equal(await menu.locator('summary').evaluate((node) => document.activeElement === node), true);
+      }
+    }
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

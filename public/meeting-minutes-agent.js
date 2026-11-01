@@ -355,11 +355,15 @@
       || Object.keys(discussionEditorState.pendingRecords).length > 0;
   }
 
-  function hasTransientEditorState() {
-    return Boolean(activeFinalEdit) || hasTransientActionState() || hasTransientDiscussionState()
+  function hasTransientDocumentState() {
+    return Boolean(activeFinalEdit)
       || Array.from(document.querySelectorAll('#finalDocument [data-owner-new], #finalDocument [data-due-text]')).some(function (input) {
         return input.value !== input.defaultValue;
       });
+  }
+
+  function hasTransientEditorState() {
+    return hasTransientActionState() || hasTransientDiscussionState() || hasTransientDocumentState();
   }
 
   // An empty row is a placeholder, not unsaved work: it is worth saying it
@@ -687,9 +691,17 @@
     var popover = menu.querySelector('[data-menu-popover]');
     if (!popover) return;
     menu.classList.remove('opens-up');
+    popover.style.left = '';
+    popover.style.right = '';
+    var rect = popover.getBoundingClientRect();
+    var shift = Math.max(8 - rect.left, Math.min(0, document.documentElement.clientWidth - 8 - rect.right));
+    if (shift) {
+      popover.style.left = (popover.offsetLeft + shift) + 'px';
+      popover.style.right = 'auto';
+    }
     var bar = document.getElementById('saveStrip');
     var floor = window.innerHeight - (bar && !bar.hidden ? bar.getBoundingClientRect().height + 12 : 8);
-    var rect = popover.getBoundingClientRect();
+    rect = popover.getBoundingClientRect();
     var roomAbove = menu.getBoundingClientRect().top;
     if (rect.bottom > floor && roomAbove > rect.height + 8) menu.classList.add('opens-up');
   }
@@ -3826,14 +3838,15 @@
       });
     }).then(function (payload) {
       if (reviewDecisionLabel && pendingReviewDecisionLabel === reviewDecisionLabel) pendingReviewDecisionLabel = '';
-      if (editVersion !== requestEditVersion || hasTransientEditorState()) {
+      if (editVersion !== requestEditVersion || hasTransientDocumentState()) {
         // A newer keystroke landed while this request was in flight. Advance the
         // revision but do not replace the newer editor values with the response.
         state.draft.revision = payload.draft.revision;
         state.draft.updatedAt = payload.draft.updatedAt;
         state.draft.lastUndo = payload.draft.lastUndo;
         if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
-        if (hasTransientEditorState()) setSaveStatus('Finish the current entry to save it.', 'local-only');
+        if (hasTransientDocumentState()) setSaveStatus('Finish the current entry to save it.', 'local-only');
+        else if (hasTransientEditorState()) setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
         else setSaveStatus('Saving…', 'dirty');
         return state.draft;
       }
