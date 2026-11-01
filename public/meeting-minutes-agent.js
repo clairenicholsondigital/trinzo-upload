@@ -991,7 +991,7 @@
         var checked = sectionState === 'validated';
         var label = checked ? (section.preview ? 'Ready to read' : 'Checked')
           : sectionState === 'received' ? 'Checking response' : sectionState === 'failed' ? 'Could not complete'
-          : sectionState === 'waiting' ? 'Waiting' : 'Preparing';
+          : sectionState === 'retrying' ? 'Retrying' : sectionState === 'waiting' ? 'Waiting' : 'Preparing';
         return { key:stage, label:generationStageLabel(stage) + ' · ' + label,
           state:checked ? 'done' : sectionState === 'failed' ? 'failed' : 'active' };
       });

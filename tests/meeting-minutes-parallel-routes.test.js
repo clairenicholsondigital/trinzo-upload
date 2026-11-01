@@ -1,7 +1,7 @@
 'use strict';
 process.env.MEETING_MINUTES_AGENT_SPECULATIVE_PIPELINE_V1='0';
 const test=require('node:test'),assert=require('node:assert/strict'),JSZip=require('jszip');
-const P=require('../utils/meetingMinutesParallel'),db=require('../utils/db');
+const P=require('../utils/meetingMinutesParallel'),G=require('../utils/meetingMinutesAgentGeneration'),db=require('../utils/db');
 let saved,writes;const archive=new Map();
 db.getMeetingMinutesAgentDraft=async(id,user)=>user!=='owner'?null:id===saved.draftId?structuredClone(saved):structuredClone(archive.get(id)||null);
 db.createMeetingMinutesAgentDraft=async input=>{archive.set(saved.draftId,structuredClone(saved));saved={...structuredClone(input.payload),draftId:'18',revision:1,status:'draft',title:input.title,fileName:input.fileName,rawTranscript:input.rawTranscript};return structuredClone(saved);};
@@ -145,6 +145,48 @@ test('healthy current Beta polling exposes only validated read-only preview text
  assert.equal(ordinary.executiveSummary,before.executiveSummary);assert.deepEqual(ordinary.actions,before.actions);
  assert.deepEqual(saved,before);assert.equal(writes,0);
 });
+test('Beta retries identify only affected sections, retain checked previews and keep formatting diagnostics private on reload',async()=>{
+ reset();runningPreview();
+ const privateField='private-format-diagnostics';
+ saved.qualityState.parallelAttempt={requestId:'previous-attempt',result:{branches:{summary:{formatFailures:[{attempt:1,code:'INVALID_AGENT_JSON',textShape:'fenced',raw:privateField}]}}}};
+ const actionsBefore=structuredClone(saved.generation.progress.sections.actions);
+ for(const stage of ['summary','discussion'])saved.generation.progress=G.mergeMeetingAgentProgress(saved.generation.progress,{
+  stage,code:'retrying',formatFailures:[{raw:privateField}],counts:{records:99},
+  preview:{executiveSummary:privateField}
+ },{includePreviews:true});
+ // A different branch can finish while the retry is pending; its event must not hide the retry message.
+ saved.generation.progress=G.mergeMeetingAgentProgress(saved.generation.progress,{stage:'actions',code:'validated',
+  counts:{records:1},preview:actionsBefore.preview},{includePreviews:true});
+ const before=structuredClone(saved);
+ for(let reload=0;reload<2;reload++){
+  const r=await request('get','/generation');
+  assert.equal(r.statusCode,200);assert.equal(r.body.progress.status,'running');
+  assert.equal(r.body.progress.message,'Retrying Summary and Discussion.');
+  for(const stage of ['summary','discussion']){
+   assert.equal(r.body.progress.sections[stage].state,'retrying');
+   assert.equal(r.body.progress.sections[stage].preview,undefined);assert.equal(r.body.progress.sections[stage].counts,undefined);
+  }
+  assert.deepEqual(r.body.progress.sections.actions.preview,{actions:[{action:'Exact action wording.',owners:['Alex'],timing:{kind:'stated',wording:'on the day; throughout',exactDate:''}}]});
+  assert.equal(r.body.draft,undefined);assert.ok(!JSON.stringify(r.body).includes(privateField));
+  assert.ok(!JSON.stringify(r.body).includes('formatFailures'));
+  const ordinary=(await request('get')).body.draft;
+  assert.equal(ordinary.executiveSummary,before.executiveSummary);assert.deepEqual(ordinary.actions,before.actions);
+  assert.equal(ordinary.generation.progress,undefined);assert.ok(!JSON.stringify(ordinary).includes(privateField));
+ }
+ assert.deepEqual(saved,before);assert.equal(writes,0);
+});
+
+test('Original retry progress retains its existing waiting state and service message',async()=>{
+ reset();saved.generationProvider='legacy';
+ const startedAt=new Date().toISOString();
+ saved.generation={stage:'summary',status:'running',bootId:A.MEETING_AGENT_BOOT_ID,startedAt,
+  progress:G.mergeMeetingAgentProgress(null,{stage:'summary',code:'retrying'})};
+ const r=await request('get','/generation');
+ assert.equal(r.body.progress.sections.summary.state,'waiting');
+ assert.equal(r.body.progress.message,'Waiting to retry a temporary service failure.');
+ assert.equal(writes,0);
+});
+
 test('previews disappear immediately for changed inputs, failed branches, old runs and terminal or Original snapshots',async()=>{
  for(const condition of ['input-edit','branch-failed','failed','orphaned','stale','saved','original']){
   reset();runningPreview();

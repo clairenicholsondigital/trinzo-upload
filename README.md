@@ -65,7 +65,7 @@ frontend also reads this snapshot to show checked sections as they arrive.
 Otherwise it contains `status` (`running`, `failed` or `ready`), a stable `code`,
 a safe `message`, `stage` (`summary`, `discussion`, `actions` or Beta's `all`),
 `startedAt`, `updatedAt`, `elapsedMs` and `sections`. Section states are
-`waiting`, `running`, `received`, `validated`, `failed` or `saved`.
+`waiting`, `running`, `retrying`, `received`, `validated`, `failed` or `saved`.
 Validated responses may include provisional record/proposal/flag counts. Healthy
 Beta runs may also include a bounded `sections.<stage>.preview`: summary text and
 objectives, discussion text, or actions with owners and timing. These are read-only
@@ -77,8 +77,11 @@ markers and no active or failed newer attempt.
 Codes report observed milestones: `preparing`, `queued`, `request_sent`,
 `response_received`, `validating`, `validated`, `retrying`, `saving`, `ready`,
 `failed` or `interrupted`. Existing Original passes can also project
-`extracting`, `checking` or `arranging`. Original and Beta keep their processing
-and retry policies. Microsoft still returns a complete JSON response per call;
+`extracting`, `checking` or `arranging`. Beta automatically retries each section
+once if its response is not valid JSON, provided at least ten seconds remain in
+the same 180-second generation budget. Checked sections are kept; schema/evidence,
+configuration, HTTP and timeout failures are not retried. Original keeps its
+existing retry policy. Microsoft still returns a complete JSON response per call;
 these snapshots describe observable work, not upstream internal progress.
 
 Poll this endpoint to read the latest snapshot; polling does not start work,

@@ -92,7 +92,12 @@ For an active Beta run, checked sections also have bounded read-only text previe
 in the existing progress panel. Previews are separate from the editable draft,
 excluded from print/exports, and hidden after failures or changed meeting inputs.
 The normal editor opens from the final saved result; advisory writes share the
-draft queue and preserve run identity and reviewer edits.
+draft queue and preserve run identity and reviewer edits. Beta retries a section
+once after a JSON parse failure if at least ten seconds remain in the original
+180-second budget, retaining other checked sections and the same strict validation.
+Bounded response-shape diagnostics stay in private branch results; the existing
+progress panel identifies the retrying section. Other failure types and Original's
+retry policy retain their existing behavior.
 Queue jobs use the separate worker below.
 
 ## Draft review, publication and exports

@@ -154,6 +154,7 @@ function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.no
     const section = progress?.sections[sectionStage];
     if (!section) continue;
     const state = section.code === 'validated' ? 'validated' : section.code === 'failed' ? 'failed'
+      : parallel && section.code === 'retrying' ? 'retrying'
       : ['response_received', 'validating'].includes(section.code) ? 'received'
       : ['preparing', 'queued', 'retrying'].includes(section.code) ? 'waiting' : 'running';
     sections[sectionStage] = { state, updatedAt: section.updatedAt,
@@ -165,7 +166,9 @@ function publicMeetingAgentProgress(draft = {}, generation = null, now = Date.no
     const checked = PROGRESS_STAGES.filter(key => sections[key]?.state === 'validated');
     const pending = PROGRESS_STAGES.filter(key => !['validated', 'failed'].includes(sections[key]?.state));
     const unsuccessful = PROGRESS_STAGES.filter(key => sections[key]?.state === 'failed');
+    const retrying = PROGRESS_STAGES.filter(key => sections[key]?.state === 'retrying');
     if (unsuccessful.length) message = 'A section could not complete. Waiting for the remaining requests to finish.';
+    else if (retrying.length) message = 'Retrying ' + retrying.map(key => key[0].toUpperCase() + key.slice(1)).join(' and ') + '.';
     else if (checked.length === 3) message = 'All three responses checked. Preparing to save the draft.';
     else if (checked.length) message = checked.join(' and ') + ' received and checked. Still waiting for ' + pending.join(' and ') + '.';
   }

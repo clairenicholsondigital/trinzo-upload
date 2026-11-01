@@ -9,13 +9,30 @@ const fail = (code, message) => Object.assign(new Error(message), {code});
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const string = value => typeof value === 'string';
 
+function replyParseError(code, message, raw, candidate, envelope) {
+  const diagnostics = { responseBytes: typeof raw === 'string' ? Buffer.byteLength(raw) : 0,
+    envelope, candidateType: candidate === null ? 'null' : Array.isArray(candidate) ? 'array' : typeof candidate };
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    diagnostics.candidateBytes = Buffer.byteLength(candidate);
+    diagnostics.textShape = !trimmed ? 'empty' : trimmed.startsWith('```') ? 'fenced'
+      : (trimmed.startsWith('{') || trimmed.startsWith('[')) ? 'json_like' : 'other_text';
+  }
+  // Never retain parser messages, provider text, URLs or content-derived hashes.
+  return Object.assign(fail(code, message), { responseDiagnostics: diagnostics });
+}
 function decodeReply(raw) {
   let value;
-  try { value = JSON.parse(raw); } catch { throw fail('INVALID_JSON', 'Microsoft returned a non-JSON response.'); }
+  try { value = JSON.parse(raw); } catch { throw replyParseError('INVALID_JSON', 'Microsoft returned a non-JSON response.', raw, raw, 'body'); }
   if (value?.error) throw fail('PROVIDER_ERROR', 'Microsoft reported an error.');
-  const candidate = value?.lastResponse || (Array.isArray(value?.responses) ? value.responses.at(-1) : null) || value;
+  const last = value?.lastResponse;
+  const finalResponse = Array.isArray(value?.responses) ? value.responses.at(-1) : null;
+  // Empty inner text is still an agent response, and must fail JSON decoding.
+  const envelope = typeof last === 'string' || last ? 'lastResponse'
+    : typeof finalResponse === 'string' || finalResponse ? 'responses_last' : 'body';
+  const candidate = envelope === 'lastResponse' ? last : envelope === 'responses_last' ? finalResponse : value;
   try { return typeof candidate === 'string' ? JSON.parse(candidate) : candidate; }
-  catch { throw fail('INVALID_AGENT_JSON', 'The specialist did not return strict JSON.'); }
+  catch { throw replyParseError('INVALID_AGENT_JSON', 'The specialist did not return strict JSON.', raw, candidate, envelope); }
 }
 function validateResult(stage, result, evidence) {
   if (!object(result) || result.schemaVersion !== 1 || result.specialist !== stage) throw fail('INVALID_CONTRACT', 'The specialist response has the wrong schema or identity.');
@@ -108,38 +125,59 @@ async function runSpecialists(packet, configuration, options = {}) {
   };
   const packetHash = hash(packet);
   const prompt = JSON.stringify({requestId: options.requestId, schemaVersion:1, task:'Generate your specialist section from the following shared evidence packet. Return your exact specialist JSON schema only.', ...packet});
+  const body = JSON.stringify({prompt});
   const startedAt = now();
+  const deadlineAt = startedAt + timeoutMs;
   const tasks = STAGES.map(async stage => {
     const start = now();
     const detail = { stage, packetHash, startedAt: new Date(start).toISOString(), status:'running' };
-    try {
-      const url = configuration[stage]?.webhookUrl;
-      if (!url || new URL(url).protocol !== 'https:') throw fail('NOT_CONFIGURED', 'The specialist webhook is not configured.');
-      report(stage,'request_sent');
-      const response = await fetchImpl(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt}), signal:AbortSignal.timeout(timeoutMs)});
-      const raw = await response.text();
-      report(stage,'response_received');
-      if (!response.ok) throw fail(`PROVIDER_HTTP_${response.status}`, `Microsoft returned HTTP ${response.status}.`);
-      if (Buffer.byteLength(raw) > 4 * 1024 * 1024) throw fail('RESPONSE_TOO_LARGE', 'The provider response exceeds the prototype limit.');
-      report(stage,'validating');
-      const decoded = decodeReply(raw);
-      const result = validateResult(stage, decoded, packet.evidence);
-      const records = stage === 'summary'
-        ? result.meetingObjectives.length + (result.executiveSummary.text.trim() ? 1 : 0)
-        : stage === 'discussion'
-          ? (result.items ? result.items.length : result.discussion.reduce((total, topic) => total + topic.points.length + topic.decisions.length + topic.openQuestions.length, 0))
-          : result.actions.length;
-      report(stage,'validated',{records,proposals:stage === 'actions' ? result.actionProposals.length : 0,flags:result.reviewFlags.length},result);
-      const timingCompatibility = stage === 'actions'
-        ? ['actions','actionProposals'].flatMap(key => result[key].flatMap((item,index) =>
-          decoded[key][index].timing.kind === 'not_stated' && item.timing.kind === 'stated'
-            ? [{collection:key,id:item.id,from:'not_stated',to:'stated'}] : []))
-        : [];
-      return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result,
-        ...(timingCompatibility.length ? {timingCompatibility:{version:1,records:timingCompatibility}} : {})};
-    } catch (error) {
-      report(stage,'failed');
-      return {...detail, status:'failed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, error:{code:error.code || (error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNAVAILABLE'), message: error.code ? error.message : 'The specialist could not complete its request.'}};
+    const formatFailures = [];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const attemptStartedAt = now();
+      try {
+        const url = configuration[stage]?.webhookUrl;
+        if (!url || new URL(url).protocol !== 'https:') throw fail('NOT_CONFIGURED', 'The specialist webhook is not configured.');
+        const remaining = deadlineAt - now();
+        if (remaining <= 0) throw fail('PROVIDER_TIMEOUT', 'The specialist exceeded its processing time budget.');
+        // Keep retrying visible while the replacement request is in flight.
+        if (attempt === 1) report(stage,'request_sent');
+        const response = await fetchImpl(url, {method:'POST', headers:{'Content-Type':'application/json'}, body, signal:AbortSignal.timeout(Math.max(1, Math.floor(remaining)))});
+        const raw = await response.text();
+        report(stage,'response_received');
+        if (!response.ok) throw fail(`PROVIDER_HTTP_${response.status}`, `Microsoft returned HTTP ${response.status}.`);
+        if (Buffer.byteLength(raw) > 4 * 1024 * 1024) throw fail('RESPONSE_TOO_LARGE', 'The provider response exceeds the prototype limit.');
+        report(stage,'validating');
+        const decoded = decodeReply(raw);
+        const result = validateResult(stage, decoded, packet.evidence);
+        const records = stage === 'summary'
+          ? result.meetingObjectives.length + (result.executiveSummary.text.trim() ? 1 : 0)
+          : stage === 'discussion'
+            ? (result.items ? result.items.length : result.discussion.reduce((total, topic) => total + topic.points.length + topic.decisions.length + topic.openQuestions.length, 0))
+            : result.actions.length;
+        report(stage,'validated',{records,proposals:stage === 'actions' ? result.actionProposals.length : 0,flags:result.reviewFlags.length},result);
+        const timingCompatibility = stage === 'actions'
+          ? ['actions','actionProposals'].flatMap(key => result[key].flatMap((item,index) =>
+            decoded[key][index].timing.kind === 'not_stated' && item.timing.kind === 'stated'
+              ? [{collection:key,id:item.id,from:'not_stated',to:'stated'}] : []))
+          : [];
+        return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result,
+          ...(formatFailures.length ? {formatFailures} : {}),
+          ...(timingCompatibility.length ? {timingCompatibility:{version:1,records:timingCompatibility}} : {})};
+      } catch (error) {
+        const formatFailure = ['INVALID_JSON', 'INVALID_AGENT_JSON'].includes(error.code);
+        if (formatFailure) formatFailures.push({attempt,code:error.code,elapsedMs:Math.max(0,now()-attemptStartedAt),
+          ...error.responseDiagnostics});
+        // Retrying only malformed JSON leaves all validated branches untouched.
+        // Require ten seconds of the original shared budget; never reset 180s.
+        if (formatFailure && attempt === 1 && deadlineAt - now() >= 10000) {
+          report(stage,'retrying');
+          continue;
+        }
+        report(stage,'failed');
+        return {...detail, status:'failed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start,
+          ...(formatFailures.length ? {formatFailures} : {}),
+          error:{code:error.code || (error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNAVAILABLE'), message: error.code ? error.message : 'The specialist could not complete its request.'}};
+      }
     }
   });
   // All three promises have started before any result is awaited.
