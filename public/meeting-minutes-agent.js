@@ -3265,9 +3265,13 @@
   function dueShownHtml(due) {
     var kind = DUE_KIND[due.mode];
     var label = due.mode === 'dependent' ? dependencyText(due.text) : due.label;
+    // Free wording (from the transcript or typed in) is quoted, so it reads
+    // as what was said rather than as the app's own sentence. Preset choices
+    // like "Next week" and "See timing note" stay unquoted.
+    var quoted = due.mode === 'dependent' || (due.mode === 'relative' && due.custom && !due.note);
     return '<span class="due-line due-line-' + due.mode + '">' + icon(kind.icon)
       + '<span class="due-kind">' + kind.text + '</span> '
-      + '<span class="due-label">' + escapeHtml(label) + '</span></span>';
+      + '<span class="due-label">' + (quoted ? '“' : '') + escapeHtml(label) + (quoted ? '”' : '') + '</span></span>';
   }
   // Transcript wording often repeats the kicker ("dependent on the access…").
   function dependencyText(text) {

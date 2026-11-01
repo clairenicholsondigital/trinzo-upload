@@ -4236,7 +4236,7 @@ test('a long explicit dependency remains due after saving and reopening', { time
     await page.reload();
     await page.waitForSelector('body.doc-mode');
     assert.match(await row.locator('.due-picker .due-kind').textContent(), /Depends on/);
-    assert.equal(await row.locator('.due-picker .due-label').textContent(), value);
+    assert.equal(await row.locator('.due-picker .due-label').textContent(), '“' + value + '”');
     assert.equal(await row.locator('.due-note').count(), 0, 'authored wording is not presented as a transcript quotation');
     assert.deepEqual(errors, []);
   } finally {
