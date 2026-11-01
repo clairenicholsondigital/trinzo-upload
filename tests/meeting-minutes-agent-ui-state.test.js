@@ -3927,7 +3927,7 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     assert.equal(body.actions[0].timing.kind, 'target');
     assert.equal(body.actions[0].timing.wording, 'Next week');
     assert.equal(await row(0).locator('.due-note').count(), 0);
-    assert.equal((await row(0).locator('.due-picker>summary').textContent()).trim(), 'Next week');
+    assert.equal((await row(0).locator('.due-picker .due-label').textContent()).trim(), 'Next week');
     // A date.
     await row(1).locator('.due-picker>summary').click();
     await row(1).locator('[data-due-mode="date"]').click();
@@ -3978,7 +3978,7 @@ test('the actions table picks owners from attendees and keeps Due structured', {
     assert.equal(body.actions[1].timing.wording, longRelative);
     await page.reload();
     await page.waitForSelector('body.doc-mode');
-    assert.equal((await row(1).locator('.due-picker>summary').textContent()).trim(), 'See timing note');
+    assert.equal((await row(1).locator('.due-picker .due-label').textContent()).trim(), 'See timing note');
     assert.equal(await row(1).locator('.due-note').textContent(), 'Timing note: “' + longRelative + '”');
 
     // Each phone picker and row menu stays visible and tappable at either width.
@@ -4235,7 +4235,8 @@ test('a long explicit dependency remains due after saving and reopening', { time
     assert.deepEqual(body.actions[1].evidenceIds, ['T0001']);
     await page.reload();
     await page.waitForSelector('body.doc-mode');
-    assert.match(await row.locator('.due-picker>summary').textContent(), /Depends on: After legal approval/);
+    assert.match(await row.locator('.due-picker .due-kind').textContent(), /depends on/i);
+    assert.equal(await row.locator('.due-picker .due-label').textContent(), value);
     assert.equal(await row.locator('.due-note').count(), 0, 'authored wording is not presented as a transcript quotation');
     assert.deepEqual(errors, []);
   } finally {

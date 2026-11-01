@@ -3230,7 +3230,7 @@
   function duePickerHtml(action, occ, due) {
     var key = 'due:' + occ;
     var mode = docDueMode[occ] || due.mode;
-    var shown = due.mode === 'none' ? amberMarker('No date agreed') : '<span class="due-label">' + escapeHtml(due.label) + '</span>';
+    var shown = due.mode === 'none' ? amberMarker('No date agreed') : dueShownHtml(due);
     var segment = function (value, label) {
       return '<button type="button" class="segment" data-due-mode="' + value + '" data-occ="' + escapeHtml(occ) + '" aria-pressed="' + (mode === value) + '">' + label + '</button>';
     };
@@ -3246,10 +3246,34 @@
       body = '<div class="picker-add"><input data-due-text="dependent" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'dependent' ? due.text : '') + '" placeholder="e.g. before we pay" aria-label="Depends on"><button type="button" class="secondary" data-due-save="dependent" data-occ="' + escapeHtml(occ) + '">Save</button></div>';
     }
     return '<details class="doc-picker due-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
-      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
+      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.mode === 'dependent' ? 'depends on ' + dependencyText(due.text) : due.mode === 'relative' ? due.label + ' (rough timing)' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
       + '<div class="record-menu-popover doc-picker-popover due-popover" data-menu-popover>'
       + '<div class="segmented" role="group" aria-label="Due type">' + segment('date', 'Date') + segment('relative', 'Relative') + segment('dependent', 'Dependent') + segment('none', 'None') + '</div>'
-      + body + '</div></details>';
+      + body + (due.mode === 'relative' || due.mode === 'dependent' ? '<p class="due-hint">No fixed date yet. Choose Date if one is agreed.</p>' : '')
+      + '</div></details>';
+  }
+
+  // A small kicker above the Due value says what kind of value it is, so
+  // "finish up this week" or a dependency reads as deliberate rather than as
+  // stray text. "Due ·" only shows on narrow screens, where the column
+  // heading is hidden.
+  var DUE_KIND = {
+    date:{ icon:'calendar', text:'' },
+    relative:{ icon:'clock', text:'rough timing' },
+    dependent:{ icon:'link', text:'depends on' }
+  };
+  function dueShownHtml(due) {
+    var kind = DUE_KIND[due.mode];
+    var label = due.mode === 'dependent' ? dependencyText(due.text) : due.label;
+    return '<span class="due-kind due-kind-' + due.mode + '">' + icon(kind.icon)
+      + '<span class="due-kind-prefix">Due' + (kind.text ? ' · ' : '') + '</span>'
+      + (kind.text ? '<span class="due-kind-text">' + kind.text + '</span>' : '') + '</span>'
+      + '<span class="due-label">' + escapeHtml(label) + '</span>';
+  }
+  // Transcript wording often repeats the kicker ("dependent on the access…").
+  function dependencyText(text) {
+    var trimmed = String(text || '').replace(/^\s*(?:depend(?:s|ent|ing)\s+(?:up)?on)\s*:?\s*/i, '');
+    return trimmed || String(text || '');
   }
 
   function setActionDue(occ, mode, value) {
