@@ -30,15 +30,208 @@ test('the integrated engine sends exactly three independent concurrent requests 
  assert.equal(new Set(starts.map(x=>x.body.prompt)).size,1);
  assert.equal(result.minutes.actionProposals.length,1);assert.equal(result.minutes.actions.length,1);
 });
-test('a partial provider response fails visibly without repair, retry or false empty completion',async()=>{
- let calls=0;
+test('a malformed provider response retries only its branch once before preserving partial failure',async()=>{
+ let calls=0;const perStage={summary:0,discussion:0,actions:0};
  const config=Object.fromEntries(E.STAGES.map(s=>[s,{webhookUrl:'https://'+s+'.example.invalid'}]));
  const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async(url)=>{
-  calls++;const stage=new URL(url).hostname.split('.')[0];return {ok:true,text:async()=>stage==='actions'?'invalid':JSON.stringify(replies()[stage])};
+  calls++;const stage=new URL(url).hostname.split('.')[0];perStage[stage]++;return {ok:true,text:async()=>stage==='actions'?'invalid':JSON.stringify(replies()[stage])};
  }});
- assert.equal(calls,3);assert.equal(result.status,'partial');assert.equal(result.minutes.actions,null);
+ assert.equal(calls,4);assert.deepEqual(perStage,{summary:1,discussion:1,actions:2});
+ assert.equal(result.status,'partial');assert.equal(result.minutes.actions,null);
+ assert.equal(result.branches.actions.formatFailures.length,2);assert.equal(result.branches.actions.error.code,'INVALID_JSON');
  assert.throws(()=>P.resultChanges(base(),result),/could not be generated/);
 });
+test('a retried specialist preserves successful branches, exact requests and checked previews while recovering',async()=>{
+ const calls=[],events=[],counts={summary:0,discussion:0,actions:0};let releaseRetry,settled=false;
+ const invalid='PRIVATE malformed reply https://private.example.invalid/secret';
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const running=E.runSpecialists(P.packet(base()),config,{now:()=>1234567890000,requestId:'unchanged-request',
+  fetchImpl:(url,init)=>{const stage=new URL(url).hostname.split('.')[0];calls.push({stage,body:init.body});counts[stage]++;
+   if(stage==='summary'&&counts.summary===2)return new Promise(resolve=>{releaseRetry=()=>resolve({ok:true,text:async()=>JSON.stringify(replies().summary)});});
+   return Promise.resolve({ok:true,text:async()=>stage==='summary'?JSON.stringify({lastResponse:invalid}):JSON.stringify(replies()[stage])});
+  },onProgress:event=>events.push(event)});
+ running.then(()=>{settled=true;});await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(counts,{summary:2,discussion:1,actions:1});assert.equal(settled,false);
+ assert.equal(new Set(calls.map(call=>call.body)).size,1,'retry must reuse the exact original request body');
+ assert.equal(events.filter(event=>event.stage==='summary').at(-1).code,'retrying');
+ assert.ok(!events.some(event=>event.code==='failed'));
+ let progress=null;for(const event of events)progress=G.mergeMeetingAgentProgress(progress,event,{includePreviews:true});
+ assert.equal(progress.sections.summary.preview,undefined);assert.equal(progress.sections.summary.counts,undefined);
+ assert.ok(progress.sections.actions.preview);assert.ok(progress.sections.discussion.preview);
+ releaseRetry();const result=await running;
+ assert.equal(result.status,'completed');assert.deepEqual(result.minutes,(await generated()).result.minutes);
+ assert.deepEqual(events.filter(event=>event.stage==='summary').map(event=>event.code),
+  ['request_sent','response_received','validating','retrying','response_received','validating','validated']);
+ assert.equal(result.branches.summary.formatFailures.length,1);assert.equal(result.branches.summary.formatFailures[0].textShape,'other_text');
+ assert.equal(result.branches.actions.formatFailures,undefined);assert.equal(result.branches.discussion.formatFailures,undefined);
+ assert.ok(!JSON.stringify(result.branches.summary.formatFailures).includes('PRIVATE'));
+ assert.ok(!JSON.stringify(result.branches.summary.formatFailures).includes('https:'));
+ const stored={...base(),...P.resultChanges(base(),result)};
+ assert.deepEqual(stored.qualityState.parallel.branches.summary.formatFailures,result.branches.summary.formatFailures);
+ assert.equal(P.publicDraft(stored).qualityState,undefined);
+});
+
+test('the runner keeps successful previews and saved content separate through recovery or final format failure',async()=>{
+ for(const recover of [true,false]){
+  const initial=base();initial.executiveSummary='Previously saved summary.';
+  initial.actions=[{...replies().actions.actions[0],action:'Keep the existing reviewer action.'}];
+  initial.discussion=structuredClone(replies().discussion.discussion);initial.discussion[0].points[0].text='Keep the existing reviewer discussion.';
+  let stored=structuredClone(initial),tail=Promise.resolve(),releaseRetry;const counts={summary:0,discussion:0,actions:0};
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const runner=P.createRunner({getDraft:async()=>structuredClone(stored),config:()=>config,
+   serialWrite:(_id,task)=>{const next=tail.then(task);tail=next.catch(()=>{});return next;},
+   saveDraft:async(draft,user,changes)=>(stored={...stored,...changes,revision:stored.revision+1},structuredClone(stored)),
+   execute:(packet,configuration,options)=>E.runSpecialists(packet,configuration,{...options,fetchImpl:url=>{
+    const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+    if(stage==='summary'&&counts.summary===2)return new Promise(resolve=>{releaseRetry=()=>resolve({ok:true,text:async()=>recover?JSON.stringify(replies().summary):'PRIVATE final malformed reply'});});
+    return Promise.resolve({ok:true,text:async()=>stage==='summary'?JSON.stringify({lastResponse:'PRIVATE first malformed reply'}):JSON.stringify(replies()[stage])});
+   }})});
+  await runner.start(initial,1);await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(counts,{summary:2,discussion:1,actions:1});
+  assert.equal(stored.generation.progress.sections.summary.code,'retrying');
+  assert.ok(stored.generation.progress.sections.discussion.preview);assert.ok(stored.generation.progress.sections.actions.preview);
+  assert.deepEqual(stored.actions,initial.actions);assert.deepEqual(stored.discussion,initial.discussion);
+  assert.equal(stored.executiveSummary,initial.executiveSummary);
+  const waiting=G.publicMeetingAgentProgress(stored,stored.generation,Date.now(),{includePreviews:true});
+  assert.ok(waiting.sections.actions.preview);assert.equal(waiting.sections.summary.preview,undefined);
+  releaseRetry();await runner.active.get('17');assert.deepEqual(counts,{summary:2,discussion:1,actions:1});
+  if(recover){
+   assert.equal(stored.generation,null);assert.equal(stored.executiveSummary,'Review the proposed work.');
+   assert.equal(stored.qualityState.parallel.branches.summary.formatFailures.length,1);
+  }else{
+   assert.equal(stored.generation.status,'failed');assert.equal(stored.executiveSummary,initial.executiveSummary);
+   assert.deepEqual(stored.actions,initial.actions);assert.deepEqual(stored.discussion,initial.discussion);
+   assert.equal(stored.qualityState.parallelAttempt.result.branches.summary.formatFailures.length,2);
+   assert.ok(Object.values(G.publicMeetingAgentProgress(stored,stored.generation,Date.now(),{includePreviews:true}).sections)
+    .every(section=>section.preview===undefined));
+  }
+  assert.ok(!JSON.stringify(P.publicDraft(stored)).includes('PRIVATE'));
+ }
+});
+
+test('two malformed branches recover independently and empty inner responses remain format failures',async()=>{
+ const counts={summary:0,discussion:0,actions:0};
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+  const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+  return {ok:true,text:async()=>counts[stage]===1&&stage!=='actions'
+   ?stage==='summary'?JSON.stringify({lastResponse:''}):JSON.stringify({responses:['']})
+   :JSON.stringify(replies()[stage])};
+ }});
+ assert.deepEqual(counts,{summary:2,discussion:2,actions:1});assert.equal(result.status,'completed');
+ for(const [stage,envelope]of [['summary','lastResponse'],['discussion','responses_last']]){
+  const failure=result.branches[stage].formatFailures[0];
+  assert.equal(failure.code,'INVALID_AGENT_JSON');assert.equal(failure.envelope,envelope);
+  assert.equal(failure.textShape,'empty');assert.equal(failure.candidateBytes,0);
+ }
+});
+
+test('empty lastResponse preserves valid response fallbacks and direct specialist bodies without retries',async()=>{
+ for(const wrap of [
+  result=>({lastResponse:'',responses:[JSON.stringify(result)]}),
+  result=>({lastResponse:'',responses:[result]}),
+  result=>({...result,lastResponse:''})
+ ]){
+  const counts={summary:0,discussion:0,actions:0};
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+   const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+   return {ok:true,text:async()=>JSON.stringify(wrap(replies()[stage]))};
+  }});
+  assert.deepEqual(counts,{summary:1,discussion:1,actions:1});assert.equal(result.status,'completed');
+  assert.deepEqual(result.minutes,(await generated()).result.minutes);
+  assert.ok(E.STAGES.every(stage=>result.branches[stage].formatFailures===undefined));
+ }
+ const counts={summary:0,discussion:0,actions:0};
+ const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+ const invalid=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+  const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+  return {ok:true,text:async()=>JSON.stringify({...replies()[stage],schemaVersion:2,lastResponse:''})};
+ }});
+ assert.deepEqual(counts,{summary:1,discussion:1,actions:1});assert.equal(invalid.status,'failed');
+ assert.ok(E.STAGES.every(stage=>invalid.branches[stage].error.code==='INVALID_CONTRACT'&&invalid.branches[stage].formatFailures===undefined));
+});
+
+test('format diagnostics contain bounded structure only for empty, fenced, json-like and other replies',()=>{
+ const privateText='PRIVATE response https://private.example.invalid/secret';
+ for(const [raw,code,envelope,shape]of [
+  ['', 'INVALID_JSON','body','empty'],
+  ['  ', 'INVALID_JSON','body','empty'],
+  ['```json\\n'+privateText+'\\n```','INVALID_JSON','body','fenced'],
+  ['{"private":','INVALID_JSON','body','json_like'],
+  [JSON.stringify({lastResponse:'```json\\n'+privateText+'\\n```'}),'INVALID_AGENT_JSON','lastResponse','fenced'],
+  [JSON.stringify({responses:['{"private":']}),'INVALID_AGENT_JSON','responses_last','json_like'],
+  [JSON.stringify(privateText),'INVALID_AGENT_JSON','body','other_text']
+ ]){
+  assert.throws(()=>E.decodeReply(raw),error=>{
+   assert.equal(error.code,code);assert.equal(error.responseDiagnostics.envelope,envelope);
+   assert.equal(error.responseDiagnostics.textShape,shape);assert.equal(error.responseDiagnostics.candidateType,'string');
+   assert.equal(error.responseDiagnostics.responseBytes,Buffer.byteLength(raw));
+   assert.ok(Object.keys(error.responseDiagnostics).every(key=>['responseBytes','envelope','candidateType','candidateBytes','textShape'].includes(key)));
+   assert.ok(!JSON.stringify(error).includes('PRIVATE'));assert.ok(!JSON.stringify(error).includes('https:'));
+   assert.ok(!error.message.includes('private'));return true;
+  });
+ }
+});
+
+test('format retries share the original deadline and require at least ten seconds remaining',async t=>{
+ for(const elapsed of [170000,170001,180000]){
+  let clock=0;const counts={summary:0,discussion:0,actions:0},timeouts=[];
+  const configured=t.mock.method(AbortSignal,'timeout',milliseconds=>{timeouts.push(milliseconds);return new AbortController().signal;});
+  try{
+   const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+   const result=await E.runSpecialists(P.packet(base()),config,{now:()=>clock,fetchImpl:async url=>{
+    const stage=new URL(url).hostname.split('.')[0];const attempt=++counts[stage];
+    return {ok:true,text:async()=>{if(stage==='summary'&&attempt===1){clock=elapsed;return 'invalid';}return JSON.stringify(replies()[stage]);}};
+   }});
+   const retried=elapsed===170000;
+   assert.deepEqual(counts,{summary:retried?2:1,discussion:1,actions:1});
+   assert.deepEqual(timeouts,retried?[180000,180000,180000,10000]:[180000,180000,180000]);
+   assert.equal(result.status,retried?'completed':'partial');
+   assert.ok(result.parallelElapsedMs<=180000);
+  }finally{configured.mock.restore();}
+ }
+});
+
+test('schema, evidence, dates, HTTP and transport failures do not authorize format retries',async()=>{
+ const badSchema={...replies().actions,schemaVersion:2},badEvidence=replies().actions,badDate=replies().actions;
+ badEvidence.actions[0].evidenceIds=['UNKNOWN'];badDate.actions[0].timing.exactDate='2026-02-30';
+ for(const [code,body,status,thrown]of [
+  ['INVALID_CONTRACT',JSON.stringify(badSchema),200],['UNKNOWN_EVIDENCE',JSON.stringify(badEvidence),200],
+  ['INVALID_DATE',JSON.stringify(badDate),200],['PROVIDER_HTTP_401','PRIVATE authentication reply',401],
+  ['PROVIDER_HTTP_429','PRIVATE rate reply',429],['PROVIDER_HTTP_503','PRIVATE service reply',503],
+  ['PROVIDER_ERROR','{"error":"PRIVATE failure"}',200],
+  ['PROVIDER_UNAVAILABLE',null,200,Error('PRIVATE network URL')],['PROVIDER_TIMEOUT',null,200,Object.assign(Error('PRIVATE timeout'),{name:'TimeoutError'})]
+ ]){
+  const counts={summary:0,discussion:0,actions:0},events=[];
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{onProgress:event=>events.push(event),fetchImpl:async url=>{
+   const stage=new URL(url).hostname.split('.')[0];counts[stage]++;
+   if(stage==='actions'&&thrown)throw thrown;
+   return {ok:stage!=='actions'||status===200,status,text:async()=>stage==='actions'?body:JSON.stringify(replies()[stage])};
+  }});
+  assert.deepEqual(counts,{summary:1,discussion:1,actions:1},code);
+  assert.equal(result.branches.actions.error.code,code);assert.equal(result.branches.actions.formatFailures,undefined);
+  assert.ok(!events.some(event=>event.code==='retrying'),code);
+ }
+ const absentConfig=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:stage==='actions'?'':'https://'+stage+'.example.invalid'}]));
+ let configuredCalls=0;
+ const unconfigured=await E.runSpecialists(P.packet(base()),absentConfig,{fetchImpl:async url=>{
+  configuredCalls++;return {ok:true,text:async()=>JSON.stringify(replies()[new URL(url).hostname.split('.')[0]])};
+ }});
+ assert.equal(configuredCalls,2);assert.equal(unconfigured.branches.actions.error.code,'NOT_CONFIGURED');
+ // A replacement response still has to pass schema and evidence validation; no third call.
+ for(const [replacement,code]of [[badSchema,'INVALID_CONTRACT'],[badEvidence,'UNKNOWN_EVIDENCE']]){
+  let calls=0;const values=replies();values.actions=replacement;
+  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));
+  const result=await E.runSpecialists(P.packet(base()),config,{fetchImpl:async url=>{
+   const stage=new URL(url).hostname.split('.')[0];if(stage==='actions')calls++;
+   return {ok:true,text:async()=>stage==='actions'&&calls===1?'invalid':JSON.stringify(values[stage])};
+  }});
+  assert.equal(calls,2);assert.equal(result.branches.actions.error.code,code);assert.equal(result.branches.actions.formatFailures.length,1);
+ }
+});
+
 test('branch progress follows actual responses without changing concurrent requests or final results',async()=>{
  const starts=[],events=[],observedLaunchCounts=[],release={};let settled=false;
  const config=Object.fromEntries(E.STAGES.map(stage=>[stage,{webhookUrl:'https://'+stage+'.example.invalid'}]));

@@ -62,6 +62,18 @@ test('the editor previews independent Beta sections then adopts the saved result
  await page.locator('[data-generation-section="actions"]').getByText('Provisional action only.',{exact:true}).waitFor();
  assert.equal(await page.locator('#executiveSummary').inputValue(),'');
  assert.equal(await page.locator('#actionsBody [data-action]').count(),0,'provisional rows do not become editable actions');
+ sections.summary={state:'retrying'};sections.discussion={state:'retrying'};
+ progress={...progressFor(common,sections,'retrying'),message:'Retrying Summary and Discussion.'};
+ await resumeGenerationPoll(page);
+ await page.locator('#generationProgressMessage').getByText('Retrying Summary and Discussion.',{exact:true}).waitFor();
+ for(const stage of ['Summary','Discussion'])assert.match(await page.locator('#generationPhases').innerText(),new RegExp(stage+' · Retrying'));
+ await page.reload();
+ await page.locator('#generationProgressMessage').getByText('Retrying Summary and Discussion.',{exact:true}).waitFor();
+ assert.match(await page.locator('[data-generation-section="actions"]').innerText(),/Provisional action only/,'checked Actions remain readable during other branches’ retries and reload');
+ assert.equal(await page.locator('[data-generation-section="summary"],[data-generation-section="discussion"]').count(),0);
+ assert.equal(await page.locator('#meetingTitle').isDisabled(),true);
+ assert.equal(await page.locator('#saveStatus').getAttribute('data-state'),'generating');
+ assert.equal(await page.locator('#downloadDraft').isDisabled(),true);assert.deepEqual(patches,[]);
  const quoted='Provisional <img src=x onerror="window.previewExecuted=true"> summary.';
  sections.summary={state:'validated',counts:{records:2,flags:0},preview:{executiveSummary:quoted,meetingObjectives:[{text:'Provisional objective.'}]}};
  progress=progressFor(common,sections);await resumeGenerationPoll(page);
