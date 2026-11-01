@@ -104,7 +104,7 @@ function lifecycleHarness() {
   const { createRequire } = require('node:module');
   const root = path.resolve(__dirname, '..'), cache = new Map(), drafts = new Map();
   const executions = [], writes = [], logs = [], immediates = [], timeouts = new Map(), intervals = new Map();
-  let now = Date.now(), workerFailure = false, workerCalls = 0;
+  let now = Date.now(), workerFailure = false, workerCalls = 0, progressWriteFailure = false;
   const copy = value => structuredClone(value);
   const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
   const timer = (target, callback, delay) => { const handle = { callback, delay, unref() { this.unreferenced = true; } }; target.set(handle, handle); return handle; };
@@ -117,6 +117,7 @@ function lifecycleHarness() {
     assert.equal(req.authUser.userId, 'u1');
     const current = drafts.get(String(fresh.draftId));
     assert.equal(fresh.revision, current.revision);
+    if (progressWriteFailure && changes.generation?.progress) throw Error('controlled metadata write failure');
     const saved = copy({ ...current, ...changes, revision: current.revision + 1, updatedAt: new Date(now).toISOString() });
     drafts.set(String(fresh.draftId), saved); writes.push(copy(changes));
     logs.push({ event: 'fixture_save', stage: changes.generation?.stage });
@@ -182,6 +183,7 @@ function lifecycleHarness() {
   };
   return { lifecycle, runtime, drafts, executions, writes, logs, immediates, timeouts, intervals, deferred, fixture, result, settle, request,
     workerFailure: value => { workerFailure = value; }, workerCalls: () => workerCalls,
+    progressWriteFailure: value => { progressWriteFailure = value; },
     runImmediate: async () => { assert.ok(immediates.length); immediates.shift()(); await settle(); } };
 }
 
@@ -295,4 +297,50 @@ test('actual Original background dispatch persists completion and every complete
   assert.equal(h.logs.filter(row => row.event === 'meeting_agent_poll_observed').length, 1);
   assert.equal(h.logs.filter(row => row.event === 'meeting_agent_stage_performance' && row.ok).length, 1);
   assert.equal(h.lifecycle.meetingAgentMemoryCacheState().observedGenerationCompletions, 1);
+});
+
+test('Original progress callbacks persist only for their current run and cannot revive completed work', async () => {
+  const h = lifecycleHarness(); h.drafts.set('d1', h.fixture());
+  const background = '/meeting-minutes-agent/drafts/:draftId/generate-background';
+  await h.request('post', background, { revision: 1, stage: 'discussion' }); await h.runImmediate();
+  const observer = h.executions[0].options.onStatus;
+  assert.equal(typeof observer, 'function');
+  await observer({ code:'request_sent', stage:'discussion', prompt:'private-progress-sentinel' });
+  assert.equal(h.drafts.get('d1').generation.progress.code, 'request_sent');
+  assert.deepEqual(Object.keys(h.writes.at(-1)), ['generation']);
+  assert.equal(JSON.stringify(h.drafts.get('d1').generation.progress).includes('private-progress-sentinel'), false);
+  await h.executions[0].options.onProgress({ pass:'referee', message:'Existing UI check message', completedPasses:[] });
+  const current = structuredClone(h.drafts.get('d1'));
+  assert.equal(current.generation.progress.code, 'checking', 'existing passes update the same bounded snapshot');
+  assert.equal(current.generation.message, 'Existing UI check message', 'existing progress text keeps its contract');
+  for (const replacement of [
+    { status:'failed' }, { stage:'actions' }, { bootId:'another-process' },
+    { startedAt:new Date(Date.parse(current.generation.startedAt)+1000).toISOString() }
+  ]) {
+    const newer = { ...structuredClone(current), generation:{ ...current.generation, ...replacement } };
+    h.drafts.set('d1', newer); const count = h.writes.length;
+    await observer({ code:'validating', stage:'discussion' });
+    assert.equal(h.writes.length, count, JSON.stringify(replacement));
+    assert.deepEqual(h.drafts.get('d1'), newer);
+  }
+  h.drafts.set('d1', current);
+  h.executions[0].resolve(h.result()); await h.settle();
+  const completed = structuredClone(h.drafts.get('d1')), count = h.writes.length;
+  assert.equal(completed.generation, null);
+  await observer({ code:'failed', stage:'discussion' });
+  assert.equal(h.writes.length, count); assert.deepEqual(h.drafts.get('d1'), completed);
+});
+
+test('Original progress write failures are best effort and do not cancel generation or its saved result', async () => {
+  const h = lifecycleHarness(); h.drafts.set('d1', h.fixture());
+  await h.request('post', '/meeting-minutes-agent/drafts/:draftId/generate-background', { revision:1, stage:'discussion' });
+  await h.runImmediate();
+  h.progressWriteFailure(true);
+  await assert.doesNotReject(() => h.executions[0].options.onStatus({ code:'validating' }));
+  assert.equal(h.writes.length, 1, 'only the initial generation claim was saved');
+  h.executions[0].resolve(h.result()); await h.settle();
+  const completed = h.drafts.get('d1');
+  assert.equal(completed.generation, null); assert.equal(completed.discussion[0].topic, 'Tracker');
+  assert.ok(completed.qualityState.discussion.completedAt);
+  assert.equal(h.logs.filter(row => row.event === 'meeting_agent_stage_performance' && row.ok).length, 1);
 });

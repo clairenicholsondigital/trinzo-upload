@@ -128,6 +128,7 @@ function createOriginalExecution(services) {
     try {
       const response = await askPowerAutomateMeetingMinutesAgentWithRetry(prompt, {
         pass: `${stage}:${pass}`, maxAttempts, deadlineAt: timingPolicy.deadlineAt,
+        stage, onStatus: options.onStatus,
         requestId,
         // Referee calls have repeatedly completed just beyond the former
         // 65-second boundary. Give the structured tool enough time to return
