@@ -126,7 +126,9 @@ for (const temporalField of ['timedStepCoverage', 'unverifiedSourceTiming']) {
     assert.doesNotMatch(await card.innerText(), /In the minutes · Action timing/);
     await page.click('[data-step="3"]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1);
-    await page.getByRole('button', { name: 'Remove action from minutes', exact: true }).click();
+    // Removal is the last item in the row's "…" menu.
+    await page.locator('#actionsBody [data-action-row] .row-menu>summary').click();
+    await page.getByRole('button', { name: 'Remove action', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('#actionsBody [data-action-row]').length === 0);
     assert.equal(await page.locator('#flagList .review-queue-item').count(), 1, 'removing a different action must not silently dismiss the missing-step/source warning');
     assert.equal(await page.locator('#flagCount').innerText(), temporalField === 'timedStepCoverage' ? '1 coverage notice' : '1 check');

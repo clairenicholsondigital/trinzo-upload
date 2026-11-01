@@ -39,7 +39,11 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  assert.equal(await page.locator('[data-parallel-proposal]').count(),2);
  assert.equal(await page.locator('#discussionInstruction').evaluate(e=>e.closest('details').hidden),true);
  assert.equal(await page.locator('#actionsInstruction').evaluate(e=>e.closest('details').hidden),true);
- assert.equal(await page.locator('#generationMethod').isVisible(),true);
+ // A processed draft opens as one document; the beta label is gone and the
+ // step screens sit behind Edit structure.
+ assert.equal(await page.locator('#generationMethod').isVisible(),false);
+ await page.waitForSelector('body.doc-mode');
+ await page.click('#editStructureToggle');
  await page.locator('[data-step="2"]').click();
  await page.locator('[data-record-field]').first().fill('Reviewer clarification.');
  await page.waitForFunction(()=>document.querySelector('#saveStatus')?.dataset.state==='saved');
@@ -59,7 +63,7 @@ test('the editor adopts all three parallel results, keeps proposals separate and
  await page.locator('[data-final-cancel]').click();
  await page.locator('[data-step="3"]').click();
  await page.setViewportSize({width:390,height:844});
- assert.equal(await page.locator('#generationMethod').isVisible(),true);
+ assert.equal(await page.locator('#generationMethod').isVisible(),false,'the beta label is retired');
  const box=await page.locator('.parallel-proposal-row [data-label="Action"]').boundingBox();
  assert.ok(box.width>250,'suggestion text uses the full mobile card width');
  assert.equal(await page.locator('.parallel-proposal-row [data-label="Owners"]').isVisible(),true);
@@ -171,7 +175,8 @@ test('project Beta journey keeps the provider through upload, reload, saved revi
  assert.equal(new URL(page.url()).searchParams.get('engine'), 'parallel', 'upload resume retains next-upload preference');
  assert.equal(new URL(page.url()).searchParams.get('projectId'), '17');
  await page.reload();
- await page.locator('#generationMethod').waitFor({ state: 'visible' });
+ await page.locator('#editStructureToggle').waitFor({ state: 'visible' });
+ if (await page.locator('body.doc-mode').count()) await page.click('#editStructureToggle');
  await page.locator('[data-step="2"]').click();
  await page.locator('[data-record-field]').first().fill('File review is still conditional on written approval.');
  await page.click('#createProjectUpdateFromMinutes');
@@ -192,7 +197,7 @@ test('project Beta journey keeps the provider through upload, reload, saved revi
  await page.locator('label[for="projectBetaFlow"]').click();
  const oldMinutes = page.locator('[data-minutes-draft="501"] [data-open-minutes-draft]');
  await oldMinutes.click();
- await page.locator('#generationMethod').waitFor({ state: 'visible' });
+ await page.locator('#editStructureToggle').waitFor({ state: 'visible' });
  assert.equal(new URL(page.url()).searchParams.get('engine'), 'original');
  assert.equal(saved.get('501').generationProvider, 'parallel-specialists-v1', 'turning Beta off does not convert existing minutes');
  await page.click('#backToProject');

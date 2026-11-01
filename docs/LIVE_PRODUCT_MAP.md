@@ -3,7 +3,10 @@
 This map describes the source tree deployed by [PR #233](https://github.com/clairenicholsondigital/trinzo-upload/pull/233),
 revision `65b6a9dbb8300c27d07776b9a9d7fadcb8025f8f`, verified tree
 `ed710d0b7e3da8b886193b4c5aeb8b913fd96056`.
-The frontend, saved formats and Original/Beta behavior are preserved.
+That cleanup preserved the frontend, saved formats and Original/Beta behavior.
+[PR #237](https://github.com/clairenicholsondigital/trinzo-upload/pull/237) updates the
+post-upload editor UI; the backend owners, saved formats and engine selection
+remain the same.
 [Repository simplification status](REPO_SIMPLIFICATION_STATUS.md) records the
 original criteria, measured reductions, retained exceptions and verification.
 
@@ -40,7 +43,7 @@ assets come from `public/`, with the timing helper served directly from
 
 | Surface | Routes and owners |
 | --- | --- |
-| Main editor | `/` redirects to `/meeting-minutes-agent`; [view](../views/meeting-minutes-agent.html), [browser code](../public/meeting-minutes-agent.js), API composition in [api.js](../routes/api.js). |
+| Main editor | `/` redirects to `/meeting-minutes-agent`; [view](../views/meeting-minutes-agent.html), [browser code](../public/meeting-minutes-agent.js), API composition in [api.js](../routes/api.js). Processed drafts use document editing; Edit structure retains the step screens. Both share the existing draft, revision-checked saves and undo. Preview and Finalise are read-only; Reopen explicitly returns a complete draft to editing. Transcript/check drawers and structured action controls stay in this browser owner. |
 | Library | `/jobs`, `/jobs/:jobId`, `/jobs/:jobId/result` and `/meeting-minutes-final/jobs*` aliases; [jobs view](../views/meeting-minutes-jobs.html), [Library routes](../routes/meetingMinutesLibrary.js), [job commands](../routes/meetingMinutesJobs.js), [queue routes](../routes/generationJobs.js). Current drafts and historical queued results are both supported. |
 | Project workspace | `/project-update-test`: Setup, Process, Reports, Insights, Memory, Settings and Tasks. [Workspace view](../views/project-update-workspace.html), `public/project-workspace.js` and `project-stage-*.js`; [records](../routes/projectRecords.js), [context](../routes/projectContext.js), [knowledge](../routes/projectKnowledge.js), [tasks](../routes/internalAiTasks.js); generation/handoff adapters remain in API. |
 | Project deep links | Report, milestone and context-snapshot URLs under `/project-update-test`, plus `/project-update-test/roadmap` and `/roadmap`. Old list URLs redirect into workspace stages. |

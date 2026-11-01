@@ -7,6 +7,13 @@ const path = require('node:path');
 const express = require('express');
 const { chromium } = require('playwright');
 
+// Row controls live in each row's "…" menu: open the menu, then click the item.
+async function clickMenuItem(page, target) {
+  const item = typeof target === 'string' ? page.locator(target).first() : target;
+  await item.evaluate((node) => { const menu = node.closest('details[data-menu]'); if (menu) menu.open = true; });
+  await item.click();
+}
+
 const { automaticMeetingAgentProposalReview } = require('../routes/api').stagedEvaluation;
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -298,6 +305,23 @@ function startStubServer() {
     evidenceIds: ['T0002'], status: 'open', correctionNote: ''
   }];
   drafts.set('unlinked-warning', unlinkedWarning);
+  // A fully processed draft opens as one document.
+  const documentDraft = baseDraft('document', false);
+  documentDraft.currentStep = 5; documentDraft.selectedStep = 5;
+  documentDraft.generatedStages = { discussion: '2026-09-16T12:00:00.000Z', actions: '2026-09-16T12:00:00.000Z', summary: '2026-09-16T12:00:00.000Z' };
+  documentDraft.staleStages = ['actions'];
+  documentDraft.executiveSummary = 'The team agreed the revised report is ready.';
+  drafts.set('document', documentDraft);
+  // The same document with enough text to move between and remove.
+  const documentEditing = JSON.parse(JSON.stringify(documentDraft));
+  documentEditing.draftId = 'document-editing';
+  documentEditing.discussion[0].points.push(
+    { id: 'discussion-2', text: 'Translations are still outstanding.', evidenceIds: ['T0001'], reviewFlagIds: [] },
+    { id: 'discussion-3', text: 'The distributor holds the stock.', evidenceIds: ['T0001'], reviewFlagIds: [] });
+  documentEditing.actions.push({ id: 'action-2', action: 'Confirm the distributor.', owners: [], timing: { kind: 'not_stated', wording: '', exactDate: '' }, evidenceIds: ['T0001'], reviewFlagIds: [] });
+  documentEditing.meetingObjectives = ['Agree the report'];
+  documentEditing.actions[0].timing = { kind: 'target', wording: 'hoping by early July, assuming the printer can turn it around, but it depends on whether the distributor confirms the stock position first', exactDate: '' };
+  drafts.set('document-editing', documentEditing);
   const layout = baseDraft('layout', false);
   layout.currentStep = 5;
   layout.selectedStep = 4;
@@ -905,7 +929,7 @@ test('an internal-only meeting does not reserve an empty client-attendee panel',
     assert.equal(await page.locator('#addFirstClientAttendee').isHidden(), true);
     assert.equal(await page.locator('#clientAttendees input').evaluate((node) => node === document.activeElement), true);
     await page.fill('#clientAttendees input', 'Taylor Green');
-    await page.click('#clientAttendees [data-remove-attendee]');
+    await clickMenuItem(page, '#clientAttendees [data-remove-attendee]');
     assert.equal(await page.locator('#clientAttendeeGroup').isHidden(), true, 'removing the only client attendee collapses the empty panel again');
     assert.equal(await page.locator('#addFirstClientAttendee').isVisible(), true);
     assert.deepEqual(errors, []);
@@ -934,7 +958,7 @@ test('action editor keeps blank rows, custom-owner text and linked flag targets 
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 2);
     // The autosave succeeded, but the blank row still lives only in this tab:
     // the status must keep saying so and the resume link must stay hidden.
-    assert.match(await page.textContent('#saveStatus'), /Keep this tab open/i);
+    await page.waitForFunction(() => /stay in this tab/i.test(document.getElementById('saveStatus').textContent));
 
     await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-edit-owners]');
@@ -1015,7 +1039,7 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const checkedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH'
       && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as checked');
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     await checkedSave;
     assert.equal((await bar.textContent()).trim(), '1 action');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 1, 'keeping removes nothing');
@@ -1024,17 +1048,17 @@ test('keeping, rejecting and putting back an action, with live counts', { timeou
     const uncheckedSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
       && response.request().method() === 'PATCH'
       && response.request().postDataJSON().reviewDecisionLabel === 'Action marked as unchecked');
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     await uncheckedSave;
     assert.equal((await bar.textContent()).trim(), '1 action');
     assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Action marked as unchecked.');
 
     // Put it back in the checked state before exercising removal.
-    await page.click('#actionsBody [data-action-row="0"] [data-keep-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-keep-action]');
     assert.equal((await bar.textContent()).trim(), '1 action');
 
     // Rejecting moves the row out of the register and into Removed.
-    await page.click('#actionsBody [data-action-row="0"] [data-reject-action]');
+    await clickMenuItem(page, '#actionsBody [data-action-row="0"] [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
     assert.equal(await page.locator('#removedActionsPanel').isHidden(), false);
     assert.match(await page.textContent('#removedActionsSummary'), /1 removed action/);
@@ -1212,17 +1236,16 @@ test('an opened transcript panel survives a re-render, and each step remembers i
     await page.click('[data-step="2"]');
     await page.waitForSelector('#discussionList .discussion-card');
 
-    // Open a transcript panel, then force the list to be rebuilt.
-    const panel = page.locator('#discussionList [data-keep-open]').first();
-    await panel.evaluate((node) => { node.open = true; });
-    const key = await panel.getAttribute('data-keep-open');
+    // Open a point's transcript in the side drawer, then force the list to be rebuilt.
+    await page.locator('#discussionList .record-menu>summary').first().click();
+    await page.locator('#discussionList .record-menu[open] [data-view-transcript]').click();
+    await page.waitForSelector('#sideDrawer:not([hidden])');
     await page.evaluate(() => { const t = document.querySelector('[data-topic]'); if (t) { t.value = t.value + ' edited'; t.dispatchEvent(new Event('input', { bubbles: true })); } });
     await page.waitForTimeout(600);
-    assert.equal(
-      await page.locator('#discussionList [data-keep-open="' + key + '"]').evaluate((node) => node.open),
-      true,
-      'the panel a reviewer opened to read a passage stays open across a re-render'
-    );
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true,
+      'the passage a reviewer opened to read stays open across a re-render');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), false);
 
     // Use native keyboard activation without first scrolling the off-screen
     // step button into view. locator.click() does that implicitly, changing
@@ -1232,6 +1255,9 @@ test('an opened transcript panel survives a re-render, and each step remembers i
       await page.keyboard.press('Enter');
       await page.waitForSelector('[data-screen="' + step + '"].active');
     };
+    // Without the old page-wide banner this short fixture needs a shorter
+    // window to have room to scroll.
+    await page.setViewportSize({ width: 1280, height: 560 });
     await page.mouse.wheel(0, 220);
     await page.waitForFunction(() => window.scrollY >= 200);
     const before = await page.evaluate(() => window.scrollY);
@@ -1269,7 +1295,7 @@ test('action View transcript opens the relevant passage by mouse and keyboard', 
     await page.click('[data-step="3"]');
     const button = page.locator('[data-action-row="0"] [data-open-action-transcript]');
     const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
-    await button.click();
+    await clickMenuItem(page, button);
     assert.equal(await panel.evaluate((node) => node.open), true);
     assert.equal(await button.getAttribute('aria-expanded'), 'true');
     assert.ok(await panel.locator('.source-speaker').count() > 0, 'speaker is visible');
@@ -1280,6 +1306,8 @@ test('action View transcript opens the relevant passage by mouse and keyboard', 
       node.open = false;
       node.querySelector('summary').blur();
     });
+    await page.locator('[data-action-row="0"] .row-menu>summary').focus();
+    await page.keyboard.press('Enter');
     await button.focus();
     await page.keyboard.press('Enter');
     await page.waitForTimeout(50);
@@ -1299,7 +1327,7 @@ test('transcript excerpts hide internal ids and avoid repeated speaker labels', 
     browser = launched.browser;
     const { page, errors } = launched;
     await page.click('[data-step="3"]');
-    await page.click('[data-action-row="0"] [data-open-action-transcript]');
+    await clickMenuItem(page, '[data-action-row="0"] [data-open-action-transcript]');
     const panel = page.locator('[data-action-row="0"] [data-action-transcript-panel]');
 
     assert.equal(await panel.locator('.source-id').count(), 0, 'internal transcript ids are not rendered');
@@ -1408,11 +1436,11 @@ test('edit confirmations and history labels use sentence capitalisation', { time
     await page.click('[data-step="4"]');
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH'
-      && response.request().postDataJSON().reviewDecisionLabel === 'Remove objective');
-    await page.locator('[data-remove-objective]').first().click();
+      && /^Removed “.+”$/.test(response.request().postDataJSON().reviewDecisionLabel || ''));
+    await clickMenuItem(page, '[data-remove-objective]');
     await saved;
-    assert.equal((await page.locator('#undoToastMessage').textContent()).trim(), 'Remove objective.');
-    assert.equal(await page.locator('#undoLastDecision').getAttribute('aria-label'), 'Undo: Remove objective');
+    assert.match((await page.locator('#undoToastMessage').textContent()).trim(), /^Removed “.+”\.$/);
+    assert.match(await page.locator('#undoLastDecision').getAttribute('aria-label'), /^Undo: Removed “.+”$/);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -1439,7 +1467,7 @@ test('a typing burst is one undo step, and a second field starts another', { tim
       await page.keyboard.type(word, { delay: 15 });
       await page.waitForTimeout(120);
     }
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1900);
     const afterFirst = await historyCount();
     assert.equal(afterFirst - before, 1, 'one burst is one step, not one per autosave');
     assert.match(await page.textContent('#undoLastDecision'), /Undo: edit action/i);
@@ -1448,7 +1476,7 @@ test('a typing burst is one undo step, and a second field starts another', { tim
     await page.click('#actionsBody [data-action-row="0"] [data-edit-timing]');
     await page.click('#actionsBody [data-action-row="0"] [data-timing-date]');
     await page.fill('#actionsBody [data-action-row="0"] [data-timing-date]', '2026-10-01');
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1900);
     assert.equal(await historyCount() - afterFirst, 1, 'another field is another step');
     assert.match(await page.textContent('#undoLastDecision'), /Undo: change timing/i);
 
@@ -1507,7 +1535,7 @@ test('action generation has an honest waiting state and stage-scoped status', { 
     assert.match(await page.textContent('#saveStatus'), /Everything is saved.*generation carries on without it/i,
       'navigation alone does not pretend the background run depends on this tab');
     await page.fill('#meetingTitle', 'Edited while actions run');
-    assert.match(await page.textContent('#saveStatus'), /Generation continues if you close this tab.*latest edits are waiting to save.*Keep this tab open until they are saved/i);
+    assert.match(await page.textContent('#saveStatus'), /Waiting to save until generation finishes/i);
     // The generation panel used to repeat this sentence; the save strip is now
     // the only place that says whether the tab is safe to close.
     assert.equal(await page.locator('#generationLeaveMessage').count(), 0);
@@ -1742,20 +1770,19 @@ test('selected stage and deletions survive save responses, navigation and reopen
     const actionDeleteSave = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
         && response.request().method() === 'PATCH');
-    await page.click('#actionsBody [data-reject-action]');
+    await clickMenuItem(page, '#actionsBody [data-reject-action]');
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(), 0);
-    const navigationSave = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/editor')
-      && response.request().method() === 'PATCH' && response.request().postDataJSON().selectedStep === 2);
-    await page.click('[data-step="2"]');
     await actionDeleteSave;
-    await navigationSave;
+    // Moving to another screen is not an edit, so it sends nothing; the
+    // screen is remembered in this browser instead.
+    await page.click('[data-step="2"]');
+    await page.waitForTimeout(400);
 
     const stateAfterActionDelete = await page.evaluate(async () => await (await fetch('/test-state/editor')).json());
     const savedAfterActionDelete = stateAfterActionDelete.draft;
     assert.equal(stateAfterActionDelete.lastPatch.actions.length, 0);
     assert.equal(savedAfterActionDelete.actions.length, 0);
     assert.equal(savedAfterActionDelete.currentStep, 3, 'furthest unlocked stage remains Actions');
-    assert.equal(savedAfterActionDelete.selectedStep, 2, 'selected Discussion stage is stored separately');
     assert.equal(savedAfterActionDelete.reviewFlags.find((flag) => flag.id === 'flag-action').status, 'dismissed');
 
     await page.reload();
@@ -1837,11 +1864,21 @@ test('editing the discussion with nothing running marks the existing Actions out
     const launched = await launchPage(port, 'editor');
     browser = launched.browser;
     const { page, errors } = launched;
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'no warning before any edit');
+    const actionsLink = page.locator('[data-stale-slot="actions"] [data-stale-link="actions"]');
+    assert.equal(await actionsLink.count(), 0, 'no warning before any edit');
     await page.click('[data-step="2"]');
     await page.fill('#discussionList [data-record-field]', 'The revised report is ready for circulation next week.');
-    assert.equal(await page.locator('#staleNotice').isVisible(), true, 'a material discussion edit warns immediately');
-    assert.match(await page.textContent('#staleStages'), /actions/i);
+    assert.equal(await actionsLink.count(), 1, 'a material discussion edit marks the Actions section immediately');
+    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'the page-wide banner is retired');
+    await page.click('[data-step="3"]');
+    assert.equal(await actionsLink.isVisible(), true);
+    assert.match(await actionsLink.textContent(), /Discussion changed/);
+    // Dismissing it is remembered for this draft.
+    await page.click('[data-stale-slot="actions"] [data-dismiss-stale="actions"]');
+    assert.equal(await actionsLink.count(), 0);
+    await page.reload();
+    await page.waitForSelector('#actionsBody tr');
+    assert.equal(await actionsLink.count(), 0, 'a dismissed link stays dismissed after reload');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -1858,19 +1895,20 @@ test('adding and deleting a blank discussion topic does not mark the Actions out
     const { page, errors } = launched;
     await page.click('[data-step="2"]');
     await page.click('#addDiscussion');
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'a blank topic is not a material edit');
+    const actionsLink = page.locator('[data-stale-link="actions"]');
+    assert.equal(await actionsLink.count(), 0, 'a blank topic is not a material edit');
     await page.click('#discussionList .discussion-card:nth-child(2) .topic-menu>summary');
     // Autosave can replace the card between Playwright's stability probe and
     // the click. Dispatch on the current node, as a user click would, instead
     // of retrying a detached copy for the whole default timeout.
     await page.evaluate(() => document.querySelector('[data-delete-topic="1"]')?.click());
     assert.equal(await page.locator('#discussionList [data-delete-topic]').count(), 1);
-    assert.equal(await page.locator('#staleNotice').isHidden(), true, 'deleting a topic that never had text is not a material edit');
+    assert.equal(await actionsLink.count(), 0, 'deleting a topic that never had text is not a material edit');
     // Deleting a topic that carries real content still is.
     page.once('dialog', (dialog) => dialog.accept());
     await page.click('#discussionList .discussion-card:first-child .topic-menu>summary');
     await page.evaluate(() => document.querySelector('[data-delete-topic="0"]')?.click());
-    assert.equal(await page.locator('#staleNotice').isVisible(), true);
+    assert.equal(await actionsLink.count(), 1);
     assert.match(await page.textContent('#staleStages'), /actions/i);
     assert.deepEqual(errors, []);
   } finally {
@@ -2180,7 +2218,7 @@ test('an unlinked timing warning routes to its Action field and resolves when th
 
     const savedResponse = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/unlinked-warning')
       && response.request().method() === 'PATCH');
-    await page.click('#minutes-action-training-action [data-reject-action]');
+    await clickMenuItem(page, '#minutes-action-training-action [data-reject-action]');
     await savedResponse;
     const saved = await page.evaluate(async () => (await (await fetch('/test-state/unlinked-warning')).json()).draft);
     assert.equal(saved.reviewFlags.find((flag) => flag.id === 'training-timing-flag').status, 'dismissed');
@@ -2418,10 +2456,11 @@ test('final minutes edit source records in place and the finishing bar remains a
     const discussionEditorLayout = await page.locator('#finalDocument .final-proposition-content.is-editing').evaluate((node) => ({
       contentWidth: node.getBoundingClientRect().width,
       editorWidth: node.querySelector('[data-final-editor]').getBoundingClientRect().width,
-      rows: node.querySelector('textarea').getAttribute('rows')
+      // The textarea is sized to its text rather than a fixed number of rows.
+      fits: node.querySelector('textarea').scrollHeight <= node.querySelector('textarea').clientHeight + 2
     }));
     assert.ok(discussionEditorLayout.editorWidth >= discussionEditorLayout.contentWidth * 0.95, JSON.stringify(discussionEditorLayout));
-    assert.equal(discussionEditorLayout.rows, '3');
+    assert.equal(discussionEditorLayout.fits, true);
     await page.fill('#finalDocument [data-final-editor-value]', 'The final report is ready to circulate.');
     let saved = page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/layout')
       && response.request().method() === 'PATCH' && response.request().postDataJSON().reviewDecisionLabel === 'Meeting sentence edited');
@@ -2521,9 +2560,20 @@ test('final minutes edit source records in place and the finishing bar remains a
       && response.request().method() === 'PATCH' && response.request().postDataJSON().status === 'complete');
     await page.click('#saveMinutes');
     await completed;
-    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true, 'the green completion message remains visible');
-    assert.equal(await page.locator('.final-actions').isVisible(), true, 'Back and Export remain available');
-    assert.equal(await page.locator('#saveStrip').isHidden(), true, 'the redundant sticky status strip leaves once the minutes are final');
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    assert.equal(await page.locator('#saveStrip').isVisible(), true, 'one bar confirms completion and retains exports');
+    assert.equal(await page.locator('.final-actions').isHidden(), true, 'the former finishing bar is replaced');
+    assert.equal(await page.locator('#finalSaveConfirmation').isHidden(), true, 'completion is shown once');
+    assert.equal(await page.locator('#reopenMinutes').isVisible(), true, 'editing requires an explicit Reopen');
+    assert.equal(await page.locator('#copyDraftLink').isVisible(), true);
+    assert.equal(await page.textContent('#exportMenuLabel'), 'Download');
+    assert.equal(await page.locator('#finalDocument [data-final-edit]:not([disabled])').count(), 0);
+    await page.locator('#finalisedExport .export-menu>summary').click();
+    for (const id of ['printMinutes', 'downloadPdf', 'downloadWord']) {
+      assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    }
+    assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -2546,7 +2596,9 @@ test('save and generation panels always show the same leave-safety state', { tim
       save: document.getElementById('saveStatus').textContent,
       generation: document.getElementById('generationLeaveMessage')
     }));
-    assert.match(messages.save, /Keep this tab open/i);
+    // The status stays short; leaving with unsaved work is the browser's
+    // leave warning's job.
+    assert.doesNotMatch(messages.save, /Keep this tab open/i);
     // One message, in one place: there is nothing left that could disagree.
     assert.equal(messages.generation, null);
     assert.deepEqual(errors, []);
@@ -2566,7 +2618,7 @@ test('dense layouts give writing space to content rather than repeated controls'
     const objectiveLayout = await page.evaluate(() => {
       const list = document.getElementById('objectivesList').getBoundingClientRect();
       const editor = document.querySelector('[data-objective-index]').getBoundingClientRect();
-      const remove = document.querySelector('[data-remove-objective]');
+      const remove = document.querySelector('[data-remove-objective]').closest('details').querySelector('summary');
       const removeRect = remove.getBoundingClientRect();
       return {
         listWidth: list.width,
@@ -2580,9 +2632,10 @@ test('dense layouts give writing space to content rather than repeated controls'
     });
     assert.ok(objectiveLayout.editorWidth > objectiveLayout.listWidth * 0.8, JSON.stringify(objectiveLayout));
     assert.ok(objectiveLayout.editorHeight < 80, JSON.stringify(objectiveLayout));
-    assert.equal(objectiveLayout.removeText, '');
-    assert.match(objectiveLayout.removeLabel, /Remove objective 1/i);
-    assert.ok(objectiveLayout.removeWidth >= 36 && objectiveLayout.removeHeight >= 36, JSON.stringify(objectiveLayout));
+    // Removal sits in the objective's own "…" menu rather than a red trash icon.
+    assert.equal(objectiveLayout.removeText, '•••');
+    assert.match(objectiveLayout.removeLabel, /Objective 1 options/i);
+    assert.ok(objectiveLayout.removeWidth >= 32 && objectiveLayout.removeHeight >= 32, JSON.stringify(objectiveLayout));
 
     await page.click('[data-step="3"]');
     const actionLayout = await page.evaluate(() => {
@@ -2927,10 +2980,24 @@ test('phone layout reaches the work quickly and keeps editing controls compact',
     await page.click('#saveMinutes');
     const finalSaveResponse = await finalSave;
     assert.equal(finalSaveResponse.request().postDataJSON().status, 'complete');
-    assert.equal(await page.locator('#finalSaveConfirmation').isVisible(), true);
-    assert.match(await page.textContent('#finalSaveConfirmation'), /marked Complete in Library/i);
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    assert.equal(await page.locator('#saveStrip').isVisible(), true);
+    assert.equal(await page.locator('.final-actions').isHidden(), true, 'the finalised bar replaces the earlier controls');
     assert.equal(await page.locator('#saveMinutes').isHidden(), true);
-    assert.equal(await page.locator('#newMinutes').isVisible(), true);
+    assert.equal(await page.locator('#reopenMinutes').isVisible(), true);
+    assert.equal(await page.locator('#copyDraftLink').isVisible(), true);
+    assert.equal(await page.textContent('#exportMenuLabel'), 'Download');
+    await page.locator('#finalisedExport .export-menu>summary').click();
+    for (const id of ['printMinutes', 'downloadPdf', 'downloadWord']) {
+      assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    }
+    await page.keyboard.press('Escape');
+    await page.locator('#documentHeader .doc-menu>summary').click();
+    await page.locator('[data-doc-choose-transcript]').click();
+    await page.waitForSelector('#newTranscriptDialog[open]');
+    assert.equal(await page.locator('#confirmNewTranscript').isVisible(), true, 'a new meeting remains available through the header');
+    await page.locator('#newTranscriptDialog button[value="cancel"]').click();
     assert.equal(await page.evaluate(async () => (await (await fetch('/test-state/layout')).json()).draft.status), 'complete');
     assert.deepEqual(errors, []);
   } finally {
@@ -2967,13 +3034,13 @@ test('step navigation wins over an in-flight autosave scroll restore', { timeout
         top: Math.round(screen.getBoundingClientRect().top),
         scrollY: Math.round(window.scrollY),
         maxScroll: Math.round(document.documentElement.scrollHeight - window.innerHeight),
-        activeInsideScreen: screen.contains(document.activeElement),
         activeTag: document.activeElement.tagName
       };
     });
     assert.ok(position.top <= 16 || Math.abs(position.scrollY - position.maxScroll) <= 2, JSON.stringify(position));
-    assert.equal(position.activeInsideScreen, true, JSON.stringify(position));
-    assert.equal(position.activeTag, 'H2');
+    // Headings never take focus; on a phone it lands on the step picker.
+    assert.equal(position.activeTag, 'SELECT', JSON.stringify(position));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'mobileStepSelect');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -3213,10 +3280,10 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     await page.waitForFunction(() => document.querySelector('[data-screen="3"]').classList.contains('active'));
     assert.equal(await page.locator('#regenerationDialog').isVisible(), false);
 
-    await page.click('[data-step="2"]');
     const started = page.waitForResponse((response) =>
       response.url().endsWith('/api/meeting-minutes-agent/drafts/stale-actions/generate-background'));
-    await page.click('[data-update-stale-stage="actions"]');
+    // The offer to redo them sits under the Actions heading.
+    await page.click('[data-stale-slot="actions"] [data-update-stale-stage="actions"]');
     // Asking before replacing work the reviewer may have edited is the point of
     // the dialog, and it is still asked on the path that means "redo this".
     assert.equal(await page.locator('#regenerationDialog').isVisible(), true);
@@ -3224,9 +3291,9 @@ test('redoing an out-of-date stage still asks first, and still keeps the reviewe
     assert.equal(await page.textContent('#confirmRegeneration'), 'Regenerate actions');
     await page.click('#confirmRegeneration');
     const response = await started;
-    assert.equal(response.request().postDataJSON().selectedStep, 2);
-    assert.equal(await page.locator('[data-screen="2"]').evaluate((node) => node.classList.contains('active')), true,
-      'an Actions run does not drag them off the discussion they were reading');
+    assert.equal(response.request().postDataJSON().selectedStep, 3);
+    assert.equal(await page.locator('[data-screen="3"]').evaluate((node) => node.classList.contains('active')), true,
+      'regenerating keeps them on the screen they were reading');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
@@ -3307,15 +3374,13 @@ test('an action row has one set of controls, not a menu repeating them', { timeo
     const launched = await launchPage(port, 'editor');
     browser = launched.browser;
     const { page, errors } = launched;
-    assert.equal(await page.locator('#actionsBody .record-menu').count(), 0);
+    // Source, review and removal share one "…" menu, with removal last and red.
     const row = page.locator('#actionsBody [data-action-row]').first();
-    assert.equal(await row.locator('[data-reject-action]').count(), 1);
-    assert.equal(await row.locator('[data-open-action-transcript]').count(), 1);
-    assert.equal((await row.locator('[data-transcript-toggle-label]').innerText()).trim(), 'Source');
-    assert.equal((await row.locator('[data-keep-action]').innerText()).trim(), '');
-    assert.equal((await row.locator('[data-reject-action]').innerText()).trim(), '');
-    assert.equal(await row.locator('[data-keep-action]').getAttribute('aria-label'), 'Mark action checked');
-    assert.equal(await row.locator('[data-reject-action]').getAttribute('aria-label'), 'Remove action from minutes');
+    assert.equal(await row.locator('.row-menu').count(), 1);
+    assert.equal(await row.locator('use[href="#i-trash"]').count(), 0, 'no red trash icon in the row');
+    const items = await row.locator('.row-menu [data-menu-popover] > button').evaluateAll((nodes) => nodes.map((node) => node.textContent.trim()));
+    assert.deepEqual(items, ['View source', 'Mark reviewed', 'Remove action']);
+    assert.equal(await row.locator('.row-menu summary').getAttribute('title'), 'Action 1 options');
     const controlsWidth = await row.locator('.row-decisions').evaluate((node) => Array.from(node.children)
       .reduce((total, child) => total + child.getBoundingClientRect().width, 0));
     assert.ok(controlsWidth < 190, 'secondary action controls stay compact: ' + controlsWidth);
@@ -3540,4 +3605,708 @@ for (const kind of ['prefix', 'question']) test('document review ' + kind + ' is
     assert.equal(await page.locator('#actionsBody [data-action-row]').count(),0);
     assert.deepEqual(errors,[]);
   }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
+});
+
+test('row and topic menus: one open at a time, Esc and outside clicks close them, transcript opens in the drawer', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'editor'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.click('[data-step="2"]');
+    const openMenus = () => page.locator('details[data-menu][open]').count();
+    // Tall enough that the point menu opens downwards and leaves the topic menu clear.
+    await page.setViewportSize({ width: 1280, height: 1100 });
+    const pointMenu = page.locator('#discussionList .record-menu>summary').first();
+    const topicMenu = page.locator('#discussionList .topic-menu>summary').first();
+
+    await pointMenu.click();
+    await page.keyboard.press('Escape');
+    assert.equal(await openMenus(), 0, 'Esc closes the point menu');
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), 'SUMMARY', 'focus returns to the menu button');
+
+    await pointMenu.click();
+    await page.click('#discussionScreen h2');
+    assert.equal(await openMenus(), 0, 'a click elsewhere closes the menu');
+
+    await pointMenu.click();
+    await topicMenu.click();
+    assert.equal(await openMenus(), 1, 'opening a second menu closes the first');
+    assert.equal(await page.locator('.topic-menu[open]').count(), 1);
+    const clipped = await page.locator('.topic-menu[open] .topic-menu-popover').evaluate((node) =>
+      node.scrollHeight > node.clientHeight + 1 || [...node.querySelectorAll('button')].some((b) => b.scrollWidth > b.clientWidth + 1));
+    assert.equal(clipped, false, 'every topic menu item is shown in full');
+    await page.keyboard.press('Escape');
+
+    const before = await page.evaluate(() => window.scrollY);
+    await pointMenu.click();
+    const item = page.locator('#discussionList .record-menu[open] [data-view-transcript]');
+    assert.match(await item.textContent(), /transcript \(1 line\)/);
+    await item.click();
+    assert.equal(await openMenus(), 0);
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true);
+    assert.match(await page.textContent('#sideDrawerPinned'), /revised report is ready/);
+    assert.match(await page.textContent('#sideDrawerBody'), /revised report/);
+    assert.equal(await page.evaluate(() => window.scrollY), before, 'opening the drawer does not move the page');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), false);
+
+    const headingFocus = await page.evaluate(() => [...document.querySelectorAll('h1,h2,h3')].filter((h) => h.hasAttribute('tabindex')).length);
+    assert.equal(headingFocus, 0, 'no heading is focusable');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a processed draft opens as one document with one sticky bar, and Edit structure neither scrolls nor saves', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    const patches = async () => page.evaluate(async () => (await (await fetch('/test-state/document')).json()).patches);
+    await page.waitForSelector('body.doc-mode');
+    assert.equal(await page.locator('[data-screen="5"]').isVisible(), true, 'the document is shown');
+    assert.equal(await page.locator('.steps').isVisible(), false, 'no step tabs');
+    assert.equal(await page.locator('#staleNotice').isVisible(), false, 'no page-wide banner');
+    assert.equal(await page.locator('#generationMethod').isVisible(), false, 'no beta label');
+    assert.ok((await page.locator('#finalDocument').evaluate((node) => node.getBoundingClientRect().width)) <= 760);
+    assert.match(await page.textContent("#documentMeta"), /16 Sept? 2026.*Teams.*Review/);
+    // One bar: save state, checks, Preview and Finalise; nothing else filled.
+    assert.equal(await page.locator('#finaliseMinutes').isVisible(), true);
+    assert.equal(await page.locator('#downloadDraft').isVisible(), false);
+    assert.equal(await page.locator('.final-actions').isVisible(), false);
+    // The outdated Actions are flagged under their own heading.
+    assert.match(await page.textContent('#finalDocument [data-stale-link="actions"]'), /Discussion changed/);
+
+    const before = await patches();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.click('#editStructureToggle');
+    await page.waitForSelector('body:not(.doc-mode)');
+    assert.equal(await page.locator('.steps').isVisible(), true, 'the step screens are behind the toggle');
+    assert.equal(await page.evaluate(() => window.scrollY), 0, 'toggling does not scroll');
+    await page.waitForTimeout(1800);
+    assert.equal(await patches(), before, 'toggling does not save');
+    // Remembered for this draft.
+    await page.reload();
+    await page.waitForSelector('#editStructureToggle[aria-pressed="true"]');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('doc-mode')), false);
+    await page.click('#editStructureToggle');
+    await page.waitForSelector('body.doc-mode');
+
+    // The title edits in place from the document header and saves after a pause.
+    await page.click('#pageTitle [data-final-edit]');
+    await page.fill('#pageTitle input', 'Revised report review');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(async () => (await (await fetch('/test-state/document')).json()).draft.details.meetingTitle === 'Revised report review');
+    assert.doesNotMatch(await page.textContent('#saveStatus'), /tab open/i);
+
+    // Preview is read-only and carries Download.
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('#previewBar').isVisible(), true);
+    assert.equal(await page.locator('#previewBar .export-menu').count(), 1);
+    assert.match(await page.textContent('#previewDocument'), /Back to editing/);
+    const readOnlySummary = page.locator('#finalDocument [data-final-edit][data-kind="summary"]');
+    assert.equal(await readOnlySummary.isDisabled(), true);
+    await page.locator('#previewDocument').evaluate((node) => node.blur());
+    await readOnlySummary.focus();
+    await page.keyboard.press('Enter');
+    await readOnlySummary.dispatchEvent('click');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0);
+    assert.equal(await page.locator('body.doc-preview').count(), 1);
+    assert.equal(await page.locator('#documentMeta select').count(), 0);
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('#previewBar').isVisible(), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a processed draft has one filled button, no red trash icons and regenerate only in section menus', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const filled = () => page.evaluate(() => [...document.querySelectorAll('button.button')]
+      .filter((node) => node.getClientRects().length && !node.closest('dialog')).map((node) => node.id || node.textContent.trim()));
+    assert.deepEqual(await filled(), ['finaliseMinutes']);
+    // Regenerate lives in each section's menu.
+    const actionsMenu = page.locator('#finalDocument .section-head:has(h3:text("Actions")) .section-menu');
+    await actionsMenu.locator('summary').click();
+    assert.equal(await actionsMenu.locator('[data-regenerate-section="actions"]').isVisible(), true);
+    await page.keyboard.press('Escape');
+
+    await page.click('#editStructureToggle');
+    for (const step of [0, 2, 3, 4]) {
+      await page.click('[data-step="' + step + '"]');
+      const screen = page.locator('[data-screen="' + step + '"]');
+      assert.deepEqual(await filled(), ['finaliseMinutes'], 'step ' + step);
+      assert.equal(await screen.locator('use[href="#i-trash"]').count(), 0, 'no trash icons on step ' + step);
+      assert.equal(await screen.locator('.screen-actions').isVisible(), false, 'no Back/Continue on step ' + step);
+    }
+    assert.equal(await page.locator('#regenerateActions').isVisible(), false);
+    // Icon-only controls carry a label and a tooltip.
+    const unlabeled = await page.evaluate(() => [...document.querySelectorAll('summary, button')]
+      .filter((node) => node.getClientRects().length && /^[•…×]+$/.test(node.textContent.trim()))
+      .filter((node) => !node.getAttribute('aria-label') || !node.getAttribute('title')).length);
+    assert.equal(unlabeled, 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('every text in the document edits the same way and removals can be undone', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1024, height: 1400 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = (test) => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH' && test(response.request().postDataJSON().reviewDecisionLabel || ''));
+
+    // A point opens as a textarea with its text selected; Save is secondary.
+    const points = page.locator('#finalDocument .doc-point [data-final-edit]');
+    const secondText = (await points.nth(1).textContent()).trim();
+    await points.first().click();
+    const editor = page.locator('#finalDocument [data-final-editor-value]');
+    assert.equal(await editor.evaluate((node) => node.tagName), 'TEXTAREA');
+    assert.equal(await editor.evaluate((node) => node === document.activeElement && node.selectionEnd - node.selectionStart === node.value.length), true);
+    assert.equal(await page.locator('#finalDocument [data-final-save]').getAttribute('class'), 'secondary');
+    // Esc cancels without saving.
+    await page.keyboard.type('Thrown away');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#finalDocument [data-final-editor]').count(), 0);
+    assert.equal((await page.locator('#finalDocument').textContent()).includes('Thrown away'), false);
+
+    // Tab saves and opens the next piece of text.
+    await points.first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' Confirmed.');
+    let saved = patch((label) => label === 'Meeting sentence edited');
+    await page.keyboard.press('Tab');
+    await saved;
+    assert.equal((await page.locator('#finalDocument [data-final-editor-value]').inputValue()).trim(), secondText);
+    await page.keyboard.press('Escape');
+    const edited = page.locator('#finalDocument .final-editable.user-edited');
+    assert.equal(await edited.count(), 1);
+    // The point also carries a model check, which the tooltip names first.
+    assert.match(await edited.getAttribute('title'), /Edited by you$/);
+
+    // Clicking outside an unchanged field just closes it.
+    await points.nth(1).click();
+    await page.mouse.click(4, 400);
+    assert.equal(await page.locator('#finalDocument [data-final-editor]').count(), 0);
+
+    // The topic title edits in place without moving its count or menu.
+    const head = page.locator('#finalDocument .doc-topic-head').first();
+    const metaOffset = () => head.evaluate((node) => {
+      const meta = node.querySelector('.topic-meta').getBoundingClientRect(), box = node.getBoundingClientRect();
+      return [Math.round(meta.left - box.left), Math.round(meta.top - box.top)];
+    });
+    const before = await metaOffset();
+    await head.locator('[data-final-edit]').click();
+    assert.equal(await page.locator('#finalDocument .doc-topic-head input[data-final-editor-value]').count(), 1);
+    assert.deepEqual(await metaOffset(), before);
+    await page.keyboard.press('Escape');
+
+    // Removing a point shows an Undo toast, and Undo puts it back.
+    const thirdText = (await points.nth(2).textContent()).trim();
+    const pointRow = page.locator('#finalDocument .doc-point').nth(2);
+    await pointRow.hover();
+    await pointRow.locator('.row-menu>summary').click();
+    saved = patch((label) => label.startsWith('Removed “'));
+    await pointRow.locator('[data-doc-remove-record]').click();
+    await saved;
+    assert.match(await page.locator('#undoToastMessage').textContent(), /^Removed “.+”\. $/);
+    assert.equal((await page.locator('#finalDocument').textContent()).includes(thirdText), false);
+    await page.click('#undoToastButton');
+    await page.waitForFunction((text) => document.getElementById('finalDocument').textContent.includes(text), thirdText);
+
+    // Attendees are chips: add one with Enter, remove one with undo.
+    await page.click('[data-doc-add-attendee="client"]');
+    await page.keyboard.type('Pat Lee');
+    saved = patch((label) => label === 'Attendee added');
+    await page.keyboard.press('Enter');
+    await saved;
+    assert.ok((await page.locator('.doc-attendee-chip').allTextContents()).some((text) => text.includes('Pat Lee')));
+    const patChip = page.locator('.doc-attendee-chip', { hasText: 'Pat Lee' });
+    saved = patch((label) => label === 'Removed “Pat Lee”');
+    await patChip.hover();
+    await patChip.locator('.chip-remove').click();
+    await saved;
+    assert.equal(await page.locator('.doc-attendee-chip', { hasText: 'Pat Lee' }).count(), 0);
+
+    // An empty new objective is dropped, not saved.
+    await page.click('[data-doc-add-objective]');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#finalDocument .final-objectives [data-final-edit].is-empty').count(), 0);
+
+    // Removing an action needs no confirmation and can be undone.
+    const actionRows = page.locator('#finalDocument .actions-table tbody tr');
+    const actionCount = await actionRows.count();
+    await actionRows.first().hover();
+    await actionRows.first().locator('.row-menu>summary').click();
+    saved = patch((label) => label.startsWith('Removed “'));
+    await actionRows.first().locator('[data-doc-remove-action]').click();
+    await saved;
+    assert.equal(await actionRows.count(), actionCount - 1);
+    await page.click('#undoToastButton');
+    await page.waitForFunction((count) => document.querySelectorAll('#finalDocument .actions-table tbody tr').length === count, actionCount);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the actions table picks owners from attendees and keeps Due structured', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1024, height: 1400 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH');
+    const table = page.locator('#finalDocument .doc-actions-table');
+    const row = (index) => table.locator('tbody tr').nth(index);
+    assert.deepEqual((await table.locator('thead th').allTextContents()).slice(0, 3).map((text) => text.trim()), ['Action', 'Owner', 'Due']);
+    const widths = await table.locator('thead th').evaluateAll((cells) => cells.map((cell) => Math.round(cell.getBoundingClientRect().width)));
+    assert.ok(widths[0] >= 320, JSON.stringify(widths));
+    assert.equal(widths[1], 180); assert.equal(widths[2], 160);
+
+    // A long target remains structured timing, with its wording kept in a note.
+    assert.match(await row(0).locator('.due-note').textContent(), /^Timing note: “hoping by early July/);
+    assert.match(await row(0).locator('.due-picker>summary').textContent(), /See timing note/);
+    const lineHeight = await row(0).locator('.due-note').evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
+    const clamped = await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height);
+    assert.ok(clamped <= lineHeight * 2 + 2, 'note clamped to two lines');
+    await row(0).locator('.due-note').click();
+    assert.ok(await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height) > clamped, 'note expands on click');
+    await page.click('#previewDocument');
+    assert.equal(await row(0).locator('.due-note').isDisabled(), true);
+    assert.ok(await row(0).locator('.due-note').evaluate((node) => node.getBoundingClientRect().height) > clamped, 'read-only notes are fully readable without a click');
+    assert.equal(await row(0).locator('.due-note').evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+    await page.click('#previewDocument');
+    // No other cell runs past two lines.
+    const tall = await table.locator('tbody td').evaluateAll((cells) => cells.filter((cell) => !cell.querySelector('.due-note')).filter((cell) => {
+      const line = parseFloat(getComputedStyle(cell).lineHeight) || 24;
+      const inner = cell.querySelector('summary, [data-final-edit]');
+      return inner && inner.getBoundingClientRect().height > line * 2 + 12;
+    }).length);
+    assert.equal(tall, 0);
+
+    // Owner comes from a picker of attendees, grouped.
+    assert.match(await row(1).locator('.owner-picker>summary').textContent(), /No owner assigned/);
+    await row(1).locator('.owner-picker>summary').click();
+    assert.deepEqual(await row(1).locator('.doc-picker-popover .record-menu-label').allTextContents(), ['Internal', 'Client']);
+    let saved = patch();
+    await row(1).locator('[data-owner-toggle="Sam Okoro"]').click();
+    let body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].owners, ['Sam Okoro']);
+    assert.equal(await row(1).locator('.owner-picker').getAttribute('open'), '', 'picker stays open for more owners');
+    await page.fill('[data-owner-new][data-occ="' + body.actions[1].occurrenceId + '"]', 'Pat Lee');
+    saved = patch();
+    await page.keyboard.press('Enter');
+    body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].owners, ['Sam Okoro', 'Pat Lee']);
+    await page.keyboard.press('Escape');
+
+    // Due: a relative choice replaces the sentence and the note goes.
+    await row(0).locator('.due-picker>summary').click();
+    await row(0).locator('[data-due-mode="relative"]').click();
+    saved = patch();
+    await row(0).locator('[data-due-relative]').selectOption('Next week');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[0].timing.kind, 'target');
+    assert.equal(body.actions[0].timing.wording, 'Next week');
+    assert.equal(await row(0).locator('.due-note').count(), 0);
+    assert.equal((await row(0).locator('.due-picker>summary').textContent()).trim(), 'Next week');
+    // A date.
+    await row(1).locator('.due-picker>summary').click();
+    await row(1).locator('[data-due-mode="date"]').click();
+    saved = patch();
+    await row(1).locator('[data-due-date]').fill('2026-10-02');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.exactDate, '2026-10-02');
+    // None clears it.
+    await row(1).locator('.due-picker>summary').click();
+    saved = patch();
+    await row(1).locator('[data-due-mode="none"]').click();
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.kind, 'not_stated');
+
+    // Mark reviewed shows a check at the row's edge.
+    await row(0).hover();
+    await row(0).locator('.doc-row-menu .row-menu>summary').click();
+    assert.deepEqual((await row(0).locator('.doc-row-menu [data-menu-popover] button').allTextContents()).map((text) => text.replace(/ \(.*\)$/, '').trim()), ['View source', 'Mark reviewed', 'Remove action']);
+    saved = patch();
+    await row(0).locator('[data-doc-keep-action]').click();
+    await saved;
+    assert.equal(await row(0).locator('.doc-reviewed').count(), 1);
+
+    // Add action opens an empty row with the cursor in the Action cell.
+    const count = await table.locator('tbody tr').count();
+    await page.click('[data-doc-add-action]');
+    assert.equal(await table.locator('tbody tr').count(), count + 1);
+    assert.equal(await page.evaluate(() => document.activeElement.matches('.doc-actions-table [data-final-editor-value]')), true);
+    await page.keyboard.type('Book the review call.');
+    saved = patch();
+    await page.keyboard.press('Control+Enter');
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[body.actions.length - 1].action, 'Book the review call.');
+    // An empty new row is dropped when cancelled.
+    await page.click('[data-doc-add-action]');
+    await page.keyboard.press('Escape');
+    assert.equal(await table.locator('tbody tr').count(), count + 1);
+    // Long custom relative wording remains structured after save and reload.
+    const longRelative = 'Within five working days following the approval meeting';
+    await row(1).locator('.due-picker>summary').click();
+    await row(1).locator('[data-due-mode="relative"]').click();
+    await row(1).locator('[data-due-relative]').selectOption('__custom');
+    await row(1).locator('[data-due-text="relative"]').fill(longRelative);
+    saved = patch();
+    await row(1).locator('[data-due-save="relative"]').click();
+    body = (await saved).request().postDataJSON();
+    assert.equal(body.actions[1].timing.kind, 'target');
+    assert.equal(body.actions[1].timing.wording, longRelative);
+    await page.reload();
+    await page.waitForSelector('body.doc-mode');
+    assert.equal((await row(1).locator('.due-picker>summary').textContent()).trim(), 'See timing note');
+    assert.equal(await row(1).locator('.due-note').textContent(), 'Timing note: “' + longRelative + '”');
+
+    // Each phone picker and row menu stays visible and tappable at either width.
+    for (const [width, height] of [[390, 844], [320, 800]]) {
+      await page.setViewportSize({ width, height });
+      await row(0).scrollIntoViewIfNeeded();
+      for (const selector of ['.owner-picker', '.due-picker', '.doc-row-menu .row-menu']) {
+        const menu = row(0).locator(selector);
+        await menu.locator('summary').click();
+        await page.waitForFunction(() => {
+          const popover = document.querySelector('#finalDocument details[open] [data-menu-popover]');
+          if (!popover) return false;
+          const box = popover.getBoundingClientRect();
+          return box.left >= -1 && box.right <= document.documentElement.clientWidth + 1;
+        });
+        const bounds = await menu.locator('[data-menu-popover]').evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return { left: box.left, right: box.right, viewport: document.documentElement.clientWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            buttonsTappable: Array.from(node.querySelectorAll('button')).every((button) => {
+              const rect = button.getBoundingClientRect();
+              const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+              return !!hit && (hit === button || button.contains(hit));
+            }) };
+        });
+        assert.ok(bounds.left >= -1 && bounds.right <= width + 1, JSON.stringify(bounds));
+        assert.ok(bounds.documentWidth <= width + 1, JSON.stringify(bounds));
+        assert.equal(bounds.buttonsTappable, true, `${width}px ${selector}: ${JSON.stringify(bounds)}`);
+        await page.keyboard.press('Escape');
+        assert.equal(await menu.getAttribute('open'), null);
+        assert.equal(await menu.locator('summary').evaluate((node) => document.activeElement === node), true);
+      }
+    }
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('one counter adds up open checks, and Finalise asks once then locks the document', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.waitForSelector('body.doc-mode');
+    const patch = () => page.waitForResponse((response) => response.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing')
+      && response.request().method() === 'PATCH');
+    // 2 model checks + 1 missing owner + 1 missing due; a long target is still timing.
+    assert.equal((await page.textContent('#flagCount')).trim(), '4 to check');
+
+    // Flagged text has an amber bar in the document.
+    assert.ok(await page.locator('#finalDocument .final-editable.model-flagged').count() >= 1);
+
+    // The pill opens the checks drawer, grouped, with today's cards.
+    await page.click('#reviewQueueToggle');
+    const drawer = page.locator('#sideDrawer');
+    assert.equal(await drawer.isVisible(), true);
+    assert.deepEqual(await drawer.locator('.checks-group:not([hidden]) > h3').evaluateAll((nodes) => nodes.map((node) => node.firstChild.textContent.trim())), ['Model flagged', 'Missing owner', 'Missing date']);
+    assert.ok(await drawer.locator('#flagList [data-flag-status="confirmed"]').count() >= 1);
+    // Show in document scrolls to the item and keeps the drawer open.
+    await drawer.locator('[data-view-flag-target]').first().click();
+    assert.equal(await drawer.isVisible(), true);
+    await page.waitForSelector('#finalDocument .doc-pulse');
+
+    // An explicit Fix leaves Preview and opens an enabled editor.
+    await page.click('#previewDocument');
+    assert.equal(await page.locator('body.doc-preview').count(), 1);
+    await drawer.locator('[data-fix-owner]').first().click();
+    assert.equal(await page.locator('body.doc-preview').count(), 0);
+    const picker = page.locator('.owner-picker[open]');
+    await picker.waitFor();
+    assert.equal(await picker.locator('[data-owner-toggle="Alex Reed"]').isEnabled(), true);
+    let saved = patch();
+    await picker.locator('[data-owner-toggle="Alex Reed"]').click();
+    await saved;
+    await page.keyboard.press('Escape');
+    assert.equal((await page.textContent('#flagCount')).trim(), '3 to check');
+
+    // Finalise with open items asks in the drawer; Review first keeps editing.
+    await page.click('#finaliseMinutes');
+    assert.equal(await page.locator('.finalise-confirm').isVisible(), true);
+    assert.equal((await page.textContent('#sideDrawerTitle')).trim(), 'Finalise with open items?');
+    assert.match(await page.textContent('.finalise-confirm'), /3 items are still open: 2 model checks, 1 missing date/);
+    await page.click('[data-review-first]');
+    assert.equal(await page.locator('.finalise-confirm').count(), 0);
+    await page.keyboard.press('Escape');
+    assert.equal(await drawer.isVisible(), false);
+    assert.equal(await page.locator('#reviewFlags #flagList').count(), 1, 'the checks go back to their panel');
+
+    // Finalise anyway saves the minutes as complete and locks the document.
+    await page.click('#finaliseMinutes');
+    saved = patch();
+    await page.click('[data-finalise-anyway]');
+    assert.equal((await saved).request().postDataJSON().status, 'complete');
+    await page.waitForSelector('body.doc-finalised');
+    assert.match(await page.textContent('#finalisedNote'), /^Finalised \d{1,2} \w+ \d{4}$/);
+    for (const id of ['copyDraftLink', 'reopenMinutes']) assert.equal(await page.locator('#' + id).isVisible(), true, id);
+    assert.equal(await page.locator('#finaliseMinutes').isVisible(), false);
+    await page.locator('#finalDocument [data-final-edit]').first().focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0, 'read-only once finalised');
+    assert.equal(await page.locator('#editStructureToggle').isHidden(), true);
+    assert.equal(await page.locator('#editStructureToggle').isDisabled(), true);
+    assert.equal(await page.locator('#finalDocument [data-final-edit]:not([disabled])').count(), 0);
+    assert.equal(await page.locator('#finalDocument .due-note').first().evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+    const lockedBefore = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+    await page.locator('#editStructureToggle').dispatchEvent('click');
+    assert.equal(await page.locator('body.doc-mode.doc-finalised').count(), 1);
+    assert.equal(await page.locator('[data-step="3"]').isVisible(), false);
+    const lockedAfter = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+    assert.equal(lockedAfter.patches, lockedBefore.patches);
+    assert.equal(lockedAfter.draft.status, 'complete');
+    await page.evaluate(() => localStorage.setItem('mma-edit-structure:document-editing', '1'));
+    await page.reload();
+    await page.waitForSelector('body.doc-mode.doc-finalised');
+    assert.equal(await page.locator('#editStructureToggle').isHidden(), true);
+    await page.evaluate(() => localStorage.removeItem('mma-edit-structure:document-editing'));
+
+    // Reopen for editing makes it editable again.
+    saved = patch();
+    await page.click('#reopenMinutes');
+    assert.equal((await saved).request().postDataJSON().status, 'draft');
+    await page.waitForFunction(() => !document.body.classList.contains('doc-finalised'));
+    await page.locator('#finalDocument [data-final-edit]').first().click();
+    assert.equal(await page.locator('[data-final-editor]').count(), 1);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('document print keeps meeting identity and topic visibility while excluding editing controls', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const saved = page.waitForResponse((response) => response.request().method() === 'PATCH'
+      && response.url().endsWith('/api/meeting-minutes-agent/drafts/document')
+      && response.request().postDataJSON().includeSections.topicHeadings === false);
+    await page.locator('[data-doc-topic-headings]').uncheck(); await saved;
+    await page.click('#previewDocument');
+    await page.click('#reviewQueueToggle');
+    assert.equal(await page.locator('#sideDrawer').isVisible(), true);
+    await page.emulateMedia({ media: 'print' });
+    const printed = await page.locator('#finalDocument').innerText();
+    for (const text of ['UI state test', '16 Sept 2026', 'Teams', 'Review']) assert.ok(printed.includes(text), text);
+    for (const selector of ['#previewBar', '#sideDrawer', '#undoToast', '#finalDocument .doc-topic-head.is-hidden',
+      '#finalDocument .section-menu', '#finalDocument .doc-point>.row-menu']) {
+      for (const node of await page.locator(selector).all()) assert.equal(await node.isVisible(), false, selector);
+    }
+    assert.equal(printed.includes('Report review'), false);
+    assert.ok(printed.includes('The revised report is ready for circulation.'));
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+for (const kind of ['owner', 'due']) {
+  test(`unfinished document ${kind} text survives the autosave pause`, { timeout: 120000 }, async () => {
+    const { server, port } = await startStubServer(); let browser;
+    try {
+      const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+      const { page, errors } = launched;
+      await page.waitForSelector('body.doc-mode');
+      const row = page.locator('#finalDocument .doc-actions-table tbody tr').nth(1);
+      let input;
+      if (kind === 'owner') {
+        await row.locator('.owner-picker>summary').click();
+        input = row.locator('[data-owner-new]');
+      } else {
+        await row.locator('.due-picker>summary').click();
+        await row.locator('[data-due-mode="dependent"]').click();
+        input = row.locator('[data-due-text="dependent"]');
+      }
+      const value = kind === 'owner' ? 'Patricia Newowner' : 'After contract approval';
+      await input.fill(value);
+      await page.waitForTimeout(1800);
+      assert.equal(await input.inputValue(), value);
+      const stored = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()));
+      assert.equal(stored.patches, 0, 'an unfinished picker entry is not an unrelated draft save');
+      assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'local-only');
+      assert.equal(await page.evaluate(() => {
+        const event = new Event('beforeunload', { cancelable:true });
+        window.dispatchEvent(event); return event.defaultPrevented;
+      }), true, 'leaving warns about the entry that still exists only in this tab');
+      assert.deepEqual(errors, []);
+    } finally {
+      if (browser) await browser.close();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+}
+
+test('a preceding save preserves the next inline edit and cancelling settles its status', { timeout: 120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    let release, acknowledge;
+    const held = new Promise(resolve => { release = resolve; });
+    const intercepted = new Promise(resolve => { acknowledge = resolve; });
+    let first = true;
+    await page.route('**/api/meeting-minutes-agent/drafts/document-editing', async route => {
+      if (route.request().method() === 'PATCH' && first) { first = false; acknowledge(); await held; }
+      await route.continue();
+    });
+    await page.locator('#finalDocument .doc-point [data-final-edit]').first().click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('The first field is committed.');
+    await page.keyboard.press('Tab');
+    await intercepted;
+    const next = page.locator('#finalDocument [data-final-editor-value]');
+    await next.fill('The next field is still being written.');
+    const response = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    release(); await response;
+    await page.waitForTimeout(100);
+    assert.equal(await next.inputValue(), 'The next field is still being written.');
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'local-only');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('[data-final-editor]').count(), 0);
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'saved');
+    assert.equal(await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable:true });
+      window.dispatchEvent(event); return event.defaultPrevented;
+    }), false);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('a long explicit dependency remains due after saving and reopening', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const row = page.locator('#finalDocument .doc-actions-table tbody tr').nth(1);
+    await row.locator('.due-picker>summary').click();
+    await row.locator('[data-due-mode="dependent"]').click();
+    const value = 'After legal approval of the supplier contract';
+    await row.locator('[data-due-text="dependent"]').fill(value);
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await row.locator('[data-due-save="dependent"]').click();
+    const body = (await saved).request().postDataJSON();
+    assert.deepEqual(body.actions[1].timing, { kind:'dependency', wording:value, exactDate:'' });
+    assert.deepEqual(body.actions[1].evidenceIds, ['T0001']);
+    await page.reload();
+    await page.waitForSelector('body.doc-mode');
+    assert.match(await row.locator('.due-picker>summary').textContent(), /Depends on: After legal approval/);
+    assert.equal(await row.locator('.due-note').count(), 0, 'authored wording is not presented as a transcript quotation');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('editing only an owner preserves a generated long timing note', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    const row = page.locator('#finalDocument .doc-actions-table tbody tr').first();
+    const due = await row.locator('.due-picker>summary').textContent();
+    const note = await row.locator('.due-note').textContent();
+    await row.locator('.owner-picker>summary').click();
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await row.locator('[data-owner-toggle="Sam Okoro"]').click();
+    await saved;
+    await page.waitForTimeout(100);
+    assert.equal(await row.locator('.due-picker>summary').textContent(), due);
+    assert.equal(await row.locator('.due-note').textContent(), note);
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('cancelling a later inline edit cannot hide a failed save', { timeout:120000 }, async () => {
+  const { server, port } = await startStubServer(); let browser;
+  try {
+    const launched = await launchPage(port, 'document-editing'); browser = launched.browser;
+    const { page, errors } = launched;
+    await page.waitForSelector('body.doc-mode');
+    let fail = true;
+    await page.route('**/api/meeting-minutes-agent/drafts/document-editing', async route => {
+      if (route.request().method() === 'PATCH' && fail) {
+        fail = false;
+        await route.fulfill({ status:503, contentType:'application/json', body:JSON.stringify({ error:'Save unavailable' }) });
+      } else await route.continue();
+    });
+    const points = page.locator('#finalDocument .doc-point [data-final-edit]');
+    await points.first().click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('This first change still needs saving.');
+    await page.keyboard.press('Control+Enter');
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'error');
+    await points.nth(1).click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('Cancel this later edit.');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#saveStatus').getAttribute('data-state'), 'error');
+    assert.equal(await page.textContent('#saveStatus'), 'Save unavailable');
+    assert.equal(await page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable:true });
+      window.dispatchEvent(event); return event.defaultPrevented;
+    }), true);
+    // An explicit successful save can clear the error and persist both changes.
+    await points.nth(1).click();
+    await page.locator('#finalDocument [data-final-editor-value]').fill('A later deliberate retry.');
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/meeting-minutes-agent/drafts/document-editing') && r.request().method() === 'PATCH');
+    await page.keyboard.press('Control+Enter');
+    await saved;
+    await page.waitForFunction(() => document.getElementById('saveStatus').dataset.state === 'saved');
+    const stored = await page.evaluate(async () => (await (await fetch('/test-state/document-editing')).json()).draft);
+    assert.equal(stored.discussion[0].points[0].text, 'This first change still needs saving.');
+    assert.equal(stored.discussion[0].points[1].text, 'A later deliberate retry.');
+    assert.deepEqual(errors, []);
+  } finally {
+    if (browser) await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
 });

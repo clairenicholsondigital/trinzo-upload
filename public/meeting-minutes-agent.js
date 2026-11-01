@@ -11,6 +11,8 @@
   // Index 1 is left reserved so drafts saved under the six-step numbering still
   // resolve to the right screen.
   var MAX_STEP = 5;
+  // Autosave waits for a pause in typing before writing.
+  var SAVE_DEBOUNCE_MS = 1500;
   var STAGE_STEP = { details: 0, focus: 1, discussion: 2, actions: 3, summary: 4, review: 5 };
   var GENERATION_POLL_MS = 3000;
   var GENERATION_RETRY_MS = 8000;
@@ -77,7 +79,9 @@
 
   function setSaveStatus(message, kind) {
     var element = document.getElementById('saveStatus');
-    if (mustKeepTabOpen(kind) && message && !/tab open/i.test(message)) message += ' Keep this tab open until it saves.';
+    if (kind === 'local-only' && element.dataset.state === 'error') return;
+    // The status stays short. Asking the reviewer to keep the tab open is
+    // left to the browser's own leave warning (beforeunload).
     var strip = document.getElementById('saveStrip');
     strip.hidden = !state.draft;
     strip.dataset.state = kind || '';
@@ -98,7 +102,7 @@
     var saveStrip = document.getElementById('saveStrip');
     if (saveStrip) {
       saveStrip.classList.toggle('is-final-review', finalReview);
-      saveStrip.hidden = finalComplete;
+      saveStrip.hidden = finalComplete && !inDocumentMode();
     }
     document.body.classList.toggle('final-complete', finalComplete);
     // Both controls name the change they act on, so the reviewer can tell what
@@ -136,6 +140,72 @@
     var download = document.getElementById('downloadDraft');
     if (download) download.hidden = state.currentStep === MAX_STEP;
     updateDraftDownloadState();
+    // The document has one bar: save state and checks on the left, Preview
+    // and Finalise on the right.
+    var doc = inDocumentMode();
+    var finalised = doc && documentFinalised();
+    document.body.classList.toggle('doc-finalised', finalised);
+    if (finalised) document.body.classList.add('doc-preview');
+    var finalisedNote = document.getElementById('finalisedNote');
+    if (finalisedNote) {
+      finalisedNote.hidden = !finalised;
+      finalisedNote.textContent = finalised ? 'Finalised ' + (formatUkDate(String(state.draft.updatedAt || '').slice(0, 10)) || '') : '';
+    }
+    ['copyDraftLink', 'reopenMinutes'].forEach(function (id) { var control = document.getElementById(id); if (control) control.hidden = !finalised; });
+    var finalisedExport = document.getElementById('finalisedExport');
+    var exportMenu = document.querySelector('.export-menu');
+    if (finalisedExport && exportMenu) {
+      finalisedExport.hidden = !finalised;
+      if (finalised && exportMenu.parentElement !== finalisedExport) finalisedExport.appendChild(exportMenu);
+      if (!finalised && exportMenu.parentElement === finalisedExport) renderDocumentMode();
+    }
+    var finalise = document.getElementById('finaliseMinutes');
+    if (finalise) finalise.hidden = !documentReady() || finalComplete;
+    if (documentReady() && download) download.hidden = true;
+    if (documentReady() && !doc && preview) {
+      preview.hidden = false;
+      preview.querySelector('.wide-label').textContent = 'Preview';
+      preview.querySelector('.narrow-label').textContent = 'Preview';
+      preview.setAttribute('aria-label', 'Preview');
+      preview.querySelector('.ic use').setAttribute('href', '#i-eye');
+    }
+    if (doc) {
+      if (download) download.hidden = true;
+      if (undo) undo.hidden = true;
+      if (redo) redo.hidden = true;
+      if (preview) {
+        var previewing = document.body.classList.contains('doc-preview');
+        preview.hidden = false;
+        var previewLabel = previewing ? 'Back to editing' : 'Preview';
+        preview.querySelector('.wide-label').textContent = previewLabel;
+        preview.querySelector('.narrow-label').textContent = previewing ? 'Edit' : 'Preview';
+        preview.setAttribute('aria-label', previewLabel);
+        preview.querySelector('.ic use').setAttribute('href', previewing ? '#i-arrow-left' : '#i-eye');
+      }
+    }
+    if (finalised) {
+      if (preview) preview.hidden = true;
+      document.getElementById('undoToast').hidden = true;
+      var pill = document.getElementById('reviewQueueToggle');
+      if (pill) pill.hidden = true;
+    }
+  }
+
+  function documentFinalised() {
+    return Boolean(state.draft && state.draft.status === 'complete');
+  }
+
+  function documentReadOnly() {
+    return documentFinalised() || document.body.classList.contains('doc-preview');
+  }
+
+  function leaveDocumentPreview() {
+    if (!state.draft || documentFinalised()) return false;
+    if (document.body.classList.contains('doc-preview')) {
+      document.body.classList.remove('doc-preview');
+      renderFinal(); updateFinishingBar();
+    }
+    return true;
   }
 
   function generationStageLabel(stage) {
@@ -185,7 +255,30 @@
     var formatted = formatReviewDecisionLabel(label);
     message.textContent = formatted + (/[.!?]$/.test(formatted) ? ' ' : '. ');
     toast.hidden = false;
-    undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 10000);
+    undoToastTimer = window.setTimeout(function () { toast.hidden = true; }, 8000);
+  }
+
+  // Every removal says what went, so the toast's Undo is clearly about it.
+  function removedLabel(text) {
+    var value = String(text || '').replace(/\s+/g, ' ').trim();
+    if (value.length > 48) value = value.slice(0, 45).trim() + '…';
+    return 'Removed “' + (value || 'empty item') + '”';
+  }
+
+  /* Fields the reviewer changed in the document keep a grey bar until the
+     minutes are finalised. Kept in this browser only. */
+  function editedStoreKey() { return 'mma-edited:' + ((state.draft && state.draft.draftId) || ''); }
+  function editedFields() {
+    if (!state.draft || state.draft.status === 'complete') return [];
+    try { return JSON.parse(window.localStorage.getItem(editedStoreKey()) || '[]'); } catch (error) { return []; }
+  }
+  function fieldEditKey(kind, id, field) { return kind + '|' + id + '|' + field; }
+  function markFieldEdited(kind, id, field) {
+    var list = editedFields();
+    var key = fieldEditKey(kind, id, field);
+    if (list.indexOf(key) >= 0) return;
+    list.push(key);
+    try { window.localStorage.setItem(editedStoreKey(), JSON.stringify(list.slice(-500))); } catch (error) { /* private mode */ }
   }
 
   /* ------------------------------------------------------------------ *
@@ -241,7 +334,7 @@
     endUndoGroup();
     pendingReviewDecisionLabel = formatReviewDecisionLabel(label || 'Review decision').slice(0, 160);
     editVersion += 1;
-    setSaveStatus('Saving review decision...', 'saving');
+    setSaveStatus('Saving…', 'saving');
     saveDraftNow().catch(function (error) { setStatus(error.message, true, currentStageName()); });
   }
 
@@ -262,8 +355,15 @@
       || Object.keys(discussionEditorState.pendingRecords).length > 0;
   }
 
+  function hasTransientDocumentState() {
+    return Boolean(activeFinalEdit)
+      || Array.from(document.querySelectorAll('#finalDocument [data-owner-new], #finalDocument [data-due-text]')).some(function (input) {
+        return input.value !== input.defaultValue;
+      });
+  }
+
   function hasTransientEditorState() {
-    return hasTransientActionState() || hasTransientDiscussionState();
+    return hasTransientActionState() || hasTransientDiscussionState() || hasTransientDocumentState();
   }
 
   // An empty row is a placeholder, not unsaved work: it is worth saying it
@@ -271,7 +371,7 @@
   var EMPTY_ROW_NOTICE = 'Empty rows stay in this tab until you type into them.';
 
   function generationSaveText(running) {
-    if (pendingGenerationEdits) return 'Generation continues if you close this tab, but your latest edits are waiting to save. Keep this tab open until they are saved.';
+    if (pendingGenerationEdits) return 'Waiting to save until generation finishes…';
     if (hasTransientEditorState()) return EMPTY_ROW_NOTICE;
     return 'Everything is saved. You can close the tab' + (running === false ? '.' : ' - generation carries on without it.');
   }
@@ -382,9 +482,12 @@
         var remembered = navigationScrollRestore ? stepScrollMemory[state.currentStep] : null;
         window.scrollTo({ top: typeof remembered === 'number' ? remembered : 0, behavior: 'auto' });
         if (!focusHeading) return;
-        var heading = screen.querySelector('h2') || screen;
-        if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-        heading.focus({ preventScroll: true });
+        // Headings are not focusable. Keyboard focus goes to the current
+        // step's tab, so it is not lost when the button pressed is hidden.
+        // On a phone the tabs are replaced by the step picker.
+        var tab = document.querySelector('.step[data-step="' + state.currentStep + '"]');
+        if (!tab || !tab.getClientRects().length) tab = document.getElementById('mobileStepSelect');
+        if (tab && tab.getClientRects().length) tab.focus({ preventScroll: true });
       });
     });
   }
@@ -456,7 +559,7 @@
   function attendeeChip(name, group) {
     var destination = group === 'internal' ? 'Client' : 'Internal';
     var removeLabel = 'Remove ' + (name || 'attendee');
-    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button" aria-label="Move ' + escapeHtml(name || 'attendee') + ' to ' + destination + '"><span class="move-long">Move to ' + destination + '</span><span class="move-short">Move</span></button><button class="delete icon-only" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '" title="' + escapeHtml(removeLabel) + '">' + icon('trash') + '<span class="visually-hidden">' + escapeHtml(removeLabel) + '</span></button></div>';
+    return '<div class="attendee-chip"><input data-attendee-name="' + group + '" value="' + escapeHtml(name || '') + '" aria-label="' + (group === 'internal' ? 'Internal' : 'Client or external') + ' attendee name" placeholder="Enter a name"><button class="secondary attendee-move" data-move-attendee="' + group + '" type="button" aria-label="Move ' + escapeHtml(name || 'attendee') + ' to ' + destination + '"><span class="move-long">Move to ' + destination + '</span><span class="move-short">Move</span></button>' + rowMenu('Options for ' + (name || 'attendee'), '<button class="delete quiet" data-remove-attendee type="button" aria-label="' + escapeHtml(removeLabel) + '">Remove person</button>') + '</div>';
   }
 
   function renderAttendeeGroup(group, names) {
@@ -538,11 +641,158 @@
     return (record.reviewFlagIds || []).some(function (id) { return open.has(id); });
   }
 
-  function recordMenu(record, actions) {
-    var sourceLabel = recordNeedsReview(record) ? 'Check transcript' : 'View transcript';
-    var ownerKey = String((record && record.id) || '');
-    return '<details class="record-menu"><summary class="secondary quiet" aria-label="Item options">•••</summary><div class="record-menu-popover"><span class="record-menu-label">' + sourceLabel + '</span>' + evidenceBlock(record.evidenceIds, ownerKey) + actions + '</div></details>';
+  // The transcript used to expand inside this menu and cover the rows below
+  // it. The menu now holds a plain item that opens the side drawer instead.
+  function transcriptMenuItem(record) {
+    var ids = (record && record.evidenceIds) || [];
+    var count = ids.length;
+    if (!count) return '<button class="secondary quiet" type="button" disabled>No transcript linked</button>';
+    var label = (recordNeedsReview(record) ? 'Check transcript' : 'View transcript') + ' (' + count + (count === 1 ? ' line)' : ' lines)');
+    return '<button class="secondary quiet" data-view-transcript="' + escapeHtml(ids.join(',')) + '" data-transcript-pin="' + escapeHtml(record.text || record.action || '') + '" type="button">' + label + '</button>';
   }
+
+  // A row's "…" menu: removal is always its last, red item.
+  function rowMenu(label, items) {
+    return '<details class="record-menu row-menu" data-menu><summary class="secondary quiet" aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">•••</summary><div class="record-menu-popover" data-menu-popover>' + items + '</div></details>';
+  }
+
+  function recordMenu(record, actions) {
+    return '<details class="record-menu" data-menu><summary class="secondary quiet" aria-label="Item options" title="Item options">•••</summary><div class="record-menu-popover" data-menu-popover>' + transcriptMenuItem(record) + actions + '</div></details>';
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Menus.
+   * Every row and topic menu is a <details>. Only one may be open at a
+   * time; Esc, a click elsewhere and scrolling the page all close it.
+   * ------------------------------------------------------------------ */
+  var MENU_SELECTOR = 'details[data-menu]';
+
+  function openMenus() { return Array.prototype.slice.call(document.querySelectorAll(MENU_SELECTOR + '[open]')); }
+
+  function closeMenus(except, options) {
+    var closed = false;
+    openMenus().forEach(function (menu) {
+      if (menu === except) return;
+      menu.open = false;
+      closed = true;
+      // A document picker that is closed stays closed when the table re-renders.
+      if (menu.dataset && menu.dataset.picker && menu.dataset.picker === docPickerOpen) docPickerOpen = '';
+      if (options && options.focus) {
+        var summary = menu.querySelector('summary');
+        if (summary) summary.focus({ preventScroll: true });
+      }
+    });
+    return closed;
+  }
+
+  // A menu near the bottom of the window opens upwards, so its last item is
+  // never hidden behind the sticky save bar or the window edge.
+  function placeMenu(menu) {
+    var popover = menu.querySelector('[data-menu-popover]');
+    if (!popover) return;
+    menu.classList.remove('opens-up');
+    popover.style.left = '';
+    popover.style.right = '';
+    var rect = popover.getBoundingClientRect();
+    var shift = Math.max(8 - rect.left, Math.min(0, document.documentElement.clientWidth - 8 - rect.right));
+    if (shift) {
+      popover.style.left = (popover.offsetLeft + shift) + 'px';
+      popover.style.right = 'auto';
+    }
+    var bar = document.getElementById('saveStrip');
+    var floor = window.innerHeight - (bar && !bar.hidden ? bar.getBoundingClientRect().height + 12 : 8);
+    rect = popover.getBoundingClientRect();
+    var roomAbove = menu.getBoundingClientRect().top;
+    if (rect.bottom > floor && roomAbove > rect.height + 8) menu.classList.add('opens-up');
+  }
+
+  document.addEventListener('toggle', function (event) {
+    var menu = event.target;
+    if (!menu || !menu.matches || !menu.matches(MENU_SELECTOR) || !menu.open) return;
+    closeMenus(menu);
+    placeMenu(menu);
+  }, true);
+
+  document.addEventListener('pointerdown', function (event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    closeMenus(inside || null);
+  }, true);
+
+  document.addEventListener('focusin', function (event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    if (!inside) closeMenus(null);
+  });
+
+  // Scrolling the page by wheel or touch closes a menu. Scrolls the browser
+  // makes itself, to bring a focused menu item into view, do not.
+  function closeMenusOnUserScroll(event) {
+    var inside = event.target.closest && event.target.closest(MENU_SELECTOR);
+    if (!inside) closeMenus(null);
+  }
+  window.addEventListener('wheel', closeMenusOnUserScroll, { passive: true });
+  window.addEventListener('touchmove', closeMenusOnUserScroll, { passive: true });
+
+  /* ------------------------------------------------------------------ *
+   * Side drawer.
+   * A panel over the right edge for transcript passages. It never moves the
+   * document underneath it, and Esc closes it.
+   * ------------------------------------------------------------------ */
+  var drawerTrigger = null;
+
+  function openDrawer(options) {
+    var drawer = document.getElementById('sideDrawer');
+    if (!drawer) return;
+    drawerTrigger = options.trigger || document.activeElement;
+    document.getElementById('sideDrawerTitle').textContent = options.title || '';
+    var pinned = document.getElementById('sideDrawerPinned');
+    pinned.hidden = !options.pinned;
+    pinned.textContent = options.pinned || '';
+    document.getElementById('sideDrawerBody').innerHTML = options.html || '';
+    drawer.hidden = false;
+    document.body.classList.add('has-side-drawer');
+    document.getElementById('sideDrawerClose').focus({ preventScroll: true });
+  }
+
+  function closeDrawer() {
+    var drawer = document.getElementById('sideDrawer');
+    if (!drawer || drawer.hidden) return false;
+    drawer.hidden = true;
+    document.body.classList.remove('has-side-drawer');
+    restoreFlagList();
+    var trigger = drawerTrigger;
+    drawerTrigger = null;
+    // The menu that opened the drawer has closed, so focus goes back to the
+    // menu's own button rather than an item that is no longer visible.
+    var menu = trigger && trigger.closest && trigger.closest(MENU_SELECTOR);
+    var target = menu ? menu.querySelector('summary') : trigger;
+    if (target && document.contains(target)) target.focus({ preventScroll: true });
+    return true;
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest && event.target.closest('[data-view-transcript]');
+    if (button) {
+      var ids = button.dataset.viewTranscript.split(',').filter(Boolean);
+      closeMenus(null);
+      openDrawer({
+        title: 'Transcript (' + ids.length + (ids.length === 1 ? ' line)' : ' lines)'),
+        pinned: button.dataset.transcriptPin || '',
+        html: evidenceHtml(ids),
+        trigger: button
+      });
+      return;
+    }
+    if (event.target.closest && event.target.closest('#sideDrawerClose')) closeDrawer();
+  });
+
+  // Esc closes the innermost thing first: an open menu, then the drawer.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (closeMenus(null, { focus: true }) || (!activeFinalEdit && closeDrawer())) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 
   function autoGrow(root) {
     (root || document).querySelectorAll('textarea').forEach(function (area) {
@@ -587,6 +837,8 @@
   function showStep(index, options) {
     var leavingStep = state.currentStep;
     state.currentStep = Math.max(0, Math.min(MAX_STEP, Number(index) || 0));
+    if (inDocumentMode()) state.currentStep = MAX_STEP;
+    else if (state.currentStep !== MAX_STEP || !documentReady()) structureStep = state.currentStep;
     // The upload confirmation belongs to the moment after upload; moving on
     // to another screen is the reviewer saying they have read it.
     if (state.currentStep !== 0) hideUploadConfirmation();
@@ -637,10 +889,14 @@
     // Deliberate navigation is useful to remember, but it is not user work and
     // must not produce a warning that implies generation needs this tab. Save
     // the position after the generation write if the tab is still open.
-    if (!rendering && stepChanged && !(options && options.persist === false)) {
-      if (generationRunning()) pendingGenerationNavigation = true;
-      else scheduleSave();
-    }
+    // Moving between screens is not an edit, so it never starts a save. The
+    // selected screen is sent with the next content save; an edit still
+    // waiting for its pause in typing is sent now, so leaving cannot lose it.
+    if (!rendering && stepChanged && savePending && !draftWritesInFlight && !generationRunning()) saveDraftNow();
+    // The screen is remembered in this browser, so reopening the draft comes
+    // back to it without a save.
+    if (!rendering && stepChanged && state.draft && !inDocumentMode()) rememberStep(state.draft.draftId, state.currentStep);
+
     // Deliberate navigation goes to the beginning of the newly opened section.
     // Autosave normally preserves the reader's position, but while this move is
     // settling it must not restore the position from the previous section.
@@ -808,11 +1064,56 @@
     });
   }
 
+  /* ------------------------------------------------------------------ *
+   * Outdated sections.
+   * A section whose inputs changed since it was generated says so under its
+   * own heading, with a link to regenerate it. The reviewer can dismiss the
+   * link; the dismissal is kept per draft in this browser.
+   * ------------------------------------------------------------------ */
+  var STALE_LINK_TEXT = {
+    actions: { lead: 'Discussion changed', link: 'regenerate actions?' },
+    summary: { lead: 'Minutes changed', link: 'regenerate the summary?' },
+    discussion: { lead: 'Details changed', link: 'regenerate the discussion?' }
+  };
+
+  function staleDismissKey() { return 'mma-stale-dismissed:' + ((state.draft && state.draft.draftId) || ''); }
+
+  function staleDismissed() {
+    try { return JSON.parse(window.localStorage.getItem(staleDismissKey()) || '{}') || {}; } catch (error) { return {}; }
+  }
+
+  function setStaleDismissed(stage, dismissed) {
+    var value = staleDismissed();
+    if (dismissed) value[stage] = true; else delete value[stage];
+    try { window.localStorage.setItem(staleDismissKey(), JSON.stringify(value)); } catch (error) { /* private mode */ }
+  }
+
+  function visibleStaleStages() {
+    if (!state.draft) return [];
+    var stale = state.draft.staleStages || [];
+    var dismissed = staleDismissed();
+    // Once a stage is up to date again, forget its dismissal so the next
+    // change is announced.
+    Object.keys(dismissed).forEach(function (stage) { if (stale.indexOf(stage) === -1) setStaleDismissed(stage, false); });
+    return stale.filter(function (stage) { return STALE_LINK_TEXT[stage] && !dismissed[stage]; });
+  }
+
+  function staleLinkHtml(stage) {
+    if (visibleStaleStages().indexOf(stage) === -1) return '';
+    var text = STALE_LINK_TEXT[stage];
+    return '<p class="section-stale" data-stale-link="' + stage + '"><span class="stale-dot" aria-hidden="true"></span><span>' + escapeHtml(text.lead) + ' — <button type="button" class="link-button" data-update-stale-stage="' + stage + '">' + escapeHtml(text.link) + '</button></span>'
+      + '<button type="button" class="stale-dismiss" data-dismiss-stale="' + stage + '" aria-label="Dismiss" title="Dismiss">&times;</button></p>';
+  }
+
   function renderStaleNotice() {
     var notice = document.getElementById('staleNotice');
     if (!notice || !state.draft) return;
     var stale = state.draft.staleStages || [];
-    notice.hidden = !stale.length;
+    // The old page-wide banner is retired; each affected section says so instead.
+    notice.hidden = true;
+    document.querySelectorAll('[data-stale-slot]').forEach(function (slot) {
+      slot.innerHTML = staleLinkHtml(slot.dataset.staleSlot);
+    });
     var stages = document.getElementById('staleStages');
     if (stages) stages.textContent = stale.join(' and ');
     var actions = document.getElementById('staleStageActions');
@@ -1029,7 +1330,7 @@
     var objectives = draft.meetingObjectives || [];
     document.getElementById('objectivesList').innerHTML = objectives.map(function (item, index) {
       var objectiveText = typeof item === 'string' ? item : item.text;
-      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools"><button class="delete quiet icon-only" data-remove-objective="' + index + '" type="button" aria-label="Remove objective ' + (index + 1) + '" title="Remove objective">' + icon('trash') + '</button></div></div>';
+      return '<div class="record-row"><textarea data-objective-index="' + index + '" rows="1" aria-label="Objective ' + (index + 1) + '">' + escapeHtml(objectiveText) + '</textarea><div class="record-tools">' + rowMenu('Objective ' + (index + 1) + ' options', '<button class="delete quiet" data-remove-objective="' + index + '" type="button" aria-label="Remove objective ' + (index + 1) + '">Remove objective</button>') + '</div></div>';
     }).join('') || '<p class="muted record-empty">None yet. Generate them, or add one by hand.</p>';
     var generate = document.getElementById('generateSummary');
     generate.hidden = summaryRunning;
@@ -1083,15 +1384,284 @@
     renderPageHeading();
   });
 
+  /* ------------------------------------------------------------------ *
+   * Document mode.
+   * Once a transcript has been processed, the page is one document with
+   * click-to-edit text. The step screens stay available behind the
+   * "Edit structure" toggle, which is remembered per draft in this browser
+   * and never saved to the draft.
+   * ------------------------------------------------------------------ */
+  var structureStep = 2;
+
+  function documentReady() {
+    var draft = state.draft;
+    return Boolean(draft && (documentFinalised() || (stageGeneratedAt(draft, 'discussion') && stageGeneratedAt(draft, 'actions'))));
+  }
+
+  function editStructureKey() { return 'mma-edit-structure:' + ((state.draft && state.draft.draftId) || ''); }
+
+  function editStructureOn() {
+    if (!state.draft || documentFinalised()) return false;
+    var stored = null;
+    try { stored = window.localStorage.getItem(editStructureKey()); } catch (error) { stored = null; }
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+    // With nothing to read in a section, start where it can be built.
+    return !(state.draft.discussion || []).length || !(state.draft.actions || []).length;
+  }
+
+  function inDocumentMode() { return documentReady() && !editStructureOn(); }
+
+  function renderDocumentMode() {
+    var ready = documentReady();
+    var doc = ready && !editStructureOn();
+    document.body.classList.toggle('doc-ready', ready);
+    document.body.classList.toggle('doc-mode', doc);
+    if (!doc) document.body.classList.remove('doc-preview');
+    var toggle = document.getElementById('editStructureToggle');
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', String(ready && !doc));
+      toggle.hidden = documentFinalised();
+      toggle.disabled = documentFinalised();
+    }
+    var meta = document.getElementById('documentMeta');
+    if (meta) meta.innerHTML = ready ? documentMetaHtml(doc && !documentReadOnly()) : '';
+    // Download lives in Preview while the page is one document; the step
+    // screens keep their own Export menu on Review.
+    var exportLabel = document.getElementById('exportMenuLabel');
+    if (exportLabel) exportLabel.textContent = doc ? 'Download' : 'Export';
+    var exportMenu = document.querySelector('.export-menu');
+    var home = doc ? document.getElementById('previewExport') : document.querySelector('.final-actions .spacer');
+    if (exportMenu && home) {
+      if (doc && exportMenu.parentElement !== home) home.appendChild(exportMenu);
+      if (!doc && exportMenu.previousElementSibling !== home) home.insertAdjacentElement('afterend', exportMenu);
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Checks: one counter, one drawer.
+   * ------------------------------------------------------------------ */
+  function openCheckItems() {
+    var draft = state.draft || {};
+    var details = draft.details || {};
+    var items = { flagged: [], owner: [], due: [], details: [], total: 0 };
+    (draft.reviewFlags || []).forEach(function (flag) {
+      if (flag.status === 'open' && !proposalChangeForFlag(flag)) items.flagged.push(flag);
+    });
+    (draft.actions || []).forEach(function (action) {
+      if (!(action.owners || []).length) items.owner.push(action);
+      if (dueState(action.timing).mode === 'none') items.due.push(action);
+    });
+    if (!String(details.meetingTitle || '').trim()) items.details.push({ field:'meetingTitle', label:'Meeting title' });
+    if (!String(details.meetingDate || '').trim()) items.details.push({ field:'meetingDate', label:'Meeting date' });
+    if (!(details.internalAttendees || []).concat(details.clientAttendees || []).filter(function (name) { return String(name || '').trim(); }).length) {
+      items.details.push({ field:'attendees', label:'At least one attendee' });
+    }
+    items.total = items.flagged.length + items.owner.length + items.due.length + items.details.length;
+    return items;
+  }
+
+  function plural(count, one, many) { return count + ' ' + (count === 1 ? one : many); }
+
+  function checksSummaryText(items) {
+    return [items.flagged.length ? plural(items.flagged.length, 'model check', 'model checks') : '',
+      items.owner.length ? plural(items.owner.length, 'missing owner', 'missing owners') : '',
+      items.due.length ? plural(items.due.length, 'missing date', 'missing dates') : '',
+      items.details.length ? plural(items.details.length, 'missing detail', 'missing details') : ''].filter(Boolean).join(', ');
+  }
+
+  var checksDrawerMode = '';
+  function checksDrawerOpen() {
+    var drawer = document.getElementById('sideDrawer');
+    return Boolean(checksDrawerMode && drawer && !drawer.hidden);
+  }
+
+  function checksExtraHtml(items) {
+    var group = function (title, rows) {
+      return rows.length ? '<section class="checks-group"><h3>' + escapeHtml(title) + ' <span class="checks-count">' + rows.length + '</span></h3><ul class="checks-list">' + rows.join('') + '</ul></section>' : '';
+    };
+    var actionRow = function (kind) {
+      return function (action) {
+        return '<li><span class="checks-item-text">' + escapeHtml(action.action || 'Untitled action') + '</span><button class="secondary compact" data-fix-' + kind + '="' + escapeHtml(actionOccurrence(action)) + '" type="button">Fix</button></li>';
+      };
+    };
+    var done = ((state.draft && state.draft.reviewFlags) || []).filter(function (flag) { return flag.status && flag.status !== 'open'; });
+    var doneHtml = done.length ? '<details class="checks-done"><summary>Done (' + done.length + ')</summary><ul class="checks-list">' + done.map(function (flag) {
+      var status = flag.status === 'dismissed' ? 'Left out of the minutes' : flag.status === 'corrected' ? 'Note saved' : 'Checked';
+      return '<li><span class="checks-item-text">' + escapeHtml(reviewFlagLabel(flag)) + '</span><span class="muted">' + status + '</span></li>';
+    }).join('') + '</ul></details>' : '';
+    return group('Missing owner', items.owner.map(actionRow('owner')))
+      + group('Missing date', items.due.map(actionRow('due')))
+      + group('Missing details', items.details.map(function (item) {
+        return '<li><span class="checks-item-text">' + escapeHtml(item.label) + '</span><button class="secondary compact" data-fix-detail="' + item.field + '" type="button">Fix</button></li>';
+      }))
+      + (items.total ? '' : '<p class="checks-all-done">All checked. The minutes are ready to finalise.</p>')
+      + doneHtml;
+  }
+
+  function finaliseConfirmHtml(items) {
+    return '<div class="finalise-confirm" role="alert"><p><strong>' + plural(items.total, 'item is', 'items are') + ' still open:</strong> ' + escapeHtml(checksSummaryText(items)) + '.</p>'
+      + '<p class="muted">You can finalise anyway, or review them first.</p>'
+      + '<div class="finalise-confirm-actions"><button class="secondary" data-finalise-anyway type="button">Finalise anyway</button><button class="button" data-review-first type="button">Review first</button></div></div>';
+  }
+
+  function refreshChecksDrawer() {
+    var items = openCheckItems();
+    var confirm = document.getElementById('checksConfirm');
+    if (confirm) confirm.innerHTML = checksDrawerMode === 'finalise' && items.total ? finaliseConfirmHtml(items) : '';
+    var flagGroup = document.getElementById('checksFlagGroup');
+    if (flagGroup) {
+      flagGroup.hidden = !items.flagged.length;
+      var count = flagGroup.querySelector('.checks-count');
+      if (count) count.textContent = items.flagged.length;
+    }
+    var extra = document.getElementById('checksExtra');
+    if (extra) extra.innerHTML = checksExtraHtml(items);
+    var title = document.getElementById('sideDrawerTitle');
+    if (title) title.textContent = checksDrawerMode === 'finalise' && items.total ? 'Finalise with open items?' : (items.total ? plural(items.total, 'item', 'items') + ' to check' : 'All checked');
+  }
+
+  // The model's checks keep today's cards: the list itself moves into the
+  // drawer while it is open and goes back when it closes.
+  function openChecksDrawer(mode) {
+    var trigger = document.getElementById(mode === 'finalise' ? 'finaliseMinutes' : 'reviewQueueToggle');
+    openDrawer({ title: '', trigger: trigger,
+      html: '<div id="checksConfirm"></div><section id="checksFlagGroup" class="checks-group"><h3>Model flagged <span class="checks-count"></span></h3><div id="checksFlagSlot"></div></section><div id="checksExtra"></div>' });
+    checksDrawerMode = mode || 'checks';
+    document.getElementById('sideDrawer').classList.add('checks-drawer');
+    var list = document.getElementById('flagList');
+    var slot = document.getElementById('checksFlagSlot');
+    if (list && slot) slot.appendChild(list);
+    refreshChecksDrawer();
+    document.getElementById('reviewQueueToggle').setAttribute('aria-expanded', 'true');
+  }
+
+  function restoreFlagList() {
+    var list = document.getElementById('flagList');
+    var home = document.querySelector('#reviewFlags .review-flags-body');
+    if (list && home && list.parentElement !== home) home.appendChild(list);
+    checksDrawerMode = '';
+    var drawer = document.getElementById('sideDrawer');
+    if (drawer) drawer.classList.remove('checks-drawer');
+    var pill = document.getElementById('reviewQueueToggle');
+    if (pill) pill.setAttribute('aria-expanded', 'false');
+  }
+
+  // Finds the place in the document a model check is about.
+  function documentElementForFlag(flag) {
+    var target = flagTarget(flag);
+    if (!target || target.ambiguous) return null;
+    if (target.field === 'summary') return document.querySelector('#finalDocument [data-kind="summary"]');
+    if (target.elementId === 'objectivesList') return document.querySelector('#finalDocument .final-objectives');
+    if (target.elementId === 'meetingDate') return document.querySelector('#documentMeta [data-field="meetingDate"]');
+    if (target.stage === 3) {
+      var actions = state.draft.actions || [];
+      for (var index = 0; index < actions.length; index += 1) {
+        if (actionDomId(actions[index], index) === target.elementId) return document.querySelector('#finalDocument tr[data-doc-action="' + actionOccurrence(actions[index]).replace(/"/g, '\\"') + '"]');
+      }
+      return null;
+    }
+    if (target.stage === 2 && !target.retained) {
+      var found = null;
+      (state.draft.discussion || []).forEach(function (topic, topicIndex) {
+        var topicId = topic.id || 'topic-' + topicIndex;
+        ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+          (topic[field] || []).forEach(function (item, itemIndex) {
+            if (!found && (item.reviewFlagIds || []).indexOf(flag.id) >= 0) found = item.id || (topicId + '-' + field + '-' + itemIndex);
+          });
+        });
+      });
+      var element = found && document.querySelector('#finalDocument [data-kind="discussion"][data-record-id="' + String(found).replace(/"/g, '\\"') + '"]');
+      return element ? (element.closest('li') || element) : null;
+    }
+    return null;
+  }
+
+  function pulseInDocument(element) {
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    element.classList.remove('doc-pulse');
+    void element.offsetWidth;
+    element.classList.add('doc-pulse');
+    window.setTimeout(function () { element.classList.remove('doc-pulse'); }, 1800);
+  }
+
+  // Open model checks marked in the document with an amber bar.
+  var docFlaggedKeys = new Set();
+  function computeDocFlaggedKeys() {
+    var keys = new Set();
+    var draft = state.draft || {};
+    var open = (draft.reviewFlags || []).filter(function (flag) { return flag.status === 'open' && !proposalChangeForFlag(flag); });
+    if (!open.length) return keys;
+    var openIds = new Set(open.map(function (flag) { return flag.id; }));
+    (draft.discussion || []).forEach(function (topic, topicIndex) {
+      var topicId = topic.id || 'topic-' + topicIndex;
+      ['points', 'decisions', 'openQuestions'].forEach(function (field) {
+        (topic[field] || []).forEach(function (item, itemIndex) {
+          if ((item.reviewFlagIds || []).some(function (id) { return openIds.has(id); })) keys.add('discussion|' + (item.id || topicId + '-' + field + '-' + itemIndex));
+        });
+      });
+    });
+    var actionIds = (draft.actions || []).map(function (action, index) { return actionDomId(action, index); });
+    open.forEach(function (flag) {
+      var target = flagTarget(flag);
+      if (!target || target.ambiguous) return;
+      if (target.field === 'summary') keys.add('summary|executive-summary');
+      else if (target.stage === 3) {
+        var at = actionIds.indexOf(target.elementId);
+        if (at >= 0) keys.add('action|' + actionOccurrence(draft.actions[at]));
+      }
+    });
+    return keys;
+  }
+
+  function documentMetaHtml(editable) {
+    var details = (state.draft && state.draft.details) || {};
+    var chip = function (field, value, options) {
+      if (!editable) return '<span class="meta-chip">' + escapeHtml(options.displayValue || value || options.empty) + '</span>';
+      return '<span class="meta-chip">' + finalTextEditor('details', 'meeting-details', field, value, options) + '</span>';
+    };
+    var typeLabel = meetingTypeLabel(details.meetingType) || 'Meeting type not set';
+    var typeControl = '<span class="meta-chip">' + escapeHtml(typeLabel) + '</span>';
+    if (editable) {
+      var current = meetingTypeLabel(details.meetingType || '');
+      var source = document.getElementById('meetingType');
+      var labels = source ? Array.from(source.options).map(function (option) { return option.value; }).filter(Boolean) : [];
+      if (current && labels.indexOf(current) < 0) labels.push(current);
+      typeControl = '<span class="meta-chip"><select class="meta-select" data-doc-meeting-type aria-label="Meeting type"><option value="">Meeting type not set</option>'
+        + labels.map(function (label) { return '<option' + (label === current ? ' selected' : '') + '>' + escapeHtml(label) + '</option>'; }).join('') + '</select></span>';
+    }
+    return chip('meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Date not set'})
+      + '<span class="meta-sep" aria-hidden="true">·</span>'
+      + chip('meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Location not set'})
+      + '<span class="meta-sep" aria-hidden="true">·</span>'
+      + typeControl;
+  }
+
+  function setEditStructure(on) {
+    if (documentFinalised()) return;
+    var top = window.scrollY;
+    try { window.localStorage.setItem(editStructureKey(), on ? '1' : '0'); } catch (error) { /* private mode */ }
+    readEditors();
+    activeFinalEdit = null;
+    if (on) showStep(structureStep === MAX_STEP ? 2 : structureStep, { persist: false });
+    else { renderFinal(); showStep(MAX_STEP, { persist: false }); }
+    renderDocumentMode();
+    if (!on) renderFinal();
+    // The page keeps its place: toggling is not navigation.
+    window.scrollTo({ top: top, behavior: 'auto' });
+  }
+
   function renderPageHeading() {
     var title = document.getElementById('pageTitle');
     if (!title) return;
     var method = document.getElementById('generationMethod');
-    if (method) method.hidden = !isParallelDraft();
+    if (method) method.hidden = true;
     renderBetaFlow();
     var details = state.draft && state.draft.details;
-    title.textContent = state.draft && details && String(details.meetingTitle || '').trim()
+    var text = state.draft && details && String(details.meetingTitle || '').trim()
       ? details.meetingTitle.trim() : 'Meeting Minutes Agent';
+    if (inDocumentMode()) title.innerHTML = finalTextEditor('details', 'meeting-details', 'meetingTitle', text, {singleLine:true,label:'Edit meeting title'});
+    else title.textContent = text;
   }
 
   var DEFAULT_MEETING_LOCATION = 'Microsoft Teams';
@@ -1536,7 +2106,7 @@
       var headingToggle = showHeadings
         ? '<button class="secondary quiet" data-toggle-topic-heading="' + index + '" type="button">' + (topic.hideHeading ? 'Show title in minutes' : 'Hide title in minutes') + '</button>'
         : '';
-      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu"><summary class="secondary quiet" aria-label="Topic actions">•••</summary><div class="topic-menu-popover">' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
+      return '<article id="' + escapeHtml(recordDomId('topic', topicId, index)) + '" class="discussion-card' + (collapsed ? ' is-collapsed' : '') + (rows === 1 ? ' is-single' : '') + (headingHidden ? ' is-heading-hidden' : '') + '" data-topic-card="' + escapeHtml(topicId) + '"><div class="card-head"><button class="topic-collapse" data-toggle-topic="' + escapeHtml(topicId) + '" type="button" aria-expanded="' + String(!collapsed) + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' topic" title="' + (collapsed ? 'Expand' : 'Collapse') + ' topic"><span aria-hidden="true">›</span></button><label class="topic-field"><textarea rows="1" data-topic-index="' + index + '" data-topic aria-label="Discussion topic (tap to rename)" placeholder="Topic" title="Tap to rename">' + escapeHtml(topic.topic || '') + '</textarea><small class="topic-count">' + escapeHtml(meta) + (headingHidden ? ' · title hidden' : '') + '</small></label><details class="topic-menu" data-menu><summary class="secondary quiet" aria-label="Topic actions" title="Topic actions">•••</summary><div class="topic-menu-popover" data-menu-popover>' + mergeTopicControl(discussion, index) + headingToggle + '<button class="delete quiet" data-delete-topic="' + index + '" type="button">Remove topic</button></div></details></div><div class="discussion-card-body"' + (collapsed ? ' hidden' : '') + '>' + discussionPropositions(topic, index) + recordAddButton(index) + '</div></article>';
     }).join('') || '<p class="muted">No discussion content has been generated.</p>';
     autoGrow(document.getElementById('discussionList'));
     restoreDisclosures(document.getElementById('omittedDetailsReview'));
@@ -1788,10 +2358,13 @@
       var kept = isActionKept(item);
       // The textarea is always editable, so a separate Edit control would do
       // nothing a click in the field does not already do.
+      // Source, review and removal share one "…" menu; removal is last and red.
       var decisions = '<div class="row-decisions">'
-        + '<button type="button" class="quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '" aria-label="' + (transcriptOpen ? 'Hide source transcript' : 'View source transcript') + '"><span data-transcript-toggle-label>Source</span><span class="row-transcript-chevron" aria-hidden="true">⌄</span></button>'
-        + '<button type="button" class="quiet row-keep icon-only' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '" aria-label="' + (kept ? 'Mark action unchecked' : 'Mark action checked') + '" title="' + (kept ? 'Marked checked' : 'Mark checked') + '">' + icon('check') + '</button>'
-        + '<button type="button" class="quiet row-reject icon-only" data-reject-action="' + index + '" aria-label="Remove action from minutes" title="Remove from minutes">' + icon('trash') + '</button>'
+        + (kept ? '<span class="row-reviewed" title="Marked reviewed">' + icon('check') + '<span class="visually-hidden">Reviewed</span></span>' : '')
+        + rowMenu('Action ' + (index + 1) + ' options',
+          '<button type="button" class="secondary quiet row-transcript" data-open-action-transcript="' + index + '" aria-controls="' + escapeHtml(transcriptId) + '" aria-expanded="' + (transcriptOpen ? 'true' : 'false') + '"><span data-transcript-toggle-label>' + (transcriptOpen ? 'Hide source' : 'View source') + '</span></button>'
+          + '<button type="button" class="secondary quiet row-keep' + (kept ? ' is-kept' : '') + '" data-keep-action="' + index + '" aria-pressed="' + (kept ? 'true' : 'false') + '">' + (kept ? 'Reviewed ✓' : 'Mark reviewed') + '</button>'
+          + '<button type="button" class="delete quiet row-reject" data-reject-action="' + index + '">Remove action</button>')
         + '</div>';
       var transcriptPanel = '<details id="' + escapeHtml(transcriptId) + '" class="action-transcript-panel" data-action-transcript-panel data-keep-open="' + escapeHtml(transcriptKey) + '"><summary class="visually-hidden">Transcript passage</summary><div class="evidence-panel">' + evidenceHtml(item.evidenceIds) + '</div></details>';
       // Reordering: the handle is the drag source and also takes arrow keys, so
@@ -2173,6 +2746,18 @@
         : counts.optional ? counts.optional + ' optional check' + (counts.optional === 1 ? '' : 's') : 'Review complete';
     document.getElementById('reviewQueueToggle').title = counts.flags + ' total checks. ' + counts.primary + ' concern possible corrections; ' + counts.optional + ' concern optional material; ' + counts.coverage + ' concern coverage.';
     updateReviewQueueToggle(counts);
+    if (inDocumentMode()) {
+      // One answer to "am I done?": model checks, missing owners and dates,
+      // and empty required details, added up.
+      var open = openCheckItems();
+      var pill = document.getElementById('reviewQueueToggle');
+      document.getElementById('flagCount').textContent = open.total ? open.total + ' to check' : 'All checked';
+      pill.hidden = false;
+      pill.dataset.state = open.total ? 'warning' : 'done';
+      pill.title = open.total ? checksSummaryText(open) : 'Nothing left to check.';
+      pill.setAttribute('aria-expanded', String(checksDrawerOpen()));
+      if (checksDrawerOpen()) refreshChecksDrawer();
+    }
     var intro = document.getElementById('reviewQueueIntro');
     if (intro) {
       intro.hidden = !counts.flags;
@@ -2290,7 +2875,7 @@
         var selector = target.field === 'timing' ? '[data-edit-timing]' : target.field === 'owners' ? '[data-edit-owners]' : target.field === 'proposal' ? 'summary' : 'textarea,input';
         var stepAttribute = target.stage == null ? '' : ' data-target-step="' + target.stage + '"';
         body += (candidateText ? '' : '<div class="flag-target"><span>' + escapeHtml(candidateLabel) + '</span>')
-          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : 'Open in minutes') + '</button></div>';
+          + '<button class="secondary compact" data-view-flag-target="' + escapeHtml(target.elementId) + '" data-target-selector="' + escapeHtml(selector) + '"' + stepAttribute + ' type="button">' + (target.retained ? 'Open retained detail' : inDocumentMode() ? 'Show in document' : 'Open in minutes') + '</button></div>';
       } else if (showTarget && target && target.ambiguous) {
         body += '<p>' + (target.retained ? 'This check is linked to several retained details. Review those entries before including them.' : 'This check is linked to several actions. Review those rows directly.') + '</p></div>';
       } else if (showTarget && candidateText) {
@@ -2423,12 +3008,15 @@
       var actionIndex = kind === 'action' ? actionIndexForOccurrence(id) : -1;
       var recordId = actionIndex >= 0 ? state.draft.actions[actionIndex].id : id;
       var occurrenceAttribute = kind === 'action' ? ' data-action-occurrence-id="' + escapeHtml(id) + '"' : '';
-      return '<button class="final-editable' + (options.block ? ' block' : '') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="Click to edit">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
+      var edited = editedFields().indexOf(fieldEditKey(kind, id, field)) >= 0;
+      var flagged = inDocumentMode() && field !== 'owners' && field !== 'timing' && docFlaggedKeys.has(kind + '|' + id);
+      var hint = flagged ? 'Flagged for a check' + (edited ? ' · Edited by you' : '') : edited ? 'Edited by you' : 'Click to edit';
+      return '<button class="final-editable' + (options.block ? ' block' : '') + (edited ? ' user-edited' : '') + (flagged ? ' model-flagged' : '') + (displayValue ? '' : ' is-empty') + '" data-final-edit data-kind="' + escapeHtml(kind) + '" data-record-id="' + escapeHtml(recordId || '') + '"' + occurrenceAttribute + ' data-field="' + escapeHtml(field) + '" type="button" title="' + hint + '">' + escapeHtml(displayValue || options.empty || 'Not stated') + '</button>';
     }
     var control = options.singleLine
       ? '<input data-final-editor-value value="' + escapeHtml(value || '') + '"' + (options.inputType ? ' type="' + options.inputType + '"' : '') + ' aria-label="' + escapeHtml(options.label || 'Edit value') + '">'
       : '<textarea data-final-editor-value rows="' + (options.rows || 2) + '" aria-label="' + escapeHtml(options.label || 'Edit text') + '">' + escapeHtml(value || '') + '</textarea>';
-    return '<span class="final-inline-editor' + (options.block ? ' block' : '') + '" data-final-editor>' + control + '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span></span>';
+    return '<span class="final-inline-editor' + (options.block ? ' block' : '') + '" data-final-editor data-original="' + escapeHtml(value || '') + '">' + control + finalEditButtons() + '</span>';
   }
 
   function finalTimingDisplay(action) {
@@ -2436,7 +3024,7 @@
   }
 
   function finalEditButtons() {
-    return '<span class="final-edit-actions"><button class="secondary quiet" data-final-cancel type="button">Cancel</button><button class="button" data-final-save type="button">Save</button></span>';
+    return '<span class="final-edit-actions"><button class="quiet" data-final-cancel type="button">Cancel</button><button class="secondary" data-final-save type="button">Save</button></span>';
   }
 
   // The editor for an action's field, laid out in a row of its own under the
@@ -2478,7 +3066,7 @@
         + '<textarea data-final-editor-value rows="3" aria-label="Edit action">' + escapeHtml(action.action || '') + '</textarea>'
         + finalEditButtons() + '</span>';
     }
-    return '<tr class="final-editor-row"><td colspan="3">' + body + '</td></tr>';
+    return '<tr class="final-editor-row"><td colspan="' + (inDocumentMode() ? 4 : 3) + '">' + body + '</td></tr>';
   }
 
   // A meeting nobody from the client side attended is an internal meeting, not
@@ -2498,28 +3086,341 @@
   function renderFinal() {
     var draft = state.draft || {}; var details = draft.details || {};
     var include = includedSectionState();
-    var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && item.text;}) : [];
-    var summaryHtml = (objectives.length ? '<section><h3>Meeting objectives</h3><ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {label:'Edit meeting objective'}) + '</li>'; }).join('') + '</ul></section>' : '')
-      + (include.executiveSummary && draft.executiveSummary ? '<section><h3>Executive summary</h3>' + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+    var docMode = inDocumentMode();
+    docFlaggedKeys = docMode ? computeDocFlaggedKeys() : new Set();
+    var objectives = include.meetingObjectives ? (draft.meetingObjectives || []).map(function(item,index){return typeof item === 'string' ? {id:'objective-'+index,text:item} : item;}).filter(function(item){return item && (item.text || finalEditMatches('objective', item.id, 'text'));}) : [];
+    var addObjective = docMode ? '<button class="quiet doc-add doc-only" data-doc-add-objective type="button">Add objective</button>' : '';
+    var summaryHtml = (objectives.length || (docMode && include.meetingObjectives) ? '<section><h3>Meeting objectives</h3>' + (objectives.length ? '<ul class="final-objectives">' + objectives.map(function (item) { return '<li>' + finalTextEditor('objective', item.id, 'text', item.text, {singleLine:docMode,label:'Edit meeting objective',empty:'New objective'}) + '</li>'; }).join('') + '</ul>' : '') + addObjective + '</section>' : '')
+      + (include.executiveSummary && draft.executiveSummary ? '<section>' + sectionHeading('Executive summary', 'summary', summaryTranscriptItem()) + staleLinkHtml('summary') + finalTextEditor('summary', 'executive-summary', 'text', draft.executiveSummary, {block:true,rows:3,label:'Edit executive summary'}) + '</section>' : '');
+    var topicCount = (draft.discussion || []).length;
     var finalDiscussion = (draft.discussion || []).map(function (topic, topicIndex) {
       var topicId = topic.id || 'topic-' + topicIndex;
-      var rows = [{key:'points',label:''}, {key:'decisions',label:'Decision:'}, {key:'openQuestions',label:'Open question:'}]
-        .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text}; }); });
-      var heading = topicHeadingsShown() && !topic.hideHeading ? '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' : '';
-      return heading + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) { return '<li><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div></li>'; }).join('') + '</ul>' : '');
+      var rows = [{key:'points',label:'',noun:'point'}, {key:'decisions',label:'Decision:',noun:'decision'}, {key:'openQuestions',label:'Open question:',noun:'question'}]
+        .flatMap(function (group) { return (topic[group.key] || []).map(function (item,itemIndex) { return {id:item.id || topicId+'-'+group.key+'-'+itemIndex,label:group.label,text:item.text,record:item,field:group.key,index:itemIndex,noun:group.noun}; }); });
+      var heading;
+      if (docMode) heading = docTopicHeading(topic, topicIndex, topicId, rows.length, topicCount);
+      else heading = topicHeadingsShown() && !topic.hideHeading ? '<h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading'}) + '</h4>' : '';
+      return heading + (rows.length ? '<ul class="final-propositions">' + rows.map(function (item) {
+        var menu = docMode && !finalEditMatches('discussion', item.id, 'text')
+          ? rowMenu(item.noun.charAt(0).toUpperCase() + item.noun.slice(1) + ' options', transcriptMenuItem(item.record) + '<button class="delete quiet" data-doc-remove-record="' + topicIndex + '|' + item.field + '|' + item.index + '" type="button">Remove ' + item.noun + '</button>')
+          : '';
+        return '<li' + (docMode ? ' class="doc-point"' : '') + '><div class="final-proposition-content' + (finalEditMatches('discussion', item.id, 'text') ? ' is-editing' : '') + '">' + (item.label ? '<strong class="final-kind-label">' + escapeHtml(item.label) + '</strong>' : '') + finalTextEditor('discussion', item.id, 'text', item.text, {block:true,rows:3,label:'Edit meeting sentence'}) + '</div>' + menu + '</li>'; }).join('') + '</ul>' : '');
     }).join('');
-    var actionsHtml = (draft.actions || []).map(function (action) {
+    var actionsHtml = docMode ? (draft.actions || []).map(docActionRowHtml).join('') || '<tr><td colspan="4">No actions recorded.</td></tr>' : (draft.actions || []).map(function (action) {
       var editing = ['action', 'owners', 'timing'].filter(function (field) { return finalEditMatches('action', actionOccurrence(action), field); })[0] || '';
       var cell = function (field, html) { return '<td' + (editing === field ? ' class="final-editing-cell"' : '') + '>' + html + '</td>'; };
       return '<tr' + (editing ? ' class="is-editing"' : '') + '>'
         + cell('action', finalTextEditor('action', actionOccurrence(action), 'action', action.action, {block:true,label:'Edit action',deferred:true}))
         + cell('owners', finalTextEditor('action', actionOccurrence(action), 'owners', (action.owners || []).join(', '), {singleLine:true,label:'Edit owners',empty:'Not stated',deferred:true}))
-        + cell('timing', finalTimingDisplay(action)) + '</tr>'
+        + cell('timing', finalTimingDisplay(action))
+        + '</tr>'
         + (editing ? finalActionEditorRow(action, editing) : '');
     }).join('') || '<tr><td colspan="3">No actions recorded.</td></tr>';
-    document.getElementById('finalDocument').innerHTML = '<p class="final-edit-hint">Click any highlighted sentence, owner or date to edit it here.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2><p><strong>Date:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingDate', details.meetingDate || '', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'}) + '<br><strong>Location:</strong> ' + finalTextEditor('details', 'meeting-details', 'meetingLocation', details.meetingLocation || '', {singleLine:true,label:'Edit meeting location',empty:'Not stated'}) + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>' + finalAttendeesHtml(details) + summaryHtml + '<section><h3>Meeting content</h3>' + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section><h3>Actions</h3><div class="actions-wrap"><table class="actions-table"><thead><tr><th>Action</th><th>Owners</th><th>Timing</th></tr></thead><tbody>' + actionsHtml + '</tbody></table></div></section>';
-    var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select');
-    if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); }
+    var documentHead = inDocumentMode()
+      ? '<div class="print-only"><h2>' + escapeHtml(details.meetingTitle || 'Meeting minutes') + '</h2>' + finalDetailsLines(details, true) + '</div>'
+        + (finalHintDismissed() ? '' : '<p class="final-edit-hint" data-final-hint>Click any text to edit. <button type="button" class="link-button" data-dismiss-final-hint>Got it</button></p>')
+      : '<p class="final-edit-hint">Click any text to edit.</p><h2>' + finalTextEditor('details', 'meeting-details', 'meetingTitle', details.meetingTitle || 'Meeting minutes', {singleLine:true,label:'Edit meeting title'}) + '</h2>' + finalDetailsLines(details);
+    var headingsSwitch = docMode ? '<label class="doc-topic-headings doc-only"><input type="checkbox" data-doc-topic-headings' + (topicHeadingsShown() ? ' checked' : '') + '> Show topic titles in minutes</label>' : '';
+    var actionsHead = docMode
+      ? '<tr><th class="doc-col-action">Action</th><th class="doc-col-owner">Owner</th><th class="doc-col-due">Due</th><th class="doc-only doc-row-menu"><span class="visually-hidden">Options</span></th></tr>'
+      : '<tr><th>Action</th><th>Owners</th><th>Timing</th></tr>';
+    var addAction = docMode ? '<button class="quiet doc-add doc-only" data-doc-add-action type="button">Add action</button>' : '';
+    document.getElementById('finalDocument').innerHTML = documentHead + (docMode ? '<section class="final-attendees"><h3>Attendees</h3>' + docAttendeesHtml(details) + '<div class="preview-only">' + finalAttendeesHtml(details) + '</div></section>' : finalAttendeesHtml(details)) + summaryHtml + '<section>' + sectionHeading('Meeting content', 'discussion') + staleLinkHtml('discussion') + headingsSwitch + (finalDiscussion || '<p>No meeting content recorded.</p>') + '</section><section>' + sectionHeading('Actions', 'actions') + staleLinkHtml('actions') + '<div class="actions-wrap"><table class="actions-table' + (docMode ? ' doc-actions-table' : '') + '"><thead>' + actionsHead + '</thead><tbody>' + actionsHtml + '</tbody></table></div>' + addAction + '</section>';
+    renderPageHeading();
+    var meta = document.getElementById('documentMeta');
+    if (meta && documentReady()) meta.innerHTML = documentMetaHtml(inDocumentMode() && !documentReadOnly());
+    renderDocumentReadOnly();
+    var editor = document.querySelector('#finalDocument [data-final-editor] input, #finalDocument [data-final-editor] textarea, #finalDocument [data-final-editor] select, #documentHeader [data-final-editor] input');
+    if (editor) { editor.focus({preventScroll:true}); if (editor.select) editor.select(); fitFinalTextarea(editor); }
+    if (docMode) updateReviewQueueSummary();
+  }
+
+  function renderDocumentReadOnly() {
+    if (!documentReadOnly()) return;
+    document.querySelectorAll('#finalDocument button, #finalDocument input, #finalDocument select, #finalDocument textarea, #documentHeader [data-final-edit], #documentHeader [data-doc-meeting-type]').forEach(function (control) {
+      control.disabled = true;
+    });
+    document.querySelectorAll('#finalDocument details').forEach(function (menu) {
+      menu.open = false;
+      var summary = menu.querySelector('summary');
+      if (summary) { summary.tabIndex = -1; summary.setAttribute('aria-disabled', 'true'); }
+    });
+  }
+
+  // A textarea in the document grows with its text instead of scrolling.
+  function fitFinalTextarea(element) {
+    if (!element || element.tagName !== 'TEXTAREA') return;
+    element.rows = 1;
+    element.style.height = 'auto';
+    element.style.height = (element.scrollHeight + 2) + 'px';
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Actions table in the document: Action (edited in place), Owner (picked
+   * from the attendees), Due (Date, Relative, Dependent or None) and a menu.
+   * ------------------------------------------------------------------ */
+  var RELATIVE_DUE = ['This week', 'Next week', 'Before next meeting'];
+  var docPickerOpen = '';
+  var docDueMode = {};
+
+  // Read the stored timing kind without changing its meaning for layout.
+  // Long target/deadline wording stays in a note beneath the action; wording
+  // without a classified due kind remains available for review.
+  function dueState(timing) {
+    timing = timing || {};
+    var kind = timing.kind || 'not_stated';
+    var wording = String(timing.wording || '').replace(/\s+/g, ' ').trim();
+    var date = String(timing.exactDate || '').trim();
+    if (kind === 'not_stated' || (!wording && !date)) return { mode:'none', note:'' };
+    if (date) return { mode:'date', date:date, label:formatUkDate(date) || date, note:wording.length > 32 ? wording : '' };
+    if (kind === 'dependency') return { mode:'dependent', text:wording, label:'Depends on: ' + wording, note:'' };
+    var preset = RELATIVE_DUE.filter(function (item) { return item.toLowerCase() === wording.toLowerCase(); })[0];
+    if (preset) return { mode:'relative', text:preset, label:preset, note:'' };
+    if (kind === 'target' || kind === 'deadline') return { mode:'relative', text:wording, custom:true,
+      label:wording.length > 32 ? 'See timing note' : wording, note:wording.length > 32 ? wording : '' };
+    return { mode:'none', note:wording };
+  }
+
+  function amberMarker(text) {
+    return '<span class="amber-flag"><span class="amber-dot" aria-hidden="true"></span>' + escapeHtml(text) + '</span>';
+  }
+
+  function docActionRowHtml(action) {
+    var occ = actionOccurrence(action);
+    var kept = isActionKept(action);
+    var due = dueState(action.timing);
+    var note = due.note ? '<button type="button" class="due-note" data-due-note aria-expanded="false" title="Show the full note">Timing note: “' + escapeHtml(due.note) + '”</button>' : '';
+    var reviewed = kept ? '<span class="row-reviewed doc-reviewed doc-only" title="Marked reviewed">' + icon('check') + '<span class="visually-hidden">Reviewed</span></span>' : '';
+    var menu = rowMenu('Action options', transcriptMenuItem(action).replace(/(?:View|Check) transcript/, 'View source')
+      + '<button class="secondary quiet" data-doc-keep-action="' + escapeHtml(occ) + '" aria-pressed="' + (kept ? 'true' : 'false') + '" type="button">' + (kept ? 'Reviewed ✓' : 'Mark reviewed') + '</button>'
+      + '<button class="delete quiet" data-doc-remove-action="' + escapeHtml(occ) + '" type="button">Remove action</button>');
+    return '<tr data-doc-action="' + escapeHtml(occ) + '"' + (kept ? ' class="is-reviewed"' : '') + '>'
+      + '<td class="doc-action-cell">' + reviewed + finalTextEditor('action', occ, 'action', action.action, {block:true,label:'Edit action',empty:'New action'}) + note + '</td>'
+      + '<td class="doc-owner-cell">' + ownerPickerHtml(action, occ) + '</td>'
+      + '<td class="doc-due-cell">' + duePickerHtml(action, occ, due) + '</td>'
+      + '<td class="doc-only doc-row-menu">' + menu + '</td></tr>';
+  }
+
+  function ownerPickerHtml(action, occ) {
+    var details = (state.draft && state.draft.details) || {};
+    var owners = action.owners || [];
+    var lower = owners.map(function (name) { return name.toLowerCase(); });
+    var shown = owners.length
+      ? '<span class="owner-chips-static">' + owners.map(function (name) { return '<span class="owner-chip-static">' + escapeHtml(name) + '</span>'; }).join('') + '</span>'
+      : amberMarker('No owner assigned');
+    var option = function (name) {
+      var on = lower.indexOf(name.toLowerCase()) >= 0;
+      return '<button type="button" class="secondary quiet picker-option" role="menuitemcheckbox" aria-checked="' + on + '" data-owner-toggle="' + escapeHtml(name) + '" data-occ="' + escapeHtml(occ) + '"><span class="picker-tick" aria-hidden="true">' + (on ? '✓' : '') + '</span>' + escapeHtml(name) + '</button>';
+    };
+    var internal = (details.internalAttendees || []).filter(Boolean);
+    var client = (details.clientAttendees || []).filter(Boolean);
+    var known = internal.concat(client).map(function (name) { return name.toLowerCase(); });
+    var others = owners.filter(function (name) { return known.indexOf(name.toLowerCase()) < 0; });
+    var group = function (label, names) { return names.length ? '<div class="record-menu-label">' + escapeHtml(label) + '</div>' + names.map(option).join('') : ''; };
+    var key = 'owner:' + occ;
+    return '<details class="doc-picker owner-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
+      + '<summary aria-label="Owner: ' + escapeHtml(owners.join(', ') || 'none') + '. Change owner" title="Change owner">' + shown + '</summary>'
+      + '<div class="record-menu-popover doc-picker-popover" data-menu-popover role="menu">'
+      + group('Internal', internal) + group(attendeeGroupLabel('client', details), client) + group('Other', others)
+      + '<div class="picker-add"><input data-owner-new data-occ="' + escapeHtml(occ) + '" placeholder="Add new…" aria-label="Add a new owner"><button type="button" class="secondary" data-owner-add="' + escapeHtml(occ) + '">Add</button></div>'
+      + '<button type="button" class="secondary quiet picker-option" data-owner-none="' + escapeHtml(occ) + '"' + (owners.length ? '' : ' aria-checked="true"') + ' role="menuitemradio"><span class="picker-tick" aria-hidden="true">' + (owners.length ? '' : '✓') + '</span>No owner</button>'
+      + '</div></details>';
+  }
+
+  function duePickerHtml(action, occ, due) {
+    var key = 'due:' + occ;
+    var mode = docDueMode[occ] || due.mode;
+    var shown = due.mode === 'none' ? amberMarker('No date agreed') : '<span class="due-label">' + escapeHtml(due.label) + '</span>';
+    var segment = function (value, label) {
+      return '<button type="button" class="segment" data-due-mode="' + value + '" data-occ="' + escapeHtml(occ) + '" aria-pressed="' + (mode === value) + '">' + label + '</button>';
+    };
+    var body = '';
+    if (mode === 'date') body = '<label class="picker-field"><span class="visually-hidden">Due date</span><input type="date" data-due-date data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'date' ? due.date : '') + '"></label>';
+    else if (mode === 'relative') {
+      var custom = due.mode === 'relative' && due.custom;
+      body = '<label class="picker-field"><span class="visually-hidden">When</span><select data-due-relative data-occ="' + escapeHtml(occ) + '"><option value="">Choose…</option>'
+        + RELATIVE_DUE.map(function (item) { return '<option' + (due.mode === 'relative' && due.text === item ? ' selected' : '') + '>' + item + '</option>'; }).join('')
+        + '<option value="__custom"' + (custom || docDueMode[occ + ':custom'] ? ' selected' : '') + '>Custom…</option></select></label>'
+        + (custom || docDueMode[occ + ':custom'] ? '<div class="picker-add"><input data-due-text="relative" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(custom ? due.text : '') + '" placeholder="e.g. end of month" aria-label="Custom due"><button type="button" class="secondary" data-due-save="relative" data-occ="' + escapeHtml(occ) + '">Save</button></div>' : '');
+    } else if (mode === 'dependent') {
+      body = '<div class="picker-add"><input data-due-text="dependent" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'dependent' ? due.text : '') + '" placeholder="e.g. before we pay" aria-label="Depends on"><button type="button" class="secondary" data-due-save="dependent" data-occ="' + escapeHtml(occ) + '">Save</button></div>';
+    }
+    return '<details class="doc-picker due-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
+      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
+      + '<div class="record-menu-popover doc-picker-popover due-popover" data-menu-popover>'
+      + '<div class="segmented" role="group" aria-label="Due type">' + segment('date', 'Date') + segment('relative', 'Relative') + segment('dependent', 'Dependent') + segment('none', 'None') + '</div>'
+      + body + '</div></details>';
+  }
+
+  function setActionDue(occ, mode, value) {
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    var prior = action.timing || {};
+    var next = mode === 'none' ? { kind:'not_stated', wording:'', exactDate:'' }
+      : mode === 'date' ? { kind:prior.kind === 'deadline' ? 'deadline' : 'target', wording:'', exactDate:value }
+      : mode === 'relative' ? { kind:'target', wording:value, exactDate:'' }
+      : { kind:'dependency', wording:value, exactDate:'' };
+    delete action.timingDecision;
+    action.timing = window.MeetingMinutesTiming.normaliseTimingValue(next, {
+      mode:'preserve', reviewerAuthored:true, meetingDate:((state.draft || {}).details || {}).meetingDate || ''
+    });
+    action.reviewerAuthored = true;
+    delete docDueMode[occ]; delete docDueMode[occ + ':custom'];
+    docPickerOpen = '';
+    markFieldEdited('action', occ, 'timing');
+    commitDocumentChange(mode === 'none' ? 'Action due cleared' : 'Action due set');
+    var summary = document.querySelector('[data-picker="due:' + occ + '"] > summary');
+    if (summary) summary.focus({ preventScroll:true });
+  }
+
+  function setActionOwners(occ, owners, focusSelector) {
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    action.owners = owners;
+    action.reviewerAuthored = true;
+    markFieldEdited('action', occ, 'owners');
+    docPickerOpen = 'owner:' + occ;
+    commitDocumentChange('Action owners edited');
+    var focus = focusSelector && document.querySelector(focusSelector);
+    if (focus) focus.focus({ preventScroll:true });
+  }
+
+  function onDocumentPickerClick(event) {
+    var target;
+    if ((target = event.target.closest('[data-due-note]'))) {
+      var open = target.classList.toggle('expanded');
+      target.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-toggle]'))) {
+      var occ = target.dataset.occ, name = target.dataset.ownerToggle;
+      var action = state.draft.actions[actionIndexForOccurrence(occ)];
+      if (!action) return true;
+      var owners = (action.owners || []).slice();
+      var at = owners.map(function (owner) { return owner.toLowerCase(); }).indexOf(name.toLowerCase());
+      if (at >= 0) owners.splice(at, 1); else owners.push(name);
+      setActionOwners(occ, owners, '[data-picker="owner:' + occ + '"] [data-owner-toggle="' + name.replace(/"/g, '\\"') + '"]');
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-none]'))) {
+      setActionOwners(target.dataset.ownerNone, []);
+      docPickerOpen = '';
+      var ownerSummary = document.querySelector('[data-picker="owner:' + target.dataset.ownerNone + '"]');
+      if (ownerSummary) { ownerSummary.open = false; ownerSummary.querySelector('summary').focus({ preventScroll:true }); }
+      return true;
+    }
+    if ((target = event.target.closest('[data-owner-add]'))) { addNewOwner(target.dataset.ownerAdd); return true; }
+    if ((target = event.target.closest('[data-due-mode]'))) {
+      if (target.dataset.dueMode === 'none') { setActionDue(target.dataset.occ, 'none', ''); return true; }
+      docDueMode[target.dataset.occ] = target.dataset.dueMode;
+      docPickerOpen = 'due:' + target.dataset.occ;
+      renderFinal();
+      var field = document.querySelector('[data-picker="due:' + target.dataset.occ + '"] .picker-field input, [data-picker="due:' + target.dataset.occ + '"] .picker-field select, [data-picker="due:' + target.dataset.occ + '"] [data-due-text]');
+      if (field) field.focus({ preventScroll:true });
+      return true;
+    }
+    if ((target = event.target.closest('[data-due-save]'))) { saveDueText(target.dataset.occ, target.dataset.dueSave); return true; }
+    return false;
+  }
+
+  function addNewOwner(occ) {
+    var input = document.querySelector('[data-owner-new][data-occ="' + occ + '"]');
+    var name = input ? input.value.replace(/\s+/g, ' ').trim() : '';
+    if (!name) return;
+    var action = state.draft.actions[actionIndexForOccurrence(occ)];
+    if (!action) return;
+    var owners = (action.owners || []).slice();
+    if (owners.map(function (owner) { return owner.toLowerCase(); }).indexOf(name.toLowerCase()) < 0) owners.push(name);
+    setActionOwners(occ, owners, '[data-owner-new][data-occ="' + occ + '"]');
+  }
+
+  function saveDueText(occ, mode) {
+    var input = document.querySelector('[data-due-text="' + mode + '"][data-occ="' + occ + '"]');
+    var value = input ? input.value.replace(/\s+/g, ' ').trim() : '';
+    if (value) setActionDue(occ, mode, value);
+  }
+
+  function onDocumentPickerChange(event) {
+    var target = event.target;
+    if (target.matches('[data-due-date]')) { if (target.value) setActionDue(target.dataset.occ, 'date', target.value); return true; }
+    if (target.matches('[data-due-relative]')) {
+      if (target.value === '__custom') {
+        docDueMode[target.dataset.occ + ':custom'] = true;
+        docPickerOpen = 'due:' + target.dataset.occ;
+        renderFinal();
+        var custom = document.querySelector('[data-due-text="relative"][data-occ="' + target.dataset.occ + '"]');
+        if (custom) custom.focus({ preventScroll:true });
+      } else if (target.value) setActionDue(target.dataset.occ, 'relative', target.value);
+      return true;
+    }
+    return false;
+  }
+
+  function attendeeGroupLabel(key, details) {
+    return key === 'internal' ? 'Internal' : (details.clientAttendeeLabel === 'External' ? 'External' : 'Client');
+  }
+
+  // Attendees in the document: one chip per person with the name (edited in
+  // place), a toggle for the group and a remove button.
+  function docAttendeesHtml(details) {
+    var group = function (key) {
+      var label = attendeeGroupLabel(key, details);
+      var other = attendeeGroupLabel(key === 'internal' ? 'client' : 'internal', details);
+      var names = details[key + 'Attendees'] || [];
+      var chips = names.map(function (name, index) {
+        var id = key + ':' + index;
+        var editing = finalEditMatches('attendee', id, 'name');
+        var tools = editing ? '' : '<button class="chip-toggle" data-doc-attendee-move="' + id + '" type="button" title="Move to ' + other + '" aria-label="' + escapeHtml(name) + ' is ' + label.toLowerCase() + '. Move to ' + other.toLowerCase() + '">' + label + '</button>'
+          + '<button class="chip-remove" data-doc-remove-attendee="' + id + '" type="button" title="Remove ' + escapeHtml(name) + '" aria-label="Remove ' + escapeHtml(name) + '">&times;</button>';
+        return '<span class="doc-attendee-chip' + (editing ? ' is-editing' : '') + '">' + finalTextEditor('attendee', id, 'name', name, {singleLine:true,label:'Edit attendee name',empty:'New attendee'}) + tools + '</span>';
+      }).join('');
+      return '<div class="doc-attendee-group" data-group="' + key + '"><span class="doc-attendee-label">' + label + '</span><div class="doc-attendee-chips">' + chips
+        + '<button class="quiet doc-add" data-doc-add-attendee="' + key + '" type="button">Add attendee</button></div></div>';
+    };
+    return '<div class="doc-attendees doc-only">' + group('internal') + group('client') + '</div>';
+  }
+
+  // A topic's header line in the document: title, point count and a menu.
+  // The count and menu sit on the right and never move while the title is
+  // being edited.
+  function docTopicHeading(topic, topicIndex, topicId, count, topicCount) {
+    var globalOn = topicHeadingsShown();
+    var hidden = !globalOn || topic.hideHeading === true;
+    var headingItem = '<button class="secondary quiet" data-doc-topic-heading="' + topicIndex + '" type="button"' + (globalOn ? '' : ' disabled title="Topic titles are hidden for the whole document. Turn on Show topic titles in minutes first."') + '>' + (topic.hideHeading ? 'Show title in minutes' : 'Hide title in minutes') + '</button>';
+    var moves = (topicIndex > 0 ? '<button class="secondary quiet" data-doc-topic-move="' + topicIndex + '" data-dir="-1" type="button">Move up</button>' : '')
+      + (topicIndex < topicCount - 1 ? '<button class="secondary quiet" data-doc-topic-move="' + topicIndex + '" data-dir="1" type="button">Move down</button>' : '');
+    var menu = rowMenu('Topic options', headingItem + moves + '<button class="delete quiet" data-doc-remove-topic="' + topicIndex + '" type="button">Remove topic</button>');
+    return '<div class="doc-topic-head' + (hidden ? ' is-hidden' : '') + '"><h4>' + finalTextEditor('topic', topicId, 'topic', topic.topic, {singleLine:true,label:'Edit topic heading',empty:'Untitled topic'}) + '</h4>'
+      + (hidden ? '<span class="hidden-tag doc-only" title="Not shown in the minutes">hidden</span>' : '')
+      + '<span class="topic-meta doc-only">' + count + (count === 1 ? ' point' : ' points') + '</span><span class="doc-only">' + menu + '</span></div>';
+  }
+
+  // A section heading in the document, with its own "…" menu.
+  function sectionHeading(title, stage, extraItems) {
+    if (!inDocumentMode()) return '<h3>' + escapeHtml(title) + '</h3>';
+    var items = (extraItems || '') + (stage ? '<button class="secondary quiet" data-regenerate-section="' + stage + '" type="button">Regenerate section…</button>' : '');
+    var menu = items ? '<details class="doc-menu section-menu" data-menu><summary class="secondary quiet" aria-label="' + escapeHtml(title) + ' options" title="' + escapeHtml(title) + ' options">•••</summary><div class="doc-menu-popover" data-menu-popover>' + items + '</div></details>' : '';
+    return '<div class="section-head"><h3>' + escapeHtml(title) + '</h3>' + menu + '</div>';
+  }
+
+  function summaryTranscriptItem() {
+    var draft = state.draft || {};
+    var ids = Array.from(new Set((draft.executiveSummaryEvidenceIds || []).concat((draft.meetingObjectives || []).flatMap(function (o) { return (o && o.evidenceIds) || []; }))));
+    return transcriptMenuItem({ evidenceIds: ids, text: draft.executiveSummary || '' }).replace('Check transcript', 'View transcript');
+  }
+
+  function finalHintDismissed() {
+    try { return window.localStorage.getItem('mma-final-hint-dismissed') === '1'; } catch (error) { return false; }
+  }
+
+  function finalDetailsLines(details, readOnly) {
+    var field = function (name, options) {
+      return readOnly ? escapeHtml(options.displayValue || details[name] || 'Not stated')
+        : finalTextEditor('details', 'meeting-details', name, details[name] || '', options);
+    };
+    return '<p><strong>Date:</strong> ' + field('meetingDate', {singleLine:true,inputType:'date',label:'Edit meeting date',displayValue:formatUkDate(details.meetingDate),empty:'Not stated'})
+      + '<br><strong>Location:</strong> ' + field('meetingLocation', {singleLine:true,label:'Edit meeting location',empty:'Not stated'})
+      + '<br><strong>Meeting type:</strong> ' + escapeHtml(meetingTypeLabel(details.meetingType) || 'Not stated') + '</p>';
   }
 
   function renderParallelControls() {
@@ -2631,6 +3532,8 @@
     } else document.getElementById('staleNotice').hidden = true;
     // The Review page's document is built on entry; a draft resumed on Review
     // (or re-rendered while it is open) must build it too.
+    if (inDocumentMode()) state.currentStep = MAX_STEP;
+    renderDocumentMode();
     if (state.draft && state.currentStep === MAX_STEP) renderFinal();
     showStep(state.draft ? state.currentStep : 0, { persist: false });
     renderGenerationProgress();
@@ -2781,8 +3684,9 @@
     // On the initial load, restore the separately persisted selected screen;
     // older drafts fall back to their furthest unlocked step.
     if (!replacingExistingDraft) {
-      state.currentStep = Math.max(0, Math.min(MAX_STEP,
-        Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0));
+      var remembered = rememberedStep(draft.draftId);
+      state.currentStep = Math.max(0, Math.min(MAX_STEP, remembered != null ? remembered
+        : Number(draft.selectedStep == null ? draft.currentStep : draft.selectedStep) || 0));
     }
     renderAll();
     // A reload in the middle of a run must not look dead.
@@ -2801,6 +3705,16 @@
     if (!(options && options.skipAutomaticProposal) && state.draft.pendingProposal && (state.draft.pendingProposal.changes || []).length) {
       window.setTimeout(applyPendingProposalAutomatically, 0);
     }
+  }
+
+  function rememberStep(draftId, step) {
+    try { window.localStorage.setItem('mma-step:' + draftId, String(step)); } catch (error) { /* private mode */ }
+  }
+
+  function rememberedStep(draftId) {
+    var value = null;
+    try { value = window.localStorage.getItem('mma-step:' + draftId); } catch (error) { value = null; }
+    return value === null || value === '' || isNaN(Number(value)) ? null : Number(value);
   }
 
   function readEditors() {
@@ -2868,11 +3782,11 @@
       return;
     }
     savePending = true;
-    setSaveStatus('Saving draft...', 'dirty');
+    setSaveStatus('Saving…', 'dirty');
     // Held until the operation finishes, then sent against the revision it
     // produced rather than the one it replaced.
     if (draftWritesInFlight) return;
-    saveTimer = window.setTimeout(function () { saveDraftNow(); }, 900);
+    saveTimer = window.setTimeout(function () { saveDraftNow(); }, SAVE_DEBOUNCE_MS);
   }
 
   // Absorb the one revision conflict the reviewer should never be asked about:
@@ -2915,7 +3829,7 @@
     readEditors();
     var requestEditVersion = editVersion;
     var reviewDecisionLabel = pendingReviewDecisionLabel;
-    setSaveStatus('Saving...', 'saving');
+    setSaveStatus('Saving…', 'saving');
     saveInFlight = withBackgroundMerge(function () {
       return jsonRequest(draftUrl(), {
         method: 'PATCH',
@@ -2924,14 +3838,16 @@
       });
     }).then(function (payload) {
       if (reviewDecisionLabel && pendingReviewDecisionLabel === reviewDecisionLabel) pendingReviewDecisionLabel = '';
-      if (editVersion !== requestEditVersion) {
+      if (editVersion !== requestEditVersion || hasTransientDocumentState()) {
         // A newer keystroke landed while this request was in flight. Advance the
         // revision but do not replace the newer editor values with the response.
         state.draft.revision = payload.draft.revision;
         state.draft.updatedAt = payload.draft.updatedAt;
         state.draft.lastUndo = payload.draft.lastUndo;
         if (reviewDecisionLabel) showUndoToast(reviewDecisionLabel);
-        setSaveStatus('Saving draft...', 'dirty');
+        if (hasTransientDocumentState()) setSaveStatus('Finish the current entry to save it.', 'local-only');
+        else if (hasTransientEditorState()) setSaveStatus(EMPTY_ROW_NOTICE, 'local-only');
+        else setSaveStatus('Saving…', 'dirty');
         return state.draft;
       }
       pendingGenerationEdits = false;
@@ -3456,11 +4372,16 @@
       document.getElementById(destination + 'Attendees').insertAdjacentHTML('beforeend', attendeeChip(input ? input.value : '', destination));
       chip.remove();
     } else if (remove) {
-      remove.closest('.attendee-chip').remove();
+      var removedChip = remove.closest('.attendee-chip');
+      var removedInput = removedChip && removedChip.querySelector('[data-attendee-name]');
+      var removedName = removedInput ? removedInput.value.trim() : '';
+      removedChip.remove();
     }
     if (move || remove) {
       setClientAttendeeVisibility(attendeeNames('client').length > 0);
-      readDetails(); rerenderActions(); scheduleSave();
+      readDetails(); rerenderActions();
+      // A named person is undoable from the toast; an empty chip just goes.
+      if (remove && removedName) queueReviewDecision(removedLabel(removedName)); else scheduleSave();
     }
   });
 
@@ -3506,10 +4427,9 @@
     var button = event.target.closest('[data-remove-objective]');
     if (!button) return;
     readSummary();
-    state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1);
-    markUndoStep('remove objective', '');
+    var removedObjective = state.draft.meetingObjectives.splice(Number(button.dataset.removeObjective), 1)[0];
     renderSummary();
-    scheduleSave();
+    queueReviewDecision(removedLabel(typeof removedObjective === 'string' ? removedObjective : removedObjective && removedObjective.text));
   });
   document.getElementById('generateActions').addEventListener('click', function () { requestBackgroundStage('actions'); });
   document.getElementById('regenerationDialog').addEventListener('close', function (event) {
@@ -3859,12 +4779,7 @@
         movedTopicIndex=sourceIndex+1;
       }
     }
-    // Removing a topic with content deletes all its rows at once: ask first.
-    var topicToRemove=topicButton && state.draft.discussion[Number(topicButton.dataset.deleteTopic)];
-    if(topicButton && discussionTopicHasContent(topicToRemove)){
-      var rowCount=['points','decisions','openQuestions'].reduce(function(total,key){return total+((topicToRemove[key]||[]).length);},0);
-      if(!window.confirm('Remove the topic "'+(topicToRemove.topic||'Untitled')+'" and its '+rowCount+' row'+(rowCount===1?'':'s')+'?')) topicButton=null;
-    }
+    // Removing a topic needs no confirmation: the toast's Undo puts it back.
     if(topicButton){
       var removedTopic=state.draft.discussion.splice(Number(topicButton.dataset.deleteTopic),1)[0];
       material = material || discussionTopicHasContent(removedTopic);
@@ -3889,8 +4804,8 @@
       if(addedField){var editor=addedField.querySelector('textarea');if(editor)editor.focus({preventScroll:true});}
       return;
     }
-    if (remove && removedReviewContent) queueReviewDecision('Discussion item removed');
-    else if (topicButton && removedReviewContent) queueReviewDecision('Discussion topic removed');
+    if (remove && removedReviewContent) queueReviewDecision(removedLabel(removedRecord.text));
+    else if (topicButton && removedReviewContent) queueReviewDecision(removedLabel(removedTopic.topic || 'Untitled topic'));
     else { if (remove || topicButton) markUndoStep(remove ? 'remove discussion item' : 'remove discussion topic', ''); scheduleSave(); }
   });
 
@@ -3990,7 +4905,10 @@
         var opening = !transcriptPanel.open;
         transcriptPanel.open = opening;
         transcriptButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
-        transcriptButton.setAttribute('aria-label', opening ? 'Hide source transcript' : 'View source transcript');
+        var toggleLabel = transcriptButton.querySelector('[data-transcript-toggle-label]');
+        if (toggleLabel) toggleLabel.textContent = opening ? 'Hide source' : 'View source';
+        closeMenus(null);
+        if (opening) transcriptPanel.scrollIntoView({ block: 'nearest' });
       }
       return;
     }
@@ -4064,6 +4982,14 @@
     var removedElement = button.closest('[data-action-occurrence-id]');
     var removedIndex = actionIndexForOccurrence(removedElement && removedElement.dataset.actionOccurrenceId);
     if (removedIndex < 0) return;
+    var removedText = state.draft.actions[removedIndex].action;
+    removeActionAt(removedIndex);
+    renderActions(); queueReviewDecision(removedLabel(removedText));
+  });
+
+  // Takes an action out of the list, keeping it under Removed so it can be put
+  // back, and closes any review checks that pointed at it.
+  function removeActionAt(removedIndex) {
     var actionToRemove = state.draft.actions[removedIndex];
     var removedLegacyId = unambiguousLegacyActionId(actionToRemove);
     var inferredFlagIds = flagsTargetingAction(actionToRemove, removedIndex);
@@ -4085,8 +5011,8 @@
       delete actionEditorState.editingOwners[removedKey];
       delete actionEditorState.editingTiming[removedKey];
     }
-    renderActions(); queueReviewDecision('Action removed');
-  });
+    return removedAction;
+  }
 
   // Merging is mechanical: every row moves, in its own kind, and the emptied
   // topic goes. Nothing is inferred, so nothing can be inferred wrongly.
@@ -4241,43 +5167,154 @@
     return null;
   }
 
-  function applyFinalEdit() {
+  function finalEditKey(edit) { return edit ? fieldEditKey(edit.kind, edit.id, edit.field) : ''; }
+  function editableKeyOf(element) {
+    var data = element.dataset;
+    return fieldEditKey(data.kind, data.kind === 'action' ? data.actionOccurrenceId || '' : data.recordId || '', data.field);
+  }
+  function documentEditables() {
+    return Array.from(document.querySelectorAll('#documentHeader [data-final-edit], #finalDocument [data-final-edit]')).filter(function (element) {
+      return element.offsetParent !== null;
+    });
+  }
+  function findEditable(key) {
+    return documentEditables().filter(function (element) { return editableKeyOf(element) === key; })[0] || null;
+  }
+  function focusEditable(key) {
+    var element = key && findEditable(key);
+    if (element) element.focus({ preventScroll: true });
+  }
+
+  function openFinalEditable(editable) {
+    if (!editable || !state.draft || documentReadOnly()) return;
+    activeFinalEdit = { kind:editable.dataset.kind,
+      id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
+      field:editable.dataset.field };
+    if (activeFinalEdit.kind === 'action' && actionIndexForOccurrence(activeFinalEdit.id) < 0) { activeFinalEdit = null; return; }
+    if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
+      var action = state.draft.actions[actionIndexForOccurrence(activeFinalEdit.id)];
+      activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
+    }
+    renderFinal();
+  }
+
+  // Drops a just-added empty attendee or objective that was never filled in.
+  function discardNewPlaceholder(edit) {
+    if (!edit || !edit.isNew || !state.draft) return;
+    if (edit.kind === 'attendee') {
+      var parts = String(edit.id).split(':');
+      var list = (state.draft.details || {})[parts[0] + 'Attendees'] || [];
+      if (!String(list[Number(parts[1])] || '').trim()) list.splice(Number(parts[1]), 1);
+    } else if (edit.kind === 'action') {
+      var placeholderIndex = actionIndexForOccurrence(edit.id);
+      if (placeholderIndex >= 0 && !String(state.draft.actions[placeholderIndex].action || '').trim()) state.draft.actions.splice(placeholderIndex, 1);
+    } else if (edit.kind === 'objective') {
+      state.draft.meetingObjectives = (state.draft.meetingObjectives || []).filter(function (item) {
+        return !(item && typeof item === 'object' && item.id === edit.id && !String(item.text || '').trim());
+      });
+    }
+  }
+
+  function cancelFinalEdit(options) {
+    if (!activeFinalEdit) return;
+    var edit = activeFinalEdit;
+    discardNewPlaceholder(edit);
+    activeFinalEdit = null;
+    renderFinal();
+    if (!hasTransientEditorState() && !saveInFlight && !savePending && !pendingGenerationEdits && !draftWritesInFlight
+      && document.getElementById('saveStatus').dataset.state === 'local-only') setSaveStatus(savedStatusText(state.draft.updatedAt), 'saved');
+    if (!options || options.focus !== false) focusEditable(finalEditKey(edit));
+  }
+
+  // Clicking away keeps what was typed; an untouched field simply closes.
+  function finalEditChanged() {
+    var editor = document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]');
+    if (!editor) return false;
+    var control = editor.querySelector('[data-final-editor-value]');
+    if (!control || editor.dataset.original == null) return true;
+    return control.value.trim() !== String(editor.dataset.original).trim();
+  }
+
+  // Applies a change made directly in the document: keeps the step screens in
+  // step with it and saves straight away with an undoable label.
+  function commitDocumentChange(label) {
+    activeFinalEdit = null;
+    renderDetails(); renderDiscussion(); renderActions(); renderSummary(); renderFinal();
+    queueReviewDecision(label);
+  }
+
+  function applyFinalEdit(options) {
+    options = options || {};
     if (!activeFinalEdit || !state.draft) return false;
     var edit = activeFinalEdit;
-    var editor = document.querySelector('#finalDocument [data-final-editor]');
+    var editor = document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]');
     if (!editor) return false;
     var valueControl = editor.querySelector('[data-final-editor-value]');
     var value = valueControl ? valueControl.value.trim() : '';
+    if (valueControl && editor.dataset.original != null && value === String(editor.dataset.original).trim() && !edit.isNew) {
+      cancelFinalEdit(options);
+      return false;
+    }
     var label = 'Final minutes updated';
+    var editedKey = finalEditKey(edit);
+    var removed = false;
     if (edit.kind === 'details') {
+      // A title is required: clearing it keeps the previous one.
+      if (edit.field === 'meetingTitle' && !value) { cancelFinalEdit(options); return false; }
       state.draft.details[edit.field] = value;
       label = edit.field === 'meetingTitle' ? 'Meeting title edited' : edit.field === 'meetingDate' ? 'Meeting date edited' : 'Meeting location edited';
+    } else if (edit.kind === 'attendee') {
+      var attendeeParts = String(edit.id).split(':');
+      var attendees = state.draft.details[attendeeParts[0] + 'Attendees'] || (state.draft.details[attendeeParts[0] + 'Attendees'] = []);
+      var attendeeIndex = Number(attendeeParts[1]);
+      var previousName = String(attendees[attendeeIndex] || '');
+      if (!value) {
+        if (edit.isNew) { cancelFinalEdit(options); return false; }
+        attendees.splice(attendeeIndex, 1);
+        label = removedLabel(previousName); removed = true;
+      } else {
+        attendees[attendeeIndex] = value;
+        // An owner who was renamed keeps owning their actions.
+        if (previousName) (state.draft.actions || []).forEach(function (action) {
+          action.owners = (action.owners || []).map(function (owner) { return owner === previousName ? value : owner; });
+        });
+        label = edit.isNew ? 'Attendee added' : 'Attendee renamed';
+        editedKey = fieldEditKey('attendee', value, 'name');
+      }
+      state.draft.details.allAttendees = (state.draft.details.internalAttendees || []).concat(state.draft.details.clientAttendees || []).filter(Boolean);
     } else if (edit.kind === 'topic') {
       var topic = (state.draft.discussion || []).find(function (item, index) { return String(item.id || 'topic-'+index) === String(edit.id); });
-      if (!topic || !value) return false;
+      if (!topic || !value) { cancelFinalEdit(options); return false; }
       if (topic.topic !== value) topic.reviewerAuthored = true;
       topic.topic = value; label = 'Topic heading edited';
     } else if (edit.kind === 'discussion') {
       var record = findFinalDiscussionRecord(edit.id);
-      if (!record || !value) return false;
+      if (!record || !value) { cancelFinalEdit(options); return false; }
       if (record.text !== value) record.reviewerAuthored = true;
       record.text = value; label = 'Meeting sentence edited';
     } else if (edit.kind === 'objective') {
       var objectiveIndex = (state.draft.meetingObjectives || []).findIndex(function (item, index) { return String(typeof item === 'string' ? 'objective-'+index : item.id) === String(edit.id); });
-      if (objectiveIndex < 0 || !value) return false;
+      if (objectiveIndex < 0) return false;
       var objective = state.draft.meetingObjectives[objectiveIndex];
-      state.draft.meetingObjectives[objectiveIndex] = typeof objective === 'string' ? value : Object.assign({}, objective, {text:value});
-      label = 'Meeting objective edited';
+      if (!value) {
+        // Saving an empty objective removes it.
+        if (edit.isNew) { cancelFinalEdit(options); return false; }
+        state.draft.meetingObjectives.splice(objectiveIndex, 1);
+        label = removedLabel(typeof objective === 'string' ? objective : objective.text); removed = true;
+      } else {
+        state.draft.meetingObjectives[objectiveIndex] = typeof objective === 'string' ? value : Object.assign({}, objective, {text:value});
+        label = edit.isNew ? 'Meeting objective added' : 'Meeting objective edited';
+      }
     } else if (edit.kind === 'summary') {
-      if (!value) return false;
+      if (!value) { cancelFinalEdit(options); return false; }
       state.draft.executiveSummary = value; label = 'Executive summary edited';
     } else if (edit.kind === 'action') {
       var action = state.draft.actions[actionIndexForOccurrence(edit.id)];
       if (!action) return false;
       var previousAction = actionEditFingerprint(action);
       if (edit.field === 'action') {
-        if (!value) return false;
-        action.action = value; label = 'Action edited';
+        if (!value) { cancelFinalEdit(options); return false; }
+        action.action = value; label = edit.isNew ? 'Action added' : 'Action edited';
       } else if (edit.field === 'owners') {
         action.owners = (edit.ownerSelection || action.owners || []).slice();
         label = 'Action owners edited';
@@ -4288,17 +5325,139 @@
           editor.querySelector('[data-final-timing-date]'));
         label = 'Action timing edited';
       }
-      if (previousAction !== actionEditFingerprint(action)) action.reviewerAuthored = true;
+      if (previousAction === actionEditFingerprint(action)) { cancelFinalEdit(options); return false; }
+      action.reviewerAuthored = true;
     }
-    activeFinalEdit = null;
+    if (!removed) markFieldEdited.apply(null, editedKey.split('|'));
     // saveDraftNow reads the hidden stage editors before sending. Refresh them
     // so an edit made on the final document cannot be replaced by stale fields.
-    renderDetails(); renderDiscussion(); renderActions(); renderSummary(); renderFinal();
-    queueReviewDecision(label);
+    commitDocumentChange(label);
+    if (options.focus !== false) focusEditable(editedKey);
     return true;
   }
 
-  document.getElementById('finalDocument').addEventListener('click', function (event) {
+  // Tab saves and moves to the next piece of text (Shift+Tab, the previous).
+  function moveToAdjacentEditable(key, direction) {
+    var list = documentEditables();
+    var at = list.findIndex(function (element) { return editableKeyOf(element) === key; });
+    var next = at >= 0 ? list[at + direction] : null;
+    if (next) openFinalEditable(next);
+  }
+
+  function removeDocumentRecord(spec) {
+    var parts = String(spec).split('|');
+    var topic = state.draft.discussion[Number(parts[0])];
+    var list = topic && topic[parts[1]];
+    var removedRecord = list && list.splice(Number(parts[2]), 1)[0];
+    if (!removedRecord) return;
+    forgetPendingDiscussion(removedRecord);
+    resolveDeletedTargetFlags(linkedReviewFlagIds(removedRecord));
+    if (discussionRecordHasContent(removedRecord)) markDownstreamStale();
+    commitDocumentChange(removedLabel(removedRecord.text));
+  }
+
+  function onDocumentEditClick(event) {
+    var target;
+    if (onDocumentPickerClick(event)) return true;
+    if ((target = event.target.closest('[data-doc-keep-action]'))) {
+      closeMenus();
+      var keptRow = state.draft.actions[actionIndexForOccurrence(target.dataset.docKeepAction)];
+      if (!keptRow) return true;
+      var wasKept = isActionKept(keptRow);
+      var ids = keptActionOccurrenceIds();
+      var keyAt = ids.indexOf(actionOccurrence(keptRow));
+      if (keyAt !== -1) ids.splice(keyAt, 1);
+      var legacy = unambiguousLegacyActionId(keptRow);
+      var legacyAt = legacy ? keptActionIds().indexOf(legacy) : -1;
+      if (legacyAt !== -1) keptActionIds().splice(legacyAt, 1);
+      if (!wasKept) ids.push(actionOccurrence(keptRow));
+      commitDocumentChange(wasKept ? 'Action marked as not reviewed' : 'Action marked as reviewed');
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-action]'))) {
+      var newAction = {id:'manual-action-'+Date.now(),action:'',owners:[],timing:{kind:'not_stated',wording:'',exactDate:''},evidenceIds:[],reviewFlagIds:[],reviewerAuthored:true};
+      state.draft.actions.push(newAction);
+      ensureActionOccurrences(state.draft);
+      activeFinalEdit = { kind:'action', id:actionOccurrence(newAction), field:'action', isNew:true };
+      renderFinal();
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-remove-record]'))) { closeMenus(); removeDocumentRecord(target.dataset.docRemoveRecord); return true; }
+    if ((target = event.target.closest('[data-doc-remove-action]'))) {
+      closeMenus();
+      var actionIndex = actionIndexForOccurrence(target.dataset.docRemoveAction);
+      if (actionIndex < 0) return true;
+      var removedText = state.draft.actions[actionIndex].action;
+      removeActionAt(actionIndex);
+      commitDocumentChange(removedLabel(removedText));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-remove-topic]'))) {
+      closeMenus();
+      var removedTopic = state.draft.discussion.splice(Number(target.dataset.docRemoveTopic), 1)[0];
+      if (!removedTopic) return true;
+      forgetPendingDiscussion(removedTopic);
+      resolveDeletedTargetFlags(linkedReviewFlagIds(removedTopic));
+      if (discussionTopicHasContent(removedTopic)) markDownstreamStale();
+      commitDocumentChange(removedLabel(removedTopic.topic || 'Untitled topic'));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-topic-move]'))) {
+      closeMenus();
+      var from = Number(target.dataset.docTopicMove), to = from + Number(target.dataset.dir);
+      var topics = state.draft.discussion;
+      if (!topics[from] || !topics[to]) return true;
+      var moved = topics.splice(from, 1)[0];
+      topics.splice(to, 0, moved);
+      commitDocumentChange('Moved “' + (moved.topic || 'Untitled topic') + '” ' + (to < from ? 'up' : 'down'));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-topic-heading]'))) {
+      closeMenus();
+      var headingTopic = state.draft.discussion[Number(target.dataset.docTopicHeading)];
+      if (!headingTopic) return true;
+      headingTopic.hideHeading = !headingTopic.hideHeading;
+      commitDocumentChange(headingTopic.hideHeading ? 'Topic title hidden' : 'Topic title shown');
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-remove-attendee]'))) {
+      var removeParts = target.dataset.docRemoveAttendee.split(':');
+      var removeList = state.draft.details[removeParts[0] + 'Attendees'] || [];
+      var removedName = removeList.splice(Number(removeParts[1]), 1)[0];
+      state.draft.details.allAttendees = (state.draft.details.internalAttendees || []).concat(state.draft.details.clientAttendees || []);
+      commitDocumentChange(removedLabel(removedName));
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-attendee-move]'))) {
+      var moveParts = target.dataset.docAttendeeMove.split(':');
+      var destination = moveParts[0] === 'internal' ? 'client' : 'internal';
+      var source = state.draft.details[moveParts[0] + 'Attendees'] || [];
+      var movedName = source.splice(Number(moveParts[1]), 1)[0];
+      (state.draft.details[destination + 'Attendees'] || (state.draft.details[destination + 'Attendees'] = [])).push(movedName);
+      commitDocumentChange('Moved ' + movedName + ' to ' + attendeeGroupLabel(destination, state.draft.details).toLowerCase() + ' attendees');
+      var toggle = Array.from(document.querySelectorAll('[data-doc-attendee-move^="' + destination + ':"]')).pop();
+      if (toggle) toggle.focus({ preventScroll: true });
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-attendee]'))) {
+      var group = target.dataset.docAddAttendee;
+      var groupList = state.draft.details[group + 'Attendees'] || (state.draft.details[group + 'Attendees'] = []);
+      groupList.push('');
+      activeFinalEdit = { kind:'attendee', id:group + ':' + (groupList.length - 1), field:'name', isNew:true };
+      renderFinal();
+      return true;
+    }
+    if ((target = event.target.closest('[data-doc-add-objective]'))) {
+      var objectiveId = 'objective-new-' + Date.now();
+      state.draft.meetingObjectives = (state.draft.meetingObjectives || []).concat([{ id:objectiveId, text:'' }]);
+      activeFinalEdit = { kind:'objective', id:objectiveId, field:'text', isNew:true };
+      renderFinal();
+      return true;
+    }
+    return false;
+  }
+
+  function onFinalDocumentClick(event) {
     var removeOwner = event.target.closest('[data-final-remove-owner]');
     if (removeOwner && activeFinalEdit && activeFinalEdit.field === 'owners') {
       activeFinalEdit.ownerSelection = (activeFinalEdit.ownerSelection || []).filter(function (owner) {
@@ -4308,23 +5467,65 @@
       return;
     }
     var editable = event.target.closest('[data-final-edit]');
-    if (editable) {
-      activeFinalEdit = { kind:editable.dataset.kind,
-        id:editable.dataset.kind === 'action' ? editable.dataset.actionOccurrenceId || '' : editable.dataset.recordId || '',
-        field:editable.dataset.field };
-      if (activeFinalEdit.kind === 'action' && actionIndexForOccurrence(activeFinalEdit.id) < 0) { activeFinalEdit = null; return; }
-      if (activeFinalEdit.kind === 'action' && activeFinalEdit.field === 'owners') {
-        var action = state.draft.actions[actionIndexForOccurrence(activeFinalEdit.id)];
-        activeFinalEdit.ownerSelection = action ? (action.owners || []).slice() : [];
-      }
-      renderFinal();
-      return;
-    }
-    if (event.target.closest('[data-final-cancel]')) { activeFinalEdit = null; renderFinal(); return; }
-    if (event.target.closest('[data-final-save]')) applyFinalEdit();
+    if (editable) { openFinalEditable(editable); return; }
+    if (event.target.closest('[data-final-cancel]')) { cancelFinalEdit(); return; }
+    if (event.target.closest('[data-final-save]')) { applyFinalEdit(); return; }
+    if (state.draft && inDocumentMode() && !documentReadOnly()) onDocumentEditClick(event);
+  }
+  // The document header (title, date, location) edits the same way as the body.
+  document.getElementById('finalDocument').addEventListener('click', onFinalDocumentClick);
+  document.getElementById('documentHeader').addEventListener('click', function (event) {
+    if (event.target.closest('[data-final-edit],[data-final-cancel],[data-final-save]')) onFinalDocumentClick(event);
   });
+  document.getElementById('documentHeader').addEventListener('change', function (event) {
+    var select = event.target.closest('[data-doc-meeting-type]');
+    if (!select || !state.draft) return;
+    state.draft.details.meetingType = meetingTypeValue(select.value);
+    commitDocumentChange('Meeting type changed');
+  });
+  document.getElementById('finalDocument').addEventListener('change', function (event) {
+    if (state.draft && inDocumentMode()) onDocumentPickerChange(event);
+  });
+  document.getElementById('finalDocument').addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') return;
+    if (event.target.matches('[data-owner-new]')) { event.preventDefault(); addNewOwner(event.target.dataset.occ); }
+    else if (event.target.matches('[data-due-text]')) { event.preventDefault(); saveDueText(event.target.dataset.occ, event.target.dataset.dueText); }
+  });
+  // A picker closed by Esc or a click elsewhere stays closed on the next render.
+  document.getElementById('finalDocument').addEventListener('toggle', function (event) {
+    var picker = event.target;
+    if (!picker.matches || !picker.matches('[data-picker]') || picker.open) return;
+    if (docPickerOpen === picker.dataset.picker) docPickerOpen = '';
+    var occ = picker.dataset.picker.replace(/^due:/, '');
+    if (picker.dataset.picker.indexOf('due:') === 0) { delete docDueMode[occ]; delete docDueMode[occ + ':custom']; }
+  }, true);
+  document.getElementById('finalDocument').addEventListener('input', function (event) {
+    if (event.target.matches('textarea[data-final-editor-value]')) fitFinalTextarea(event.target);
+  });
+  // Clicking outside an open field saves it (or just closes it when nothing
+  // changed). Clicking another piece of text opens that one straight away.
+  document.addEventListener('pointerdown', function (event) {
+    if (!activeFinalEdit || !state.draft) return;
+    if (event.target.closest('[data-final-editor], .final-editor-row, #sideDrawer, #undoToast')) return;
+    if (!document.querySelector('#finalDocument [data-final-editor], #documentHeader [data-final-editor]')) return;
+    var target = event.target.closest('[data-final-edit]');
+    var nextKey = target ? editableKeyOf(target) : '';
+    if (finalEditChanged()) applyFinalEdit({ focus: false }); else cancelFinalEdit({ focus: false });
+    if (nextKey) {
+      var next = findEditable(nextKey);
+      if (next) { event.preventDefault(); openFinalEditable(next); }
+    }
+  }, true);
 
   document.getElementById('finalDocument').addEventListener('change', function (event) {
+    var headings = event.target.closest('[data-doc-topic-headings]');
+    if (headings && state.draft) {
+      var include = includedSectionState();
+      include.topicHeadings = headings.checked;
+      state.draft.includeSections = include;
+      commitDocumentChange(headings.checked ? 'Topic titles shown' : 'Topic titles hidden');
+      return;
+    }
     var select = event.target.closest('[data-final-add-owner]');
     if (!select || !select.value || !activeFinalEdit || activeFinalEdit.field !== 'owners') return;
     var selected = activeFinalEdit.ownerSelection || (activeFinalEdit.ownerSelection = []);
@@ -4335,13 +5536,123 @@
     renderFinal();
   });
 
-  document.getElementById('finalDocument').addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && activeFinalEdit) { event.preventDefault(); activeFinalEdit = null; renderFinal(); }
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && activeFinalEdit) { event.preventDefault(); applyFinalEdit(); }
+  // One set of keys for every field: Esc cancels, Cmd/Ctrl+Enter saves, Enter
+  // saves a single-line field, Tab saves and moves to the next field.
+  function onFinalDocumentKeydown(event) {
+    if (!activeFinalEdit) return;
+    if (event.key === 'Escape') { event.preventDefault(); cancelFinalEdit(); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); applyFinalEdit(); return; }
+    var inValue = event.target.matches('[data-final-editor-value]');
+    if (event.key === 'Enter' && !event.shiftKey && inValue && event.target.tagName === 'INPUT') { event.preventDefault(); applyFinalEdit(); return; }
+    if (event.key === 'Tab' && inValue) {
+      event.preventDefault();
+      var key = finalEditKey(activeFinalEdit);
+      applyFinalEdit({ focus: false });
+      // A new attendee saved by Tab is followed by its own toggle, not the next field.
+      moveToAdjacentEditable(key, event.shiftKey ? -1 : 1);
+    }
+  }
+  document.getElementById('finalDocument').addEventListener('keydown', onFinalDocumentKeydown);
+  document.getElementById('documentHeader').addEventListener('keydown', onFinalDocumentKeydown);
+
+  document.getElementById('editStructureToggle').addEventListener('click', function () {
+    setEditStructure(!editStructureOn() || !documentReady() ? true : false);
+  });
+
+  document.addEventListener('click', function (event) {
+    var update = event.target.closest('[data-update-stale-stage]');
+    if (update && !update.closest('#staleStageActions')) { requestBackgroundStage(update.dataset.updateStaleStage, { regenerate: true }); return; }
+    var dismiss = event.target.closest('[data-dismiss-stale]');
+    if (dismiss) { setStaleDismissed(dismiss.dataset.dismissStale, true); renderStaleNotice(); if (state.currentStep === MAX_STEP) renderFinal(); return; }
+    if (event.target.closest('[data-dismiss-final-hint]')) {
+      try { window.localStorage.setItem('mma-final-hint-dismissed', '1'); } catch (error) { /* private mode */ }
+      var hint = document.querySelector('[data-final-hint]');
+      if (hint) hint.remove();
+      return;
+    }
+    if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); return; }
+    var regenerate = event.target.closest('[data-regenerate-section]');
+    if (regenerate) { closeMenus(null); requestBackgroundStage(regenerate.dataset.regenerateSection, { regenerate: true }); }
+  });
+
+  function finaliseNow() {
+    document.body.classList.remove('doc-preview');
+    if (editStructureOn()) setEditStructure(false);
+    document.getElementById('saveMinutes').click();
+  }
+  // Finalise never blocks: with open items it asks once, in the drawer.
+  document.getElementById('finaliseMinutes').addEventListener('click', function () {
+    if (documentReady() && openCheckItems().total > 0) {
+      if (editStructureOn()) setEditStructure(false);
+      openChecksDrawer('finalise');
+      return;
+    }
+    finaliseNow();
+  });
+  document.getElementById('sideDrawer').addEventListener('click', function (event) {
+    var target;
+    if (event.target.closest('[data-finalise-anyway]')) { closeDrawer(); finaliseNow(); return; }
+    if (event.target.closest('[data-review-first]')) {
+      checksDrawerMode = 'checks'; refreshChecksDrawer();
+      var first = document.querySelector('#sideDrawerBody .checks-group:not([hidden]) button');
+      if (first) first.focus({ preventScroll: true });
+      return;
+    }
+    if ((target = event.target.closest('[data-fix-owner],[data-fix-due]'))) {
+      if (!leaveDocumentPreview()) return;
+      var owner = target.hasAttribute('data-fix-owner');
+      var occ = owner ? target.dataset.fixOwner : target.dataset.fixDue;
+      closeDrawer();
+      docPickerOpen = (owner ? 'owner:' : 'due:') + occ;
+      renderFinal();
+      var picker = document.querySelector('[data-picker="' + docPickerOpen + '"]');
+      if (picker) {
+        picker.closest('tr').scrollIntoView({ block: 'center' });
+        var control = picker.querySelector('[data-menu-popover] button, [data-menu-popover] input');
+        if (control) control.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if ((target = event.target.closest('[data-fix-detail]'))) {
+      if (!leaveDocumentPreview()) return;
+      closeDrawer();
+      var field = target.dataset.fixDetail;
+      if (field === 'attendees') { var add = document.querySelector('[data-doc-add-attendee="internal"]'); if (add) { add.scrollIntoView({ block: 'center' }); add.click(); } return; }
+      var editable = findEditable(fieldEditKey('details', 'meeting-details', field));
+      if (editable) { editable.scrollIntoView({ block: 'center' }); openFinalEditable(editable); }
+    }
+  });
+  document.getElementById('copyDraftLink').addEventListener('click', async function () {
+    var link = window.location.origin + window.location.pathname + '?draftId=' + encodeURIComponent((state.draft && state.draft.draftId) || '');
+    try { await navigator.clipboard.writeText(link); setSaveStatus('Link copied', 'saved'); }
+    catch (error) { window.prompt('Copy this link', link); }
+  });
+  document.getElementById('reopenMinutes').addEventListener('click', async function () {
+    try {
+      await saveDraftNow('draft');
+      document.body.classList.remove('doc-preview', 'doc-finalised');
+      renderFinalSaveState(); renderDocumentMode(); renderFinal(); updateFinishingBar();
+      setStatus('Reopened for editing.', false, 'review');
+    } catch (error) { setStatus(error.message, true, 'review'); }
   });
 
   function openReviewTarget(targetButton) {
+    // In the document, a check scrolls to and pulses its item; the drawer stays open.
+    if (inDocumentMode() && targetButton.dataset.viewFlagTarget) {
+      var card = targetButton.closest('[data-review-flag-id]');
+      var flag = card && (state.draft.reviewFlags || []).filter(function (item) { return item.id === card.dataset.reviewFlagId; })[0];
+      if (flag) leaveDocumentPreview();
+      var inDocument = flag && documentElementForFlag(flag);
+      if (inDocument) { pulseInDocument(inDocument); return; }
+      closeDrawer();
+    }
     var elementId = targetButton.dataset.viewReviewTarget || targetButton.dataset.viewFlagTarget || targetButton.dataset.viewCoverageAction;
+    // Until the checks point into the document itself, a check that lives on
+    // a step screen opens the structure view at that item.
+    if (targetButton.dataset.targetStep !== undefined && inDocumentMode() && Number(targetButton.dataset.targetStep) !== MAX_STEP) {
+      structureStep = Number(targetButton.dataset.targetStep);
+      setEditStructure(true);
+    }
     if (targetButton.dataset.targetStep !== undefined) showStep(Number(targetButton.dataset.targetStep), { scroll:true });
     window.setTimeout(function () {
         var target = document.getElementById(elementId);
@@ -4406,6 +5717,10 @@
   });
   document.getElementById('openFinalReview').addEventListener('click', function () { readEditors(); activeFinalEdit=null; renderFinal(); showStep(MAX_STEP, { scroll: true }); setStatus('Review the complete minutes. Click any sentence, owner or date to edit it here.',false,'review'); });
   document.getElementById('reviewQueueToggle').addEventListener('click', function () {
+    if (inDocumentMode()) {
+      if (checksDrawerOpen() && checksDrawerMode === 'checks') closeDrawer(); else openChecksDrawer('checks');
+      return;
+    }
     var panel = document.getElementById('reviewFlags');
     panel.open = !panel.open;
     updateReviewQueueSummary();
@@ -4413,6 +5728,14 @@
   });
 
   document.getElementById('previewDocument').addEventListener('click', function () {
+    if (documentReady() && editStructureOn()) setEditStructure(false);
+    if (inDocumentMode()) {
+      // In the document, Preview shows the minutes read-only with Download.
+      readEditors(); activeFinalEdit = null;
+      document.body.classList.toggle('doc-preview');
+      renderFinal(); updateFinishingBar();
+      return;
+    }
     if(state.currentStep===MAX_STEP){showStep(previewReturnStep,{scroll:true});return;}
     readEditors();previewReturnStep=state.currentStep;activeFinalEdit=null;renderFinal();showStep(MAX_STEP,{scroll:true});
   });
@@ -4431,6 +5754,7 @@
     try {
       await saveDraftNow('complete');
       renderFinalSaveState();
+      if (documentReady()) { closeDrawer(); renderFinal(); updateFinishingBar(); }
       setStatus('Final minutes saved. This transcript is marked Complete in Library.', false, 'review');
       document.getElementById('finalSaveConfirmation').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } catch (error) {
@@ -4478,6 +5802,13 @@
   document.addEventListener('input', function (event) {
     if (!state.draft || rendering) return;
     if (event.target.matches('[data-timing-date],[data-final-timing-date]')) event.target.dataset.dateEdited = 'true';
+    // These controls commit through their own Save/Add action. A response to an
+    // earlier save must not rebuild them while their next entry is being typed.
+    if (event.target.closest('[data-final-editor]') || event.target.matches('[data-owner-new],[data-due-text]')) {
+      editVersion += 1;
+      setSaveStatus('Finish the current entry to save it.', 'local-only');
+      return;
+    }
     // Inclusion is a document-output choice. It does not alter the meeting
     // evidence or discussion content, so it must not mark downstream Actions
     // as stale merely because the checkboxes live inside Details.

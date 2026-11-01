@@ -90,7 +90,7 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('data-action-transcript-panel', client)
         self.assertIn('data-transcript-toggle-label', client)
         self.assertIn("transcriptPanel.open = opening", client)
-        self.assertIn("opening ? 'Hide source transcript' : 'View source transcript'", client)
+        self.assertIn("opening ? 'Hide source' : 'View source'", client)
         self.assertIn('.row-transcript[aria-expanded="true"]', page)
         self.assertIn("scrollIntoView({ behavior: 'smooth', block: 'center' })", client)
         self.assertIn('id="executiveSummary" rows="3"', page)
@@ -111,8 +111,8 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn('data-timing-date data-action-index=', client)
         self.assertIn("function participantNames", client)
         self.assertIn("data-move-attendee", client)
-        self.assertIn('class="delete icon-only"', client)
-        self.assertIn("icon('trash')", client)
+        self.assertIn('data-remove-attendee', client)
+        self.assertIn('Remove person', client)
         self.assertIn('class="visually-hidden"', client)
         self.assertNotIn("data-remove-attendee type=\"button\" aria-label=\"Remove ' + escapeHtml(name || 'attendee') + '\">Remove</button>", client)
         self.assertIn('.attendee-chip input{font-size:var(--fs-sm)', page)
@@ -266,7 +266,7 @@ class FrontendContractTest(unittest.TestCase):
         # The tab is only needed for edits that live nowhere else; generation
         # itself is detached, and the copy now says so rather than implying
         # the opposite.
-        self.assertIn("Generation continues if you close this tab, but your latest edits are waiting to save. Keep this tab open until they are saved.", client)
+        self.assertIn("Waiting to save until generation finishes…", client)
         self.assertIn("Everything is saved. You can close the tab", client)
         self.assertIn("generation carries on without it", client)
         self.assertIn("generationRunning('actions')", client)
