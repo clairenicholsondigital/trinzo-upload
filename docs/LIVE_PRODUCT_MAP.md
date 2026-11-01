@@ -35,6 +35,34 @@ Provider endpoints, credentials and published instructions have external
 configuration; tracked files alone do not recreate that deployment. Configuration
 can differ between the web process and workers.
 
+## Isolated testing instance
+
+`trinzo-testing.virtual-hub.online` uses the same read-only live source, provider
+agents and processing flags, with its own PostgreSQL cluster, login, projects,
+Library, feedback, transcript store, temporary files and caches. Its working
+directory is separate: dotenv must never load the production `.env` there.
+Original remains the default; Beta remains the same explicit choice.
+
+[Runtime identity](../utils/runtimeIdentity.js) is an optional web/queue admission
+check. Live processes write private boot attestations and continue normally if
+attestation fails. Testing requires its corresponding live process to be alive,
+with matching source/model/config hashes and effective processing environment;
+missing, stale or mismatched identities stop new testing work with a safe 503.
+A changed source/configuration invalidates a process until restart. In-flight
+work belongs to the release under which it started.
+
+[Testing sync](../ops/testing-site/sync.cjs) reads root-owned
+`/etc/trinzo-testing/config.json`, verifies actual live processes and source,
+publishes per-profile manifests and restricted environment files, and restarts
+only `minutes-testing-web` / `minutes-testing-queue` when needed. The deployment gate prepares manifests before live restarts and synchronizes
+again after smoke checks; a host timer also recovers testing after restarts.
+The admission check protects the gap. Keep
+manifests and live attestations unwritable by the testing service account.
+Processing credentials are intentionally shared; ordinary delivery webhooks,
+Microsoft subscriptions and baseline reset are disabled in testing. Shared
+stateless inference services and upstream provider quotas/logging remain shared.
+No production records are copied. Bulk deletion stays inside the test database.
+
 ## Pages and route owners
 
 [server.js](../server.js) owns page mounts and redirects. Local `/static/*`

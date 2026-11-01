@@ -14,6 +14,18 @@ const { startProjectKnowledgeEmbedInterval } = require('./utils/knowledge');
 
 const app = express();
 const PORT = process.env.PORT || 3978;
+const { createRuntimeIdentity } = require('./utils/runtimeIdentity');
+const runtimeIdentity = createRuntimeIdentity({ sourceRoot: __dirname, role: 'web' });
+// Optional for live; isolated testing must match the running live process.
+app.use('/api', runtimeIdentity.middleware);
+if (runtimeIdentity.sandbox) {
+  // Testing shares processing agents, but cannot register subscriptions, send
+  // client deliveries, or reset shared inference caches.
+  app.use(['/api/meeting-agent', '/api/meeting-minutes-agent/testing',
+    '/api/agent/finalise', '/api/jobs/run-once'], (req, res) => {
+    res.status(403).json({ ok: false, error: 'This integration is disabled on the testing site.' });
+  });
+}
 
 const { addReviewSnippet } = require('./utils/reviewSnippet');
 
@@ -238,7 +250,7 @@ app.use('/api', (error, req, res, next) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
   console.log('Agent listening on port ' + PORT);
   settingsStore.refresh().then((state) => {
     console.log(JSON.stringify({ event: 'settings_loaded', source: state.source, people: state.people.length, terms: state.terms.length }));
