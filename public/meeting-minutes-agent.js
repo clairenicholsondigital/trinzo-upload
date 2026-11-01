@@ -3253,22 +3253,21 @@
       + '</div></details>';
   }
 
-  // A small kicker above the Due value says what kind of value it is, so
-  // "finish up this week" or a dependency reads as deliberate rather than as
-  // stray text. "Due ·" only shows on narrow screens, where the column
-  // heading is hidden.
+  // Due reads as one small grey caption line with an icon, so "finish up
+  // this week" or a dependency looks deliberate without competing with the
+  // action text. "Due" before a date only shows on narrow screens, where the
+  // column heading is hidden.
   var DUE_KIND = {
-    date:{ icon:'calendar', text:'' },
-    relative:{ icon:'clock', text:'rough timing' },
-    dependent:{ icon:'link', text:'depends on' }
+    date:{ icon:'calendar', text:'Due' },
+    relative:{ icon:'clock', text:'Rough timing:' },
+    dependent:{ icon:'link', text:'Depends on:' }
   };
   function dueShownHtml(due) {
     var kind = DUE_KIND[due.mode];
     var label = due.mode === 'dependent' ? dependencyText(due.text) : due.label;
-    return '<span class="due-kind due-kind-' + due.mode + '">' + icon(kind.icon)
-      + '<span class="due-kind-prefix">Due' + (kind.text ? ' · ' : '') + '</span>'
-      + (kind.text ? '<span class="due-kind-text">' + kind.text + '</span>' : '') + '</span>'
-      + '<span class="due-label">' + escapeHtml(label) + '</span>';
+    return '<span class="due-line due-line-' + due.mode + '">' + icon(kind.icon)
+      + '<span class="due-kind">' + kind.text + '</span> '
+      + '<span class="due-label">' + escapeHtml(label) + '</span></span>';
   }
   // Transcript wording often repeats the kicker ("dependent on the access…").
   function dependencyText(text) {
