@@ -1,8 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { stagedEvaluation } = require('../routes/api');
-const { meetingMinutesAgentPrimaryUnionEnabled } = stagedEvaluation;
+const { meetingMinutesAgentPrimaryUnionEnabled } = require('../utils/meetingMinutesOriginalFeatures');
 
 test('off unless switched on', () => {
   const before = process.env.MEETING_MINUTES_AGENT_PRIMARY_UNION_V1;
