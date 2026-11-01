@@ -149,15 +149,17 @@ test('the editor previews independent Beta sections then adopts the saved result
 
 test('Beta partial sections recover after polling errors and reload, reject stale snapshots and clear on failure',async t=>{
  const app=express();app.use(express.json());serveMinutesUi(app);
- const common=parallelUiDraft('parallel-recovery');common.currentStep=common.selectedStep=2;
+ const common=parallelUiDraft('parallel-recovery');
  const errors=[],writes=[];let mode='healthy';
+ const failureMessage='Actions: Microsoft did not respond in time. Your saved content has been kept. Try again later.';
+ const failedDraft=()=>({...common,revision:2,generation:{...common.generation,status:'failed',error:failureMessage}});
  const emptyActions=progressFor(common,{actions:{state:'validated',counts:{records:0,proposals:0,flags:0},preview:{actions:[]}}});
- app.get('/api/meeting-minutes-agent/drafts/parallel-recovery',(_,res)=>res.json({ok:true,draft:common}));
+ app.get('/api/meeting-minutes-agent/drafts/parallel-recovery',(_,res)=>res.json({ok:true,draft:mode==='failed'?failedDraft():common}));
  app.get('/api/meeting-minutes-agent/drafts/parallel-recovery/generation',(_,res)=>{
   if(mode==='unavailable')return res.status(503).json({ok:false,error:'Temporary poll failure.'});
   if(mode==='failed'){
-   const generation={...common.generation,status:'failed',error:'The Actions service did not complete. Saved content was kept.'};
-   return res.json({ok:true,generation,draft:{...common,revision:2,generation},progress:{...emptyActions,status:'failed',code:'failed'}});
+   const draft=failedDraft();
+   return res.json({ok:true,generation:draft.generation,draft,progress:{...emptyActions,status:'failed',code:'failed',message:failureMessage}});
   }
   const progress=mode==='stale'?{...emptyActions,startedAt:'2000-01-01T00:00:00.000Z'}:emptyActions;
   res.json({ok:true,generation:common.generation,progress});
@@ -190,7 +192,14 @@ test('Beta partial sections recover after polling errors and reload, reject stal
  await page.waitForFunction(()=>!document.body.classList.contains('generation-active'));
  assert.equal(await page.locator('#generationSections').isVisible(),false);
  assert.equal(await page.locator('#generationSections').textContent(),'','failed attempts discard provisional output');
- assert.match(await page.locator('#workflowStatus').innerText(),/Actions service did not complete/);
+ assert.equal(await page.locator('[data-screen="0"]').isVisible(),true);
+ assert.equal(await page.locator('#workflowStatus').innerText(),failureMessage);
+ assert.equal(await page.locator('#workflowStatus').isVisible(),true,'a failed Beta run explains itself on Details instead of hiding behind Discussion');
+ assert.equal(await page.locator('#workflowStatus').getAttribute('data-stage'),'');
+ await page.reload();await page.locator('#workflowStatus').getByText(failureMessage,{exact:true}).waitFor();
+ assert.equal(await page.locator('[data-screen="0"]').isVisible(),true);
+ assert.equal(await page.locator('#generationProgress').isVisible(),false);
+ assert.equal(await page.locator('#startDiscussion').isEnabled(),true);
  assert.equal(await page.locator('#executiveSummary').inputValue(),'');
  assert.equal(await page.locator('#discussionList [data-record-field]').count(),0);
  assert.equal(await page.locator('#actionsBody [data-action]').count(),0);

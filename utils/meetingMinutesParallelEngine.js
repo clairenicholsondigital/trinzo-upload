@@ -1,6 +1,4 @@
 'use strict';
-const fs = require('node:fs/promises');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const {normaliseMeetingAgentSectionPreview} = require('./meetingMinutesAgentGeneration');
 const STAGES = Object.freeze(['summary', 'discussion', 'actions']);
@@ -25,6 +23,11 @@ function decodeReply(raw) {
   let value;
   try { value = JSON.parse(raw); } catch { throw replyParseError('INVALID_JSON', 'Microsoft returned a non-JSON response.', raw, raw, 'body'); }
   if (value?.error) throw fail('PROVIDER_ERROR', 'Microsoft reported an error.');
+  const providerDiagnostics = Array.isArray(value?.activities) && value.activities.some(activity =>
+    activity?.type === 'trace' && activity.name === 'ClientTraceData' && activity.value?.ErrorCode === 'SystemError')
+    ? {providerErrorCode:'SystemError', ...(typeof value.conversationId === 'string'
+      && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.conversationId)
+      ? {conversationId:value.conversationId} : {})} : null;
   const last = value?.lastResponse;
   const finalResponse = Array.isArray(value?.responses) ? value.responses.at(-1) : null;
   // Preserve successful fallback responses and direct specialist bodies before
@@ -34,7 +37,20 @@ function decodeReply(raw) {
     : typeof last === 'string' ? 'lastResponse' : typeof finalResponse === 'string' ? 'responses_last' : 'body';
   const candidate = envelope === 'lastResponse' ? last : envelope === 'responses_last' ? finalResponse : value;
   try { return typeof candidate === 'string' ? JSON.parse(candidate) : candidate; }
-  catch { throw replyParseError('INVALID_AGENT_JSON', 'The specialist did not return strict JSON.', raw, candidate, envelope); }
+  catch {
+    // A historical error trace must never override a valid selected reply.
+    if (providerDiagnostics) throw Object.assign(fail('PROVIDER_SYSTEM_ERROR', 'Microsoft could not complete this section.'), {providerDiagnostics});
+    throw replyParseError('INVALID_AGENT_JSON', 'The specialist did not return strict JSON.', raw, candidate, envelope);
+  }
+}
+function responseCorrelation(response, receivedAt) {
+  let workflowRunId;
+  try {
+    const value = response.headers?.get?.('x-ms-workflow-run-id');
+    if (typeof value === 'string' && /^[a-z0-9_-]{1,160}$/i.test(value)) workflowRunId = value;
+  } catch { /* Correlation headers are advisory. */ }
+  return {receivedAt, ...(workflowRunId ? {workflowRunId} : {}),
+    ...(Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? {httpStatus:response.status} : {})};
 }
 function validateResult(stage, result, evidence) {
   if (!object(result) || result.schemaVersion !== 1 || result.specialist !== stage) throw fail('INVALID_CONTRACT', 'The specialist response has the wrong schema or identity.');
@@ -133,9 +149,10 @@ async function runSpecialists(packet, configuration, options = {}) {
   const tasks = STAGES.map(async stage => {
     const start = now();
     const detail = { stage, packetHash, startedAt: new Date(start).toISOString(), status:'running' };
-    const formatFailures = [];
+    const formatFailures = [], providerFailures = [];
     for (let attempt = 1; attempt <= 2; attempt++) {
       const attemptStartedAt = now();
+      let correlation = null;
       try {
         const url = configuration[stage]?.webhookUrl;
         if (!url || new URL(url).protocol !== 'https:') throw fail('NOT_CONFIGURED', 'The specialist webhook is not configured.');
@@ -144,6 +161,7 @@ async function runSpecialists(packet, configuration, options = {}) {
         // Keep retrying visible while the replacement request is in flight.
         if (attempt === 1) report(stage,'request_sent');
         const response = await fetchImpl(url, {method:'POST', headers:{'Content-Type':'application/json'}, body, signal:AbortSignal.timeout(Math.max(1, Math.floor(remaining)))});
+        correlation = responseCorrelation(response, new Date(now()).toISOString());
         const raw = await response.text();
         report(stage,'response_received');
         if (!response.ok) throw fail(`PROVIDER_HTTP_${response.status}`, `Microsoft returned HTTP ${response.status}.`);
@@ -164,21 +182,29 @@ async function runSpecialists(packet, configuration, options = {}) {
           : [];
         return {...detail, status:'completed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start, result,
           ...(formatFailures.length ? {formatFailures} : {}),
+          ...(providerFailures.length ? {providerFailures} : {}),
           ...(timingCompatibility.length ? {timingCompatibility:{version:1,records:timingCompatibility}} : {})};
       } catch (error) {
         const formatFailure = ['INVALID_JSON', 'INVALID_AGENT_JSON'].includes(error.code);
         if (formatFailure) formatFailures.push({attempt,code:error.code,elapsedMs:Math.max(0,now()-attemptStartedAt),
           ...error.responseDiagnostics});
-        // Retrying only malformed JSON leaves all validated branches untouched.
-        // Require ten seconds of the original shared budget; never reset 180s.
-        if (formatFailure && attempt === 1 && deadlineAt - now() >= 10000) {
+        const providerFailure = error.code === 'PROVIDER_SYSTEM_ERROR';
+        if (providerFailure) providerFailures.push({attempt,code:error.code,elapsedMs:Math.max(0,now()-attemptStartedAt),
+          ...correlation,...error.providerDiagnostics});
+        // SystemError replies previously failed inner JSON parsing: preserve their
+        // existing single retry and ten-second minimum within the original budget.
+        if ((formatFailure || providerFailure) && attempt === 1 && deadlineAt - now() >= 10000) {
           report(stage,'retrying');
           continue;
         }
         report(stage,'failed');
         return {...detail, status:'failed', completedAt:new Date(now()).toISOString(), elapsedMs:now()-start,
           ...(formatFailures.length ? {formatFailures} : {}),
-          error:{code:error.code || (error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNAVAILABLE'), message: error.code ? error.message : 'The specialist could not complete its request.'}};
+          ...(providerFailures.length ? {providerFailures} : {}),
+          error:{code:error.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : typeof error.code === 'string' ? error.code : 'PROVIDER_UNAVAILABLE',
+            message:error.name === 'TimeoutError' ? 'The specialist exceeded its processing time budget.'
+              : typeof error.code === 'string' ? error.message : 'The specialist could not complete its request.',
+            ...correlation,...error.providerDiagnostics}};
       }
     }
   });

@@ -4221,7 +4221,7 @@
           }
         }
         if (payload.generation && payload.generation.status === 'failed') {
-          setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, activeStage);
+          setStatus(payload.generation.error || 'The agent could not finish. Try generating again.', true, isParallelDraft() ? '' : activeStage);
         } else {
           var keptEdits = activeStage === 'actions' && state.draft.pendingProposal && state.draft.pendingProposal.source === 'regeneration';
           setStatus(keptEdits
@@ -4394,7 +4394,7 @@
       adoptDraft(payload.draft);
       // A draft reopened after a failed run says why, rather than looking idle.
       var failed = state.draft.generation && state.draft.generation.status === 'failed' ? state.draft.generation : null;
-      if (failed) setStatus(failed.error || 'The agent could not finish. Try generating again.', true, failed.stage);
+      if (failed) setStatus(failed.error || 'The agent could not finish. Try generating again.', true, isParallelDraft() ? '' : failed.stage);
       else setStatus('', false);
     }
     catch (error) { setStatus(error.message, true); }
