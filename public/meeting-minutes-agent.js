@@ -1424,6 +1424,8 @@
       toggle.hidden = documentFinalised();
       toggle.disabled = documentFinalised();
     }
+    var structureItem = document.querySelector('[data-doc-edit-structure]');
+    if (structureItem) structureItem.hidden = !ready || !doc || documentFinalised();
     var meta = document.getElementById('documentMeta');
     if (meta) meta.innerHTML = ready ? documentMetaHtml(doc && !documentReadOnly()) : '';
     // Download lives in Preview while the page is one document; the step
@@ -3230,7 +3232,7 @@
   function duePickerHtml(action, occ, due) {
     var key = 'due:' + occ;
     var mode = docDueMode[occ] || due.mode;
-    var shown = due.mode === 'none' ? amberMarker('No date agreed') : '<span class="due-label">' + escapeHtml(due.label) + '</span>';
+    var shown = due.mode === 'none' ? amberMarker('No date agreed') : dueShownHtml(due);
     var segment = function (value, label) {
       return '<button type="button" class="segment" data-due-mode="' + value + '" data-occ="' + escapeHtml(occ) + '" aria-pressed="' + (mode === value) + '">' + label + '</button>';
     };
@@ -3246,10 +3248,37 @@
       body = '<div class="picker-add"><input data-due-text="dependent" data-occ="' + escapeHtml(occ) + '" value="' + escapeHtml(due.mode === 'dependent' ? due.text : '') + '" placeholder="e.g. before we pay" aria-label="Depends on"><button type="button" class="secondary" data-due-save="dependent" data-occ="' + escapeHtml(occ) + '">Save</button></div>';
     }
     return '<details class="doc-picker due-picker" data-menu data-picker="' + escapeHtml(key) + '"' + (docPickerOpen === key ? ' open' : '') + '>'
-      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
+      + '<summary aria-label="Due: ' + escapeHtml(due.mode === 'none' ? 'no date agreed' : due.mode === 'dependent' ? 'depends on ' + dependencyText(due.text) : due.mode === 'relative' ? due.label + ' (rough timing)' : due.label) + '. Change due" title="Change due">' + shown + '</summary>'
       + '<div class="record-menu-popover doc-picker-popover due-popover" data-menu-popover>'
       + '<div class="segmented" role="group" aria-label="Due type">' + segment('date', 'Date') + segment('relative', 'Relative') + segment('dependent', 'Dependent') + segment('none', 'None') + '</div>'
-      + body + '</div></details>';
+      + body + (due.mode === 'relative' || due.mode === 'dependent' ? '<p class="due-hint">No fixed date yet. Choose Date if one is agreed.</p>' : '')
+      + '</div></details>';
+  }
+
+  // Due reads as one small grey caption line with an icon, so "finish up
+  // this week" or a dependency looks deliberate without competing with the
+  // action text. "Due" before a date only shows on narrow screens, where the
+  // column heading is hidden.
+  var DUE_KIND = {
+    date:{ icon:'calendar', text:'Due' },
+    relative:{ icon:'clock', text:'Rough timing:' },
+    dependent:{ icon:'link', text:'Depends on:' }
+  };
+  function dueShownHtml(due) {
+    var kind = DUE_KIND[due.mode];
+    var label = due.mode === 'dependent' ? dependencyText(due.text) : due.label;
+    // Free wording (from the transcript or typed in) is quoted, so it reads
+    // as what was said rather than as the app's own sentence. Preset choices
+    // like "Next week" and "See timing note" stay unquoted.
+    var quoted = due.mode === 'dependent' || (due.mode === 'relative' && due.custom && !due.note);
+    return '<span class="due-line due-line-' + due.mode + '">' + icon(kind.icon)
+      + '<span class="due-kind">' + kind.text + '</span> '
+      + '<span class="due-label">' + (quoted ? '“' : '') + escapeHtml(label) + (quoted ? '”' : '') + '</span></span>';
+  }
+  // Transcript wording often repeats the kicker ("dependent on the access…").
+  function dependencyText(text) {
+    var trimmed = String(text || '').replace(/^\s*(?:depend(?:s|ent|ing)\s+(?:up)?on)\s*:?\s*/i, '');
+    return trimmed || String(text || '');
   }
 
   function setActionDue(occ, mode, value) {
@@ -5570,6 +5599,7 @@
       if (hint) hint.remove();
       return;
     }
+    if (event.target.closest('[data-doc-edit-structure]')) { closeMenus(null); setEditStructure(true); return; }
     if (event.target.closest('[data-doc-choose-transcript]')) { closeMenus(null); askToChooseAnotherTranscript(); return; }
     var regenerate = event.target.closest('[data-regenerate-section]');
     if (regenerate) { closeMenus(null); requestBackgroundStage(regenerate.dataset.regenerateSection, { regenerate: true }); }
